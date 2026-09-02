@@ -1,0 +1,64 @@
+# ==============================================================================
+# IRIS — Production Docker Compose (Coolify & Single-Domain Deployment)
+# ==============================================================================
+# Architecture:
+# - Single Public Entrypoint: https://iris.example.com (Frontend on port 80)
+# - Nginx proxies /api/* and /health internally to backend:8000
+# - Persistent SQLite storage mounted at /app/data
+# ==============================================================================
+
+services:
+  # --- 1. Backend: FastAPI + SQLite + Alembic + AIProvider ---
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: iris-backend:latest
+    container_name: iris_backend
+    restart: unless-stopped
+    environment:
+      - ENVIRONMENT=production
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - DEFAULT_TIMEZONE=${DEFAULT_TIMEZONE:-Asia/Kolkata}
+      - DATABASE_URL=sqlite:////app/data/iris.db
+      - SECRET_KEY=${SECRET_KEY:-change-this-secret-key-in-production}
+      # AI Provider Configuration
+      - AI_PROVIDER=${AI_PROVIDER:-omniroute}
+      # OmniRoute (OpenAI-compatible)
+      - OMNIROUTE_BASE_URL=${OMNIROUTE_BASE_URL:-http://localhost:20128/v1}
+      - OMNIROUTE_API_KEY=${OMNIROUTE_API_KEY:-}
+      - OMNIROUTE_MODEL=${OMNIROUTE_MODEL:-auto/best-fast}
+      - OMNIROUTE_TIMEOUT_SECONDS=${OMNIROUTE_TIMEOUT_SECONDS:-45.0}
+      # Gemini (Fallback / Direct)
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.5-flash}
+      - GEMINI_TIMEOUT_SECONDS=${GEMINI_TIMEOUT_SECONDS:-45.0}
+    volumes:
+      - iris_data:/app/data
+    expose:
+      - "8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # --- 2. Frontend: React Vite SPA + Nginx Reverse Proxy ---
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    image: iris-frontend:latest
+    container_name: iris_frontend
+    restart: unless-stopped
+    ports:
+      - "${PORT:-80}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  iris_data:
+    name: iris_data
+    driver: local

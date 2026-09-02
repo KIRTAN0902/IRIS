@@ -1,0 +1,40 @@
+"""Import all models so Base.metadata and Alembic autogenerate see them."""
+
+from app.models.ai_conversation import AIConversation, AIMessage
+from app.models.ai_recommendation import AIRecommendation
+from app.models.calendar_event import CalendarEvent
+from app.models.daily_review import DailyReview
+from app.models.experiment import Experiment
+from app.models.focus_session import FocusSession
+from app.models.goal import Goal
+from app.models.lead import Lead
+from app.models.metric import Metric
+from app.models.outreach import OutreachActivity
+from app.models.project import Project
+from app.models.recurring_schedule import RecurringSchedule
+from app.models.signal import Signal
+from app.models.startup import Startup
+from app.models.task import Task
+from app.models.time_block import TimeBlock
+from app.models.user import User
+
+__all__ = [
+    "AIConversation",
+    "AIMessage",
+    "AIRecommendation",
+    "CalendarEvent",
+    "DailyReview",
+    "Experiment",
+    "FocusSession",
+    "Goal",
+    "Lead",
+    "Metric",
+    "OutreachActivity",
+    "Project",
+    "RecurringSchedule",
+    "Signal",
+    "Startup",
+    "Task",
+    "TimeBlock",
+    "User",
+]

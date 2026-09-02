@@ -1,0 +1,140 @@
+@import "tailwindcss";
+@import "@fontsource/chakra-petch/500.css";
+@import "@fontsource/chakra-petch/600.css";
+@import "@fontsource/chakra-petch/700.css";
+@import "@fontsource/barlow/400.css";
+@import "@fontsource/barlow/500.css";
+@import "@fontsource/barlow/600.css";
+@import "@fontsource/jetbrains-mono/400.css";
+@import "@fontsource/jetbrains-mono/600.css";
+
+/*
+ * IRIS DESIGN SYSTEM — Semantic Tokens: Monastic Graphite.
+ * Minimalist, matte, distraction-free architectural dark design. Zero neon.
+ */
+@theme {
+  --color-ops-void: #090a0c;
+  --color-ops-ground: #0e1013;
+  --color-ops-panel: #14171b;
+  --color-ops-raised: #1c2026;
+  --color-ops-line: #242930;
+  --color-ops-line-bright: #353c46;
+  
+  --color-ink: #f2f4f6;
+  --color-ink-dim: #9aa5b1;
+  --color-ink-faint: #606b77;
+  
+  --color-ai: #dbe4ee;
+  --color-ai-dim: #2c333d;
+
+  --color-go: #10b981;
+  --color-go-dim: #064e3b;
+  
+  --color-caution: #f59e0b;
+  --color-caution-dim: #78350f;
+  
+  --color-critical: #f43f5e;
+  --color-critical-dim: #881337;
+
+  --font-display: "Chakra Petch", -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-body: "Barlow", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-telemetry: "JetBrains Mono", "Cascadia Mono", monospace;
+
+  --animate-lamp: lamp 2.4s ease-in-out infinite;
+
+  @keyframes lamp {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.45;
+    }
+  }
+}
+
+/* --- Browser & Surface Defaults ------------------------------------------ */
+
+::selection {
+  background: rgba(255, 255, 255, 0.15);
+  color: var(--color-ink);
+}
+
+* {
+  scrollbar-color: var(--color-ops-line-bright) transparent;
+  scrollbar-width: thin;
+}
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-ops-line-bright);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-ink-dim);
+  outline-offset: 2px;
+}
+
+input,
+textarea {
+  caret-color: var(--color-ink);
+}
+
+html {
+  color-scheme: dark;
+}
+
+html,
+body {
+  overflow-x: clip;
+}
+
+#root {
+  min-height: 100dvh;
+}
+
+body {
+  background: var(--color-ops-ground);
+  color: var(--color-ink);
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.5;
+  letter-spacing: -0.011em;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Tabular numerals everywhere metrics or times are measured */
+.tnum {
+  font-family: var(--font-telemetry);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+/* Tracked uppercase labels */
+.label-caps {
+  font-family: var(--font-display);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-size: 11px;
+  color: var(--color-ink-dim);
+}
+
+/* Status lamp breathing motion */
+.lamp-pulse {
+  animation: var(--animate-lamp);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lamp-pulse {
+    animation: none;
+  }
+}
+

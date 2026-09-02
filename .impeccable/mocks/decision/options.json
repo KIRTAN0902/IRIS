@@ -1,0 +1,104 @@
+{
+  "title": "IRIS visual world",
+  "question": "The roll assigned The Swiss Programme. Build it, take an alternate, play it straight, or re-roll.",
+  "options": [
+    {
+      "id": "assigned",
+      "label": "The Swiss Programme",
+      "kicker": "THE ROLL",
+      "lineage": "Müller-Brockmann concert programmes · Swiss International Style",
+      "thesis": "Hierarchy IS the interface: what matters most is simply set biggest, on a strict grid, with one signal red.",
+      "palette": ["#FAFAF7", "#111110", "#E2231A", "#6F6F69"],
+      "materials": ["newsprint-white ground", "grotesk scale 1:12", "hairline rules", "tabular mono figures"],
+      "viewport": "Home opens as today's programme sheet: IRIS wordmark + date line across the top; WHAT MATTERS NOW as a full-width headliner block carrying the AI recommendation at display size; beneath it three grid columns — TODAY / PROGRESS / ATTENTION — separated by hairlines, zero cards, zero shadows.",
+      "raised": [
+        { "from": "Cutting Bench", "raise": "State is a mark, not a hue — done takes a struck cross-rule, deferred gets a folded corner." },
+        { "from": "Miura Fold", "raise": "Modules fold flat: nav collapses to a compact rail and deploys in place, so future modules slot into the crease without redesign." },
+        { "from": "Deep Dive", "raise": "One vertical urgency axis — every list reads top=now to bottom=later." },
+        { "from": "Deck Fascia", "raise": "Progress renders as segmented instrument ladders — discrete ticks you count at a glance." }
+      ],
+      "risk": "Type-only hierarchy must earn its drama or it reads like a wireframe.",
+      "case": "Assigned direction: typographic authority matches IRIS's deterministic truth; grid scales cleanly from desktop command center to mobile programme strip."
+    },
+    {
+      "id": "model-pick",
+      "label": "Mission Ops Wall",
+      "kicker": "IMPECCABLE’S PICK",
+      "lineage": "JPL / SpaceX operations rooms",
+      "thesis": "A dark instrumentation wall where your life runs as mission telemetry and IRIS speaks as CAPCOM.",
+      "palette": ["#0B0F14", "#131B24", "#4ADE80", "#FBBF24", "#E6EDF3"],
+      "materials": ["instrument panels", "status columns", "mono telemetry readouts"],
+      "viewport": "Full-height ops wall: mission clock and free-time readout up top; center stage GO recommendation panel with START FOCUS lit green; flanking columns stream TODAY / PROGRESS / ATTENTION telemetry.",
+      "risk": "Dark dashboards with neon accents are this category's gravity well — that familiarity is the honest cost.",
+      "case": "Strongest grounded resonance for 'command center'; ranked it first myself."
+    },
+    {
+      "id": "challenger-billing",
+      "label": "Today’s Billing",
+      "verdict": "competitive",
+      "lineage": "music festival lineup posters",
+      "thesis": "Your day typeset as tonight's bill: one face, rank carried by size alone, the recommendation as headliner.",
+      "palette": ["#FFD400", "#101010"],
+      "materials": ["saturated poster ground", "single ink", "justified type blocks"],
+      "viewport": "Signal-yellow ground; WHAT MATTERS NOW spans the full width at poster scale; tasks cascade down billing order into a justified tail of small names at the foot.",
+      "risk": "Pure poster grammar has no native controls vocabulary — focus timers, filters and forms must be invented inside it.",
+      "case": "Holds identification (size-as-rank is IRIS's thesis literalized) but limits product clarity for dense CRM/analytics work."
+    },
+    {
+      "id": "challenger-bench",
+      "label": "Cutting Bench",
+      "verdict": "declined",
+      "lineage": "16mm work print + select rail",
+      "thesis": "Your day strung as a work print: punched task-frames on a perforated rail, rejects hanging on pins below.",
+      "palette": ["#0A0A0A", "#FF6A13", "#FFFFFF"],
+      "kept": "Its state-as-mark discipline (struck crosses, folded flags) was lifted into The Swiss Programme."
+    },
+    {
+      "id": "challenger-miura",
+      "label": "Miura Sheet",
+      "verdict": "declined",
+      "lineage": "aerospace Miura-fold deployables",
+      "thesis": "IRIS unfolds from a hand-sized packet into a tessellated crease-grid of modules.",
+      "palette": ["#F5F5F2", "#C9A227", "#9DB8D8", "#26282B"],
+      "kept": "Compact-to-deployed module duality became The Swiss Programme's folding navigation."
+    },
+    {
+      "id": "challenger-dive",
+      "label": "Deep Dive",
+      "verdict": "declined",
+      "lineage": "mesophotic reef descent",
+      "thesis": "Priority as depth: descend a vertical water column from warm surface tasks to cold abyssal backlog.",
+      "palette": ["#02181f", "#06303d", "#67E8F9", "#E8F4F4"],
+      "kept": "The single vertical urgency axis now rules every list in The Swiss Programme."
+    },
+    {
+      "id": "challenger-deck",
+      "label": "Deck Fascia",
+      "verdict": "declined",
+      "lineage": "cassette-futurist tape deck",
+      "thesis": "Brushed aluminum fascia, chrome toggles, amber LED ladders — every IRIS function a labeled switch.",
+      "palette": ["#C8CCD0", "#D8CFBC", "#FFB000", "#26282B"],
+      "kept": "Segmented instrument ladders became the progress-bar language of The Swiss Programme."
+    },
+    {
+      "id": "challenger-ascii",
+      "label": "Phosphor Scene",
+      "verdict": "declined",
+      "lineage": "ASCII-rendered live scenes",
+      "thesis": "The whole interface rendered as glyph density on one strict monospace grid.",
+      "palette": ["#000000", "#33FF66", "#AAAAAA"],
+      "kept": "Nothing material — its one-strict-grid discipline was already native to the assigned direction."
+    }
+  ],
+  "reroll": { "registers": ["safer", "bolder"] },
+  "steer": true,
+  "canon": true,
+  "canonCard": {
+    "id": "canon",
+    "label": "Standard Dashboard",
+    "lineage": "the category standard",
+    "thesis": "Sidebar, cards, charts — the familiar SaaS layout executed cleanly. Nothing wrong; nothing memorable.",
+    "palette": ["#FFFFFF", "#18181B", "#6366F1"],
+    "materials": ["cards", "shadows", "rounded corners"]
+  }
+}
