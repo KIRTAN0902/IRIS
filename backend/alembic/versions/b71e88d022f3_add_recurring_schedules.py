@@ -28,7 +28,7 @@ def upgrade() -> None:
         sa.Column('days_of_week', sa.String(length=64), nullable=False),
         sa.Column('start_time', sa.String(length=10), nullable=False),
         sa.Column('end_time', sa.String(length=10), nullable=False),
-        sa.Column('is_hard_constraint', sa.Boolean(), nullable=False, server_default='1'),
+        sa.Column('is_hard_constraint', sa.Boolean(), nullable=False, server_default=sa.text('true')),
         sa.Column('status', sa.String(length=20), nullable=False, server_default='ACTIVE'),
         sa.Column('extra_data', sa.JSON(), nullable=True),
         sa.Column('created_at', sa.DateTime(), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=False),

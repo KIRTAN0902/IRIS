@@ -1,20 +1,16 @@
 """SQLAlchemy engine/session setup and the declarative base.
 
-Portability notes (SQLite v1 -> PostgreSQL later):
-
-* The database is addressed exclusively through ``settings.database_url``.
-  No module in the codebase hard-codes a path or dialect-specific type.
-* All enum-like columns are stored as plain strings validated by Python enums,
-  which works identically on SQLite and PostgreSQL.
-* SQLite needs ``foreign_keys=ON`` per connection to enforce FK integrity.
-* Datetimes are stored as **naive UTC** everywhere. Use :func:`app.utils.datetime
-  .utcnow` to create them, and convert to the user's timezone only at the
-  presentation/analytics boundary.
+Supports both Supabase PostgreSQL (production/staging) and SQLite (local testing/dev).
+- Database connection string is fully environment-driven via ``settings.database_url``.
+- Automatically normalizes postgres:// and postgresql:// to postgresql+psycopg://.
+- Configures sensible connection pooling for PostgreSQL (Supabase).
+- Sets SQLite PRAGMAs and threading connect_args ONLY when SQLite is in use.
 """
 
 import os
 from collections.abc import Generator
 from pathlib import Path
+from typing import Any
 
 from sqlalchemy import create_engine, event
 from sqlalchemy.engine import Engine
@@ -27,15 +23,34 @@ class Base(DeclarativeBase):
     pass
 
 
-def _is_sqlite() -> bool:
-    return settings.database_url.startswith("sqlite")
+def normalize_database_url(url: str) -> str:
+    """Normalize database URL to use psycopg 3 driver for PostgreSQL."""
+    if url.startswith("postgres://"):
+        return "postgresql+psycopg://" + url[len("postgres://"):]
+    if url.startswith("postgresql://") and not url.startswith("postgresql+"):
+        return "postgresql+psycopg://" + url[len("postgresql://"):]
+    return url
 
 
-def _ensure_sqlite_dir() -> None:
+def is_sqlite_url(url: str) -> bool:
+    """Check if the provided database URL is SQLite."""
+    return url.startswith("sqlite")
+
+
+def is_serverless_or_transaction_pooler(url: str) -> bool:
+    """Detect if running in serverless (Vercel/Lambda) or using transaction pooler (port 6543)."""
+    return bool(
+        os.environ.get("VERCEL")
+        or os.environ.get("AWS_LAMBDA_FUNCTION_NAME")
+        or os.environ.get("SERVERLESS") == "true"
+        or ":6543" in url
+    )
+
+
+def _ensure_sqlite_dir(url: str) -> None:
     """Ensure parent directory for SQLite database file exists."""
-    if not _is_sqlite():
+    if not is_sqlite_url(url):
         return
-    url = settings.database_url
     if ":memory:" in url or url == "sqlite://":
         return
     # Strip sqlite:/// or sqlite:////
@@ -50,22 +65,45 @@ def _ensure_sqlite_dir() -> None:
         os.makedirs(parent, exist_ok=True)
 
 
-_ensure_sqlite_dir()
+resolved_db_url = normalize_database_url(settings.database_url)
+_is_sqlite = is_sqlite_url(resolved_db_url)
 
-engine = create_engine(
-    settings.database_url,
-    connect_args={"check_same_thread": False} if _is_sqlite() else {},
-    pool_pre_ping=True,
-)
+if _is_sqlite:
+    _ensure_sqlite_dir(resolved_db_url)
+    engine_kwargs: dict[str, Any] = {
+        "connect_args": {"check_same_thread": False},
+        "pool_pre_ping": True,
+    }
+elif is_serverless_or_transaction_pooler(resolved_db_url):
+    # Vercel Serverless / Supabase Transaction Pooler (:6543) -> NullPool
+    # Ephemeral serverless lambdas must not maintain idle connection pools.
+    from sqlalchemy.pool import NullPool
 
-if _is_sqlite():
+    engine_kwargs = {
+        "poolclass": NullPool,
+        "pool_pre_ping": True,
+    }
+else:
+    # Production / Long-running Session Pooler (:5432)
+    engine_kwargs = {
+        "pool_size": 5,
+        "max_overflow": 10,
+        "pool_timeout": 30,
+        "pool_recycle": 1800,
+        "pool_pre_ping": True,
+    }
 
+engine = create_engine(resolved_db_url, **engine_kwargs)
+
+if _is_sqlite:
     @event.listens_for(Engine, "connect")
     def _set_sqlite_pragma(dbapi_connection, _connection_record):  # noqa: ANN001
-        cursor = dbapi_connection.cursor()
-        cursor.execute("PRAGMA foreign_keys=ON")
-        cursor.execute("PRAGMA journal_mode=WAL")
-        cursor.close()
+        # Apply SQLite PRAGMAs only for sqlite3 connections
+        if dbapi_connection.__class__.__module__.startswith("sqlite3"):
+            cursor = dbapi_connection.cursor()
+            cursor.execute("PRAGMA foreign_keys=ON")
+            cursor.execute("PRAGMA journal_mode=WAL")
+            cursor.close()
 
 
 SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)

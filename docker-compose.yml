@@ -20,7 +20,7 @@ services:
       - ENVIRONMENT=production
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - DEFAULT_TIMEZONE=${DEFAULT_TIMEZONE:-Asia/Kolkata}
-      - DATABASE_URL=sqlite:////app/data/iris.db
+      - DATABASE_URL=${DATABASE_URL:-sqlite:////app/data/iris.db}
       - SECRET_KEY=${SECRET_KEY:-change-this-secret-key-in-production}
       # AI Provider Configuration
       - AI_PROVIDER=${AI_PROVIDER:-omniroute}

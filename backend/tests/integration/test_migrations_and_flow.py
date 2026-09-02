@@ -3,20 +3,22 @@
 from __future__ import annotations
 
 import os
-import sqlite3
 import subprocess
+import sys
 from pathlib import Path
 
+from sqlalchemy import create_engine, inspect
+
 BACKEND_DIR = Path(__file__).resolve().parents[2]
-ALEMBIC_EXE = BACKEND_DIR / ".venv" / "Scripts" / "alembic.exe"
 
 
 def test_migrations_apply_to_fresh_database(tmp_path):
     """`alembic upgrade head` must build the full schema from scratch (spec §7)."""
     db_path = tmp_path / "migration-test.db"
-    env = {**os.environ, "DATABASE_URL": f"sqlite:///{db_path.as_posix()}"}
+    db_url = f"sqlite:///{db_path.as_posix()}"
+    env = {**os.environ, "DATABASE_URL": db_url}
     result = subprocess.run(
-        [str(ALEMBIC_EXE), "upgrade", "head"],
+        [sys.executable, "-m", "alembic", "upgrade", "head"],
         cwd=BACKEND_DIR,
         env=env,
         capture_output=True,
@@ -25,9 +27,8 @@ def test_migrations_apply_to_fresh_database(tmp_path):
     )
     assert result.returncode == 0, result.stderr
 
-    conn = sqlite3.connect(db_path)
-    tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-    conn.close()
+    engine = create_engine(db_url)
+    tables = set(inspect(engine).get_table_names())
 
     expected = {
         "users",

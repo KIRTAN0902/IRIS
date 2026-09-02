@@ -61,8 +61,9 @@ attention_score = urgency × 35.0
 ## Requirements & Setup
 
 * Python **3.12+**
-* SQLite (bundled with Python)
-* Google Gemini API key *(optional — deterministic-only mode operates fully without it)*
+* PostgreSQL (Supabase / Render / Local) or SQLite (for local testing/dev)
+* psycopg 3 driver (`psycopg[binary]>=3.2`)
+* OmniRoute Gateway / Google Gemini API key *(optional — deterministic fallback operates fully without AI keys)*
 
 ```bash
 cd backend
@@ -82,19 +83,34 @@ pip install -r requirements.txt -r requirements-dev.txt
 Copy `.env.example` to `.env` and fill it in:
 
 ```env
-DATABASE_URL=sqlite:///./iris.db
-GEMINI_API_KEY=            # leave empty for deterministic-only mode
-GEMINI_MODEL=gemini-2.5-flash
+# Supabase PostgreSQL (Production / Staging via Session Pooler)
+DATABASE_URL=postgresql+psycopg://postgres.[PROJECT_REF]:[PASSWORD]@aws-0-[REGION].pooler.supabase.com:5432/postgres
+
+# Or Local SQLite (Development)
+# DATABASE_URL=sqlite:///./iris.db
+
 SECRET_KEY=change-me-in-production
-ENVIRONMENT=development
+ENVIRONMENT=production
 DEFAULT_TIMEZONE=Asia/Kolkata
 LOG_LEVEL=INFO
+
+# AI Provider Configuration
+AI_PROVIDER=omniroute
+OMNIROUTE_BASE_URL=http://localhost:20128/v1
+OMNIROUTE_API_KEY=your-omniroute-api-key
+OMNIROUTE_MODEL=auto/best-fast
 ```
 
-### Database Migrations
+### Database Migrations (Alembic)
 
 ```bash
 alembic upgrade head
+```
+
+### Migrate Existing SQLite Data to PostgreSQL
+
+```bash
+python scripts/migrate_sqlite_to_postgres.py --source sqlite:///./iris.db --target postgresql+psycopg://postgres.[PROJECT_REF]:[PASSWORD]@aws-0-[REGION].pooler.supabase.com:5432/postgres
 ```
 
 ### Seed Development Data

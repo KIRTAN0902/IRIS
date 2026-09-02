@@ -1,5 +1,5 @@
 # ==============================================================================
-# IRIS — Backend Production Dockerfile (FastAPI + SQLite + Alembic)
+# IRIS — Backend Production Dockerfile (FastAPI + Supabase PostgreSQL + Alembic)
 # ==============================================================================
 FROM python:3.12-slim
 
@@ -8,7 +8,6 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
     PYTHONPATH=/app \
-    DATABASE_URL=sqlite:////app/data/iris.db \
     ENVIRONMENT=production
 
 # Install curl for container health check
