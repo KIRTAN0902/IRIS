@@ -40,7 +40,7 @@ In your **Vercel Project Settings → Environment Variables**, configure:
 | `LOG_LEVEL` | `INFO` | Standard logging |
 | `SECRET_KEY` | `[GENERATE_A_RANDOM_32_CHAR_STRING]` | App secret key |
 | `AI_PROVIDER` | `nvidia` *(or any preset: `openai`, `openrouter`, `groq`, `gemini`, ...)* | Which backend serves the model |
-| `AI_MODEL` | `nvidia/nemotron-3-super-120b-a12b` | Any model id; switching models is config-only |
+| `AI_MODEL` | `nvidia/nemotron-3-ultra-550b-a55b` | Any model id; switching models is config-only |
 | `AI_API_KEY` | `[YOUR_API_KEY]` | Key for that provider (NVIDIA: build.nvidia.com) |
 | `GEMINI_API_KEY` | `[OPTIONAL_GEMINI_KEY]` | Fallback Gemini API Key |
 
