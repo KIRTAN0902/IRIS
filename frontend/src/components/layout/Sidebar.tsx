@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { NavLink, useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import { Brain, PanelLeftClose, PanelLeftOpen, SquarePen, Square } from "lucide-react";
+import { Brain, Menu, PanelLeftClose, PanelLeftOpen, SquarePen, Square, X } from "lucide-react";
 import { PRIMARY_NAV_ITEMS } from "@/modules/registry";
 import { cn, parseUtc } from "@/lib/format";
 import { useFocusStore, useUiStore } from "@/stores";
@@ -117,11 +117,14 @@ export function Sidebar() {
 }
 
 /** Opens a new chat; the conversation is created on the first message. */
-function NewNoteButton() {
+function NewNoteButton({ onClick }: { onClick?: () => void }) {
   const navigate = useNavigate();
   return (
     <button
-      onClick={() => navigate("/")}
+      onClick={() => {
+        navigate("/");
+        onClick?.();
+      }}
       aria-label="New chat"
       title="New chat"
       className="rounded-md p-1.5 text-ink-faint hover:bg-ops-raised hover:text-ink cursor-pointer disabled:opacity-40"
@@ -259,18 +262,104 @@ export function IrisMark({ size = 20 }: { size?: number }) {
   );
 }
 
-/** Mobile top bar. */
+/** Mobile top bar, with a slide-in drawer holding the conversation history. */
 export function MobileTopBar({ askTrigger }: { askTrigger: React.ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const location = useLocation();
+
+  // Close the drawer whenever navigation happens (opening a chat, new chat…).
+  useEffect(() => setOpen(false), [location.pathname, location.search]);
+
   return (
-    <header className="sticky top-0 z-40 flex h-12 items-center gap-2 bg-ops-ground/90 px-4 backdrop-blur md:hidden">
-      <NavLink to="/" className="flex items-center gap-2 text-ink">
-        <IrisMark size={18} />
-        <span className="text-[15px] font-semibold">IRIS</span>
-      </NavLink>
-      <div className="ml-auto flex items-center gap-1">
-        <NewNoteButton />
-        {askTrigger}
-      </div>
-    </header>
+    <>
+      <header className="sticky top-0 z-40 flex h-12 items-center gap-2 bg-ops-ground/90 px-4 backdrop-blur md:hidden">
+        <button
+          onClick={() => setOpen(true)}
+          aria-label="Open conversations"
+          className="-ml-1.5 rounded-md p-1.5 text-ink-faint hover:bg-ops-raised hover:text-ink"
+        >
+          <Menu size={18} strokeWidth={1.75} />
+        </button>
+        <NavLink to="/" className="flex items-center gap-2 text-ink">
+          <IrisMark size={18} />
+          <span className="text-[15px] font-semibold">IRIS</span>
+        </NavLink>
+        <div className="ml-auto flex items-center gap-1">
+          <NewNoteButton />
+          {askTrigger}
+        </div>
+      </header>
+      <MobileDrawer open={open} onClose={() => setOpen(false)} />
+    </>
+  );
+}
+
+function MobileDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const [memoryOpen, setMemoryOpen] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = overflow;
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [open, onClose]);
+
+  return (
+    <div
+      className={cn("fixed inset-0 z-50 md:hidden", open ? "" : "pointer-events-none")}
+      aria-hidden={!open}
+    >
+      <div
+        onClick={onClose}
+        className={cn("absolute inset-0 bg-black/60 transition-opacity", open ? "opacity-100" : "opacity-0")}
+      />
+      <nav
+        aria-label="Conversations"
+        // Tapping a link inside (even the chat already open) closes the drawer.
+        onClick={(e) => (e.target as HTMLElement).closest("a") && onClose()}
+        className={cn(
+          "absolute inset-y-0 left-0 flex w-[82%] max-w-[300px] flex-col bg-ops-panel transition-transform duration-200",
+          open ? "translate-x-0" : "-translate-x-full",
+        )}
+        style={{ paddingTop: "env(safe-area-inset-top)", paddingBottom: "env(safe-area-inset-bottom)" }}
+      >
+        <div className="flex items-center gap-2 px-4 pt-4 pb-1">
+          <NavLink to="/" className="flex items-center gap-2 text-ink">
+            <IrisMark size={18} />
+            <span className="text-[15px] font-semibold">IRIS</span>
+          </NavLink>
+          <div className="ml-auto flex items-center">
+            <NewNoteButton onClick={onClose} />
+            <button
+              onClick={onClose}
+              aria-label="Close conversations"
+              className="rounded-md p-1.5 text-ink-faint hover:bg-ops-raised hover:text-ink"
+            >
+              <X size={16} />
+            </button>
+          </div>
+        </div>
+
+        <ConversationList />
+
+        <div className="space-y-1 px-2 pb-3 pt-2">
+          <FocusTimer />
+          <button
+            onClick={() => setMemoryOpen(true)}
+            className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-[13px] text-ink-dim hover:bg-ops-raised/60 hover:text-ink cursor-pointer"
+          >
+            <Brain size={15} strokeWidth={1.75} className="shrink-0 opacity-80" />
+            <span>What IRIS remembers</span>
+          </button>
+          <AIStatusLine />
+        </div>
+      </nav>
+      <MemoryModal open={memoryOpen} onClose={() => setMemoryOpen(false)} />
+    </div>
   );
 }
