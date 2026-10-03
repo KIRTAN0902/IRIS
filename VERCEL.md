@@ -39,10 +39,9 @@ In your **Vercel Project Settings → Environment Variables**, configure:
 | `DEFAULT_TIMEZONE` | `Asia/Kolkata` | User timezone |
 | `LOG_LEVEL` | `INFO` | Standard logging |
 | `SECRET_KEY` | `[GENERATE_A_RANDOM_32_CHAR_STRING]` | App secret key |
-| `AI_PROVIDER` | `nvidia` *(or `gemini`)* | Active AI provider |
-| `NVIDIA_BASE_URL` | `https://integrate.api.nvidia.com/v1` | NVIDIA NIM endpoint URL |
-| `NVIDIA_API_KEY` | `[YOUR_NVIDIA_API_KEY]` | NVIDIA NIM API Key from build.nvidia.com |
-| `NVIDIA_MODEL` | `nvidia/nemotron-3.5-lightning-30b-a3b` | Active NIM model identifier |
+| `AI_PROVIDER` | `nvidia` *(or any preset: `openai`, `openrouter`, `groq`, `gemini`, ...)* | Which backend serves the model |
+| `AI_MODEL` | `nvidia/nemotron-3-super-120b-a12b` | Any model id; switching models is config-only |
+| `AI_API_KEY` | `[YOUR_API_KEY]` | Key for that provider (NVIDIA: build.nvidia.com) |
 | `GEMINI_API_KEY` | `[OPTIONAL_GEMINI_KEY]` | Fallback Gemini API Key |
 
 ---
