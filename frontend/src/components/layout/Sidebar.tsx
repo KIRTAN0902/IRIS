@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { NavLink, useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import { Brain, Menu, PanelLeftClose, PanelLeftOpen, SquarePen, Square, X } from "lucide-react";
+import { Brain, Menu, PanelLeftClose, PanelLeftOpen, SquarePen, Square, Trash2, X } from "lucide-react";
 import { PRIMARY_NAV_ITEMS } from "@/modules/registry";
 import { cn, parseUtc } from "@/lib/format";
 import { useFocusStore, useUiStore } from "@/stores";
@@ -8,6 +8,7 @@ import {
   useAIStatus,
   useCompleteFocus,
   useConversations,
+  useDeleteConversation,
   useTodayState,
 } from "@/hooks/queries";
 import { MemoryModal } from "@/features/home/MemoryModal";
@@ -159,6 +160,17 @@ function ConversationList() {
   const activeId = Number(params.get("c")) || null;
   const onHome = location.pathname === "/";
   const list = convs.data ?? [];
+  const navigate = useNavigate();
+  const del = useDeleteConversation();
+
+  const remove = (id: number, title: string) => {
+    if (!window.confirm(`Delete "${title}"? This can't be undone.`)) return;
+    del.mutate(id, {
+      onSuccess: () => {
+        if (onHome && activeId === id) navigate("/");
+      },
+    });
+  };
 
   return (
     <div className="mt-5 flex min-h-0 flex-1 flex-col">
@@ -169,23 +181,35 @@ function ConversationList() {
         )}
         {list.map((c) => {
           const active = onHome && activeId === c.id;
+          const title = c.title || "Untitled";
           return (
-            <NavLink
+            <div
               key={c.id}
-              to={`/?c=${c.id}`}
               className={cn(
-                "block rounded-md px-2.5 py-1.5 transition-colors",
+                "group flex items-center rounded-md transition-colors",
                 active ? "bg-ai-dim" : "hover:bg-ops-raised/60",
               )}
             >
-              <p className={cn("truncate text-[13px]", active ? "text-ink font-medium" : "text-ink")}>
-                {c.title || "Untitled"}
-              </p>
-              <p className="truncate text-[11px] text-ink-faint">
-                <span className="tnum">{relativeDay(c.updated_at)}</span>
-                {preview(c.summary) && <span className="ml-1.5">{preview(c.summary)}</span>}
-              </p>
-            </NavLink>
+              <NavLink to={`/?c=${c.id}`} className="min-w-0 flex-1 py-1.5 pl-2.5">
+                <p className={cn("truncate text-[13px]", active ? "text-ink font-medium" : "text-ink")}>
+                  {title}
+                </p>
+                <p className="truncate text-[11px] text-ink-faint">
+                  <span className="tnum">{relativeDay(c.updated_at)}</span>
+                  {preview(c.summary) && <span className="ml-1.5">{preview(c.summary)}</span>}
+                </p>
+              </NavLink>
+              {/* Always shown in the phone drawer; on hover in the desktop sidebar. */}
+              <button
+                onClick={() => remove(c.id, title)}
+                disabled={del.isPending && del.variables === c.id}
+                aria-label={`Delete conversation "${title}"`}
+                title="Delete conversation"
+                className="shrink-0 rounded p-2 text-ink-faint transition-opacity hover:text-critical focus-visible:opacity-100 disabled:opacity-40 cursor-pointer md:[@media(hover:hover)]:opacity-0 md:[@media(hover:hover)]:group-hover:opacity-100"
+              >
+                <Trash2 size={14} strokeWidth={1.75} />
+              </button>
+            </div>
           );
         })}
       </div>
