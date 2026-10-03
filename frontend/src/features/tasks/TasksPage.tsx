@@ -1,6 +1,6 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Briefcase, Check, GraduationCap, Plus, Rocket, Search, Trash2 } from "lucide-react";
+import { Check, Plus, Search, Trash2, X } from "lucide-react";
 import {
   useCompleteTask,
   useCreateTask,
@@ -14,7 +14,7 @@ import type { TaskOut } from "@/types/api";
 import { Button } from "@/components/ui/Button";
 import { Dialog, DialogContent, ErrorState, Skeleton } from "@/components/ui/Overlay";
 import { Field, Input, Select, Textarea } from "@/components/ui/Field";
-import { cn, humanDuration, urgencyLabel } from "@/lib/format";
+import { cn, humanDuration, parseUtc, urgencyLabel } from "@/lib/format";
 import { TASK_PRIORITIES, type LifeArea, type TaskPriority } from "@/types/api";
 
 type FilterTab = "active" | "all" | "completed" | "overdue";
@@ -37,6 +37,7 @@ export function TasksPage() {
   const [query, setQuery] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
   const [defaultArea, setDefaultArea] = useState<LifeArea>("STARTUP");
+  const [editing, setEditing] = useState<TaskOut | null>(null);
 
   const projects = useProjects();
   const projectsMap = useMemo(() => {
@@ -94,6 +95,9 @@ export function TasksPage() {
           {totalActive} open
           {totalOverdue > 0 && <span className="text-critical"> · {totalOverdue} overdue</span>} · {totalCompleted} done
         </p>
+        <p className="mt-1 text-[12px] text-ink-faint md:hidden">
+          Swipe right to complete · left to delete · tap to edit
+        </p>
 
         <div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-3">
           <nav className="flex items-center gap-4 text-[14px]" aria-label="Filter tasks">
@@ -144,6 +148,7 @@ export function TasksPage() {
                 tasks={tasks}
                 projectsMap={projectsMap}
                 onAdd={() => openCreate(area)}
+                onEdit={setEditing}
               />
             );
           })}
@@ -156,6 +161,11 @@ export function TasksPage() {
       )}
 
       <CreateTaskDialog open={createOpen} onOpenChange={setCreateOpen} defaultArea={defaultArea} />
+      <TaskDialog
+        open={editing !== null}
+        onOpenChange={(v) => !v && setEditing(null)}
+        task={editing}
+      />
     </div>
   );
 }
@@ -167,11 +177,13 @@ function AreaSection({
   tasks,
   projectsMap,
   onAdd,
+  onEdit,
 }: {
   title: string;
   tasks: TaskOut[];
   projectsMap: Map<number, string>;
   onAdd: () => void;
+  onEdit: (task: TaskOut) => void;
 }) {
   const overdue = tasks.filter((t) => t.is_overdue && t.status !== "COMPLETED").length;
   return (
@@ -199,7 +211,7 @@ function AreaSection({
         <ul>
           {tasks.map((task) => (
             <li key={task.id}>
-              <TaskItemRow task={task} projectsMap={projectsMap} />
+              <TaskItemRow task={task} projectsMap={projectsMap} onEdit={onEdit} />
             </li>
           ))}
         </ul>
@@ -210,7 +222,19 @@ function AreaSection({
 
 // --- Checklist row -------------------------------------------------------------------
 
-function TaskItemRow({ task, projectsMap }: { task: TaskOut; projectsMap: Map<number, string> }) {
+/** How far (as a fraction of the row's width) a swipe must travel to count. */
+const SWIPE_COMMIT = 0.35;
+const UNDO_MS = 4000;
+
+function TaskItemRow({
+  task,
+  projectsMap,
+  onEdit,
+}: {
+  task: TaskOut;
+  projectsMap: Map<number, string>;
+  onEdit: (task: TaskOut) => void;
+}) {
   const complete = useCompleteTask();
   const updateTask = useUpdateTask();
   const del = useDeleteTask();
@@ -221,11 +245,147 @@ function TaskItemRow({ task, projectsMap }: { task: TaskOut; projectsMap: Map<nu
   const priority =
     task.priority === "CRITICAL" ? "Critical" : task.priority === "HIGH" ? "High priority" : null;
 
-  const toggle = () =>
-    isDone ? updateTask.mutate({ id: task.id, patch: { status: "TODO" } }) : complete.mutate({ id: task.id });
+  // --- swipe (touch only): right = done/reopen, left = delete with undo ---
+  const rowRef = useRef<HTMLDivElement>(null);
+  const drag = useRef<{ x: number; y: number; axis: "x" | "y" | null } | null>(null);
+  const swiped = useRef(false);
+  const [dx, setDx] = useState(0);
+  const [dragging, setDragging] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState(false);
+  const deleteTimer = useRef<number | undefined>(undefined);
+  const deleteNow = useRef(() => {});
+  deleteNow.current = () => del.mutate(task.id, { onError: () => setPendingDelete(false) });
+
+  // The row slides back once the task's status changes (e.g. in the "All" view).
+  useEffect(() => setDx(0), [task.status]);
+  // Leaving the page mid-undo still deletes the task.
+  useEffect(
+    () => () => {
+      if (deleteTimer.current !== undefined) {
+        window.clearTimeout(deleteTimer.current);
+        deleteNow.current();
+      }
+    },
+    [],
+  );
+
+  const toggle = () => {
+    const reset = { onError: () => setDx(0) };
+    if (isDone) updateTask.mutate({ id: task.id, patch: { status: "TODO" } }, reset);
+    else complete.mutate({ id: task.id }, reset);
+  };
+
+  const startDelete = () => {
+    setPendingDelete(true);
+    setDx(0);
+    deleteTimer.current = window.setTimeout(() => {
+      deleteTimer.current = undefined;
+      deleteNow.current();
+    }, UNDO_MS);
+  };
+
+  const undoDelete = () => {
+    window.clearTimeout(deleteTimer.current);
+    deleteTimer.current = undefined;
+    setPendingDelete(false);
+  };
+
+  const onPointerDown = (e: React.PointerEvent) => {
+    if (e.pointerType !== "touch") return;
+    drag.current = { x: e.clientX, y: e.clientY, axis: null };
+    swiped.current = false;
+  };
+
+  const onPointerMove = (e: React.PointerEvent) => {
+    const d = drag.current;
+    if (!d) return;
+    const mx = e.clientX - d.x;
+    const my = e.clientY - d.y;
+    if (d.axis === null) {
+      if (Math.abs(mx) > 10 && Math.abs(mx) > Math.abs(my)) {
+        d.axis = "x";
+        setDragging(true);
+        e.currentTarget.setPointerCapture(e.pointerId);
+      } else if (Math.abs(my) > 10) {
+        drag.current = null; // vertical: let the page scroll
+        return;
+      }
+    }
+    if (d.axis === "x") setDx(mx);
+  };
+
+  const onPointerEnd = (e: React.PointerEvent) => {
+    const d = drag.current;
+    drag.current = null;
+    if (!d || d.axis !== "x") return;
+    swiped.current = true;
+    setDragging(false);
+    const width = rowRef.current?.offsetWidth ?? 320;
+    const mx = e.type === "pointercancel" ? 0 : e.clientX - d.x;
+    if (mx > width * SWIPE_COMMIT) {
+      setDx(width);
+      window.setTimeout(toggle, 180);
+    } else if (mx < -width * SWIPE_COMMIT) {
+      setDx(-width);
+      window.setTimeout(startDelete, 180);
+    } else {
+      setDx(0);
+    }
+  };
+
+  const openEditor = () => {
+    if (swiped.current) {
+      swiped.current = false;
+      return;
+    }
+    onEdit(task);
+  };
+
+  if (pendingDelete) {
+    return (
+      <div className="flex items-center gap-3 py-2.5 text-[14px] text-ink-faint">
+        <Trash2 size={14} strokeWidth={1.75} className="shrink-0 text-critical" />
+        <span className="min-w-0 flex-1 truncate">Deleted “{task.title}”</span>
+        <button onClick={undoDelete} className="font-medium text-ink hover:underline cursor-pointer">
+          Undo
+        </button>
+      </div>
+    );
+  }
 
   return (
-    <div className="group flex items-start gap-3 py-2">
+    <div ref={rowRef} className="relative overflow-hidden">
+      {/* Revealed behind the row while swiping */}
+      {dx !== 0 && (
+        <div
+          aria-hidden
+          className={cn(
+            "absolute inset-0 flex items-center px-4 text-[13px] font-medium",
+            dx > 0 ? "justify-start bg-go-dim text-go" : "justify-end bg-critical-dim text-critical",
+          )}
+        >
+          {dx > 0 ? (
+            <span className="flex items-center gap-1.5">
+              <Check size={15} strokeWidth={2.5} /> {isDone ? "Reopen" : "Done"}
+            </span>
+          ) : (
+            <span className="flex items-center gap-1.5">
+              Delete <Trash2 size={15} strokeWidth={2} />
+            </span>
+          )}
+        </div>
+      )}
+    <div
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerEnd}
+      onPointerCancel={onPointerEnd}
+      style={{
+        transform: dx ? `translateX(${dx}px)` : undefined,
+        transition: dragging ? "none" : "transform 180ms ease-out",
+      }}
+      className="group relative flex touch-pan-y items-start gap-3 bg-ops-ground py-2"
+    >
       <button
         onClick={toggle}
         aria-label={isDone ? `Reopen "${task.title}"` : `Mark "${task.title}" done`}
@@ -237,7 +397,14 @@ function TaskItemRow({ task, projectsMap }: { task: TaskOut; projectsMap: Map<nu
         {isDone && <Check size={11} strokeWidth={3} />}
       </button>
 
-      <div className="min-w-0 flex-1">
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={openEditor}
+        onKeyDown={(e) => e.key === "Enter" && onEdit(task)}
+        aria-label={`Edit "${task.title}"`}
+        className="min-w-0 flex-1 cursor-pointer select-none"
+      >
         <p className={cn("text-[15px] leading-snug", isDone ? "text-ink-faint line-through" : "text-ink")}>
           {task.title}
           {task.status === "IN_PROGRESS" && <span className="ml-2 text-[12px] text-ai">in progress</span>}
@@ -268,7 +435,7 @@ function TaskItemRow({ task, projectsMap }: { task: TaskOut; projectsMap: Map<nu
       </div>
 
       <button
-        onClick={() => del.mutate(task.id)}
+        onClick={startDelete}
         aria-label={`Delete "${task.title}"`}
         title="Delete"
         className="mt-0.5 rounded p-1 text-ink-faint opacity-0 transition-opacity hover:text-critical group-hover:opacity-100 focus-visible:opacity-100 cursor-pointer"
@@ -276,81 +443,94 @@ function TaskItemRow({ task, projectsMap }: { task: TaskOut; projectsMap: Map<nu
         <Trash2 size={14} strokeWidth={1.75} />
       </button>
     </div>
+    </div>
   );
 }
 
-// --- Create Task Dialog ------------------------------------------------------
+// --- Task dialog (create + edit) -----------------------------------------------
 
-export function CreateTaskDialog({
-  open,
-  onOpenChange,
-  defaultArea = "STARTUP",
-}: {
+/** ISO (naive UTC from the API) -> value for <input type="datetime-local">. */
+function toLocalInput(iso: string | null): string {
+  if (!iso) return "";
+  const d = parseUtc(iso);
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+function formFrom(task: TaskOut | null, defaultArea: LifeArea) {
+  return {
+    title: task?.title ?? "",
+    description: task?.description ?? "",
+    area: (task?.area ?? defaultArea) as LifeArea,
+    priority: (task?.priority ?? "MEDIUM") as TaskPriority,
+    deadlineLocal: toLocalInput(task?.deadline ?? null),
+    estimated_duration: task?.estimated_duration ? String(task.estimated_duration) : "",
+    goal_id: task?.goal_id ? String(task.goal_id) : "",
+    project_id: task?.project_id ? String(task.project_id) : "",
+  };
+}
+
+export function CreateTaskDialog(props: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   defaultArea?: LifeArea;
 }) {
+  return <TaskDialog {...props} task={null} />;
+}
+
+/** Creates a task, or edits `task` when one is given. */
+export function TaskDialog({
+  open,
+  onOpenChange,
+  task,
+  defaultArea = "STARTUP",
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  task: TaskOut | null;
+  defaultArea?: LifeArea;
+}) {
   const create = useCreateTask();
+  const update = useUpdateTask();
+  const del = useDeleteTask();
   const goals = useGoals();
   const projects = useProjects();
+  const editing = task !== null;
 
-  const [form, setForm] = useState({
-    title: "",
-    description: "",
-    area: defaultArea,
-    priority: "MEDIUM" as TaskPriority,
-    deadlineLocal: "",
-    estimated_duration: "",
-    energy_level: "",
-    goal_id: "",
-    project_id: "",
-  });
-
-  // Keep form area in sync with defaultArea prop when opened
-  useMemo(() => {
-    if (open) {
-      setForm((f) => ({ ...f, area: defaultArea }));
-    }
-  }, [open, defaultArea]);
+  const [form, setForm] = useState(() => formFrom(task, defaultArea));
+  // Load the task (or a blank form) each time the dialog opens.
+  useEffect(() => {
+    if (open) setForm(formFrom(task, defaultArea));
+  }, [open, task, defaultArea]);
 
   const flatGoals = useMemo(() => flatten(goals.data ?? []), [goals.data]);
+  const pending = create.isPending || update.isPending;
 
   const submit = () => {
     if (!form.title.trim()) return;
-    create.mutate(
-      {
-        title: form.title.trim(),
-        description: form.description || null,
-        area: form.area,
-        priority: form.priority,
-        deadline: form.deadlineLocal ? new Date(form.deadlineLocal).toISOString() : null,
-        estimated_duration: form.estimated_duration ? Number(form.estimated_duration) : null,
-        energy_level: (form.energy_level || null) as never,
-        goal_id: form.goal_id ? Number(form.goal_id) : null,
-        project_id: form.project_id ? Number(form.project_id) : null,
-      },
-      {
-        onSuccess: () => {
-          onOpenChange(false);
-          setForm({
-            title: "",
-            description: "",
-            area: defaultArea,
-            priority: "MEDIUM",
-            deadlineLocal: "",
-            estimated_duration: "",
-            energy_level: "",
-            goal_id: "",
-            project_id: "",
-          });
-        },
-      },
-    );
+    const body = {
+      title: form.title.trim(),
+      description: form.description.trim() || null,
+      area: form.area,
+      priority: form.priority,
+      deadline: form.deadlineLocal ? new Date(form.deadlineLocal).toISOString() : null,
+      estimated_duration: form.estimated_duration ? Number(form.estimated_duration) : null,
+      goal_id: form.goal_id ? Number(form.goal_id) : null,
+      project_id: form.project_id ? Number(form.project_id) : null,
+    };
+    const done = { onSuccess: () => onOpenChange(false) };
+    if (task) update.mutate({ id: task.id, patch: body }, done);
+    else create.mutate(body, done);
+  };
+
+  const remove = () => {
+    if (!task || !window.confirm(`Delete "${task.title}"?`)) return;
+    del.mutate(task.id, { onSuccess: () => onOpenChange(false) });
   };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent title="New task commitment">
+      <DialogContent title={editing ? "Edit task" : "New task"}>
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -358,51 +538,48 @@ export function CreateTaskDialog({
           }}
           className="space-y-4"
         >
-          {/* Domain / Area Selector */}
-          <div>
-            <label className="label-caps mb-1.5 block text-[11px] text-ink-faint">
-              Life / Work Domain
-            </label>
-            <div className="grid grid-cols-3 gap-2">
-              <AreaOption
-                selected={form.area === "STARTUP"}
-                label="Startup"
-                icon={<Rocket size={14} className="text-go" />}
-                onClick={() => setForm({ ...form, area: "STARTUP" })}
-              />
-              <AreaOption
-                selected={form.area === "INTERNSHIP"}
-                label="Internship"
-                icon={<Briefcase size={14} className="text-caution" />}
-                onClick={() => setForm({ ...form, area: "INTERNSHIP" })}
-              />
-              <AreaOption
-                selected={form.area === "COLLEGE"}
-                label="College"
-                icon={<GraduationCap size={14} className="text-ai" />}
-                onClick={() => setForm({ ...form, area: "COLLEGE" })}
-              />
-            </div>
-          </div>
-
-          <Field label="Task Title">
+          <Field label="Title">
             <Input
               value={form.title}
               onChange={(e) => setForm({ ...form, title: e.target.value })}
-              placeholder={
-                form.area === "COLLEGE"
-                  ? "Compiler Design Lab Practical Submission"
-                  : form.area === "INTERNSHIP"
-                    ? "Client analytics report & model evaluation"
-                    : "Reach out to 10 agency founders on LinkedIn"
-              }
+              placeholder="What needs doing?"
               required
-              autoFocus
+              autoFocus={!editing}
               maxLength={255}
             />
           </Field>
 
+          <Field label="Description">
+            <Textarea
+              value={form.description}
+              onChange={(e) => setForm({ ...form, description: e.target.value })}
+              placeholder="Notes, links, definition of done…"
+              rows={3}
+            />
+          </Field>
+
           <div className="grid grid-cols-2 gap-3">
+            <Field label="Deadline">
+              <div className="flex items-center gap-1">
+                <Input
+                  type="datetime-local"
+                  value={form.deadlineLocal}
+                  onChange={(e) => setForm({ ...form, deadlineLocal: e.target.value })}
+                />
+                {form.deadlineLocal && (
+                  <button
+                    type="button"
+                    onClick={() => setForm({ ...form, deadlineLocal: "" })}
+                    aria-label="Clear deadline"
+                    title="Clear deadline"
+                    className="shrink-0 rounded p-1 text-ink-faint hover:text-ink cursor-pointer"
+                  >
+                    <X size={14} />
+                  </button>
+                )}
+              </div>
+            </Field>
+
             <Field label="Priority">
               <Select
                 value={form.priority}
@@ -410,7 +587,17 @@ export function CreateTaskDialog({
               >
                 {TASK_PRIORITIES.map((p) => (
                   <option key={p} value={p}>
-                    {p}
+                    {p.charAt(0) + p.slice(1).toLowerCase()}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+
+            <Field label="Area">
+              <Select value={form.area} onChange={(e) => setForm({ ...form, area: e.target.value as LifeArea })}>
+                {AREAS.map(({ area, title }) => (
+                  <option key={area} value={area}>
+                    {title}
                   </option>
                 ))}
               </Select>
@@ -428,98 +615,48 @@ export function CreateTaskDialog({
               />
             </Field>
 
-            <Field label="Deadline">
-              <Input
-                type="datetime-local"
-                value={form.deadlineLocal}
-                onChange={(e) => setForm({ ...form, deadlineLocal: e.target.value })}
-              />
-            </Field>
-
-            <Field label="Project Container">
-              <Select
-                value={form.project_id}
-                onChange={(e) => setForm({ ...form, project_id: e.target.value })}
-              >
-                <option value="">— None —</option>
+            <Field label="Project">
+              <Select value={form.project_id} onChange={(e) => setForm({ ...form, project_id: e.target.value })}>
+                <option value="">None</option>
                 {(projects.data ?? []).map((p) => (
                   <option key={p.id} value={p.id}>
-                    {p.name} ({p.area})
+                    {p.name}
                   </option>
                 ))}
               </Select>
             </Field>
 
-            <div className="col-span-2">
-              <Field label="Strategic Goal Link">
-                <Select
-                  value={form.goal_id}
-                  onChange={(e) => setForm({ ...form, goal_id: e.target.value })}
-                >
-                  <option value="">— None —</option>
-                  {flatGoals.map((g) => (
-                    <option key={g.id} value={g.id}>
-                      {"· ".repeat(g.depth)}
-                      {g.name}
-                    </option>
-                  ))}
-                </Select>
-              </Field>
-            </div>
+            <Field label="Goal">
+              <Select value={form.goal_id} onChange={(e) => setForm({ ...form, goal_id: e.target.value })}>
+                <option value="">None</option>
+                {flatGoals.map((g) => (
+                  <option key={g.id} value={g.id}>
+                    {"· ".repeat(g.depth)}
+                    {g.name}
+                  </option>
+                ))}
+              </Select>
+            </Field>
           </div>
 
-          <Field label="Notes / Definition of Done">
-            <Textarea
-              value={form.description}
-              onChange={(e) => setForm({ ...form, description: e.target.value })}
-              placeholder="Key requirements, links, checklist, notes…"
-              rows={2}
-            />
-          </Field>
-
-          <div className="flex justify-end gap-2 pt-2 border-t border-ops-line">
-            <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
-              Cancel
-            </Button>
-            <Button
-              type="submit"
-              variant="go"
-              disabled={!form.title.trim() || create.isPending}
-            >
-              {create.isPending ? "Creating…" : "Commit Task"}
-            </Button>
+          <div className="flex items-center gap-2 border-t border-ops-line pt-3">
+            {editing && (
+              <Button type="button" variant="ghost" onClick={remove} disabled={del.isPending}>
+                <span className="text-critical">Delete</span>
+              </Button>
+            )}
+            <div className="ml-auto flex gap-2">
+              <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" variant="go" disabled={!form.title.trim() || pending}>
+                {pending ? "Saving…" : editing ? "Save" : "Add task"}
+              </Button>
+            </div>
           </div>
         </form>
       </DialogContent>
     </Dialog>
-  );
-}
-
-function AreaOption({
-  selected,
-  label,
-  icon,
-  onClick,
-}: {
-  selected: boolean;
-  label: string;
-  icon: React.ReactNode;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        "flex items-center justify-center gap-2 border p-2 text-[12px] font-medium transition-colors",
-        selected
-          ? "border-caution bg-caution-dim/30 text-ink font-semibold"
-          : "border-ops-line bg-ops-panel/60 text-ink-dim hover:text-ink hover:border-ops-line-bright",
-      )}
-    >
-      {icon}
-      <span>{label}</span>
-    </button>
   );
 }
 
