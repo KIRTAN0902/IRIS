@@ -148,3 +148,4 @@ class TodayStateOut(BaseModel):
     attention_items: list[dict[str, Any]] = Field(default_factory=list)
     domain_signals: dict[str, list[dict[str, Any]]] = Field(default_factory=dict)
     recent_decisions: list[dict[str, Any]] = Field(default_factory=list)
+    ai_status: dict[str, Any] | None = None

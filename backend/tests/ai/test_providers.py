@@ -1,4 +1,4 @@
-"""Provider Abstraction, OmniRoute, Gemini, Factory, and Architectural Tests."""
+"""Provider Abstraction, NVIDIA NIM, Gemini, Factory, and Architectural Tests."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ from app.ai.provider import (
 )
 from app.ai.providers.gemini import GeminiProvider
 from app.ai.providers.mock import MockProvider
-from app.ai.providers.omniroute import OmniRouteProvider
+from app.ai.providers.nvidia import NvidiaProvider
 from app.intelligence.decision_engine import decide_now
 from app.intelligence.recommendation import DecisionType
 from app.models.enums import LifeArea
@@ -32,15 +32,15 @@ class SampleSchema(BaseModel):
     tags: list[str] = []
 
 
-# --- OmniRoute Provider Tests -------------------------------------------------
+# --- NVIDIA Provider Tests ---------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_omniroute_successful_json_response():
-    provider = OmniRouteProvider(
-        base_url="http://localhost:20128/v1",
+async def test_nvidia_successful_json_response():
+    provider = NvidiaProvider(
+        base_url="https://integrate.api.nvidia.com/v1",
         api_key="test-key",
-        model="auto/best-fast",
+        model="nvidia/nemotron-3.5-lightning-30b-a3b",
     )
 
     mock_response = httpx.Response(
@@ -50,7 +50,7 @@ async def test_omniroute_successful_json_response():
                 {"message": {"content": '{"title": "Deep Work", "score": 95, "tags": ["focus"]}'}}
             ]
         },
-        request=httpx.Request("POST", "http://localhost:20128/v1/chat/completions"),
+        request=httpx.Request("POST", "https://integrate.api.nvidia.com/v1/chat/completions"),
     )
 
     with patch.object(httpx.AsyncClient, "post", new_callable=AsyncMock) as mock_post:
@@ -69,8 +69,11 @@ async def test_omniroute_successful_json_response():
 
 
 @pytest.mark.asyncio
-async def test_omniroute_markdown_fenced_json_response():
-    provider = OmniRouteProvider(base_url="http://localhost:20128/v1")
+async def test_nvidia_markdown_fenced_json_response():
+    provider = NvidiaProvider(
+        base_url="https://integrate.api.nvidia.com/v1",
+        api_key="test-key",
+    )
 
     mock_response = httpx.Response(
         200,
@@ -88,7 +91,7 @@ async def test_omniroute_markdown_fenced_json_response():
                 }
             ]
         },
-        request=httpx.Request("POST", "http://localhost:20128/v1/chat/completions"),
+        request=httpx.Request("POST", "https://integrate.api.nvidia.com/v1/chat/completions"),
     )
 
     with patch.object(httpx.AsyncClient, "post", new_callable=AsyncMock) as mock_post:
@@ -105,13 +108,16 @@ async def test_omniroute_markdown_fenced_json_response():
 
 
 @pytest.mark.asyncio
-async def test_omniroute_malformed_json_raises_schema_error():
-    provider = OmniRouteProvider(base_url="http://localhost:20128/v1")
+async def test_nvidia_malformed_json_raises_schema_error():
+    provider = NvidiaProvider(
+        base_url="https://integrate.api.nvidia.com/v1",
+        api_key="test-key",
+    )
 
     mock_response = httpx.Response(
         200,
         json={"choices": [{"message": {"content": "Not a JSON document at all"}}]},
-        request=httpx.Request("POST", "http://localhost:20128/v1/chat/completions"),
+        request=httpx.Request("POST", "https://integrate.api.nvidia.com/v1/chat/completions"),
     )
 
     with patch.object(httpx.AsyncClient, "post", new_callable=AsyncMock) as mock_post:
@@ -127,14 +133,17 @@ async def test_omniroute_malformed_json_raises_schema_error():
 
 
 @pytest.mark.asyncio
-async def test_omniroute_schema_mismatch_raises_schema_error():
-    provider = OmniRouteProvider(base_url="http://localhost:20128/v1")
+async def test_nvidia_schema_mismatch_raises_schema_error():
+    provider = NvidiaProvider(
+        base_url="https://integrate.api.nvidia.com/v1",
+        api_key="test-key",
+    )
 
     # Missing required 'score' field
     mock_response = httpx.Response(
         200,
         json={"choices": [{"message": {"content": '{"title": "Missing Score"}'}}]},
-        request=httpx.Request("POST", "http://localhost:20128/v1/chat/completions"),
+        request=httpx.Request("POST", "https://integrate.api.nvidia.com/v1/chat/completions"),
     )
 
     with patch.object(httpx.AsyncClient, "post", new_callable=AsyncMock) as mock_post:
@@ -150,8 +159,12 @@ async def test_omniroute_schema_mismatch_raises_schema_error():
 
 
 @pytest.mark.asyncio
-async def test_omniroute_timeout_raises_connection_error():
-    provider = OmniRouteProvider(base_url="http://localhost:20128/v1", timeout_seconds=1.0)
+async def test_nvidia_timeout_raises_connection_error():
+    provider = NvidiaProvider(
+        base_url="https://integrate.api.nvidia.com/v1",
+        api_key="test-key",
+        timeout_seconds=1.0,
+    )
 
     with patch.object(httpx.AsyncClient, "post", new_callable=AsyncMock) as mock_post:
         mock_post.side_effect = httpx.TimeoutException("Read timed out")
@@ -166,8 +179,11 @@ async def test_omniroute_timeout_raises_connection_error():
 
 
 @pytest.mark.asyncio
-async def test_omniroute_connect_error_raises_connection_error():
-    provider = OmniRouteProvider(base_url="http://localhost:20128/v1")
+async def test_nvidia_connect_error_raises_connection_error():
+    provider = NvidiaProvider(
+        base_url="https://integrate.api.nvidia.com/v1",
+        api_key="test-key",
+    )
 
     with patch.object(httpx.AsyncClient, "post", new_callable=AsyncMock) as mock_post:
         mock_post.side_effect = httpx.ConnectError("Connection refused")
@@ -182,10 +198,13 @@ async def test_omniroute_connect_error_raises_connection_error():
 
 
 @pytest.mark.asyncio
-async def test_omniroute_http_500_raises_provider_error():
-    provider = OmniRouteProvider(base_url="http://localhost:20128/v1")
+async def test_nvidia_http_500_raises_provider_error():
+    provider = NvidiaProvider(
+        base_url="https://integrate.api.nvidia.com/v1",
+        api_key="test-key",
+    )
 
-    mock_req = httpx.Request("POST", "http://localhost:20128/v1/chat/completions")
+    mock_req = httpx.Request("POST", "https://integrate.api.nvidia.com/v1/chat/completions")
     mock_resp = httpx.Response(500, text="Internal Server Error", request=mock_req)
 
     with patch.object(httpx.AsyncClient, "post", new_callable=AsyncMock) as mock_post:
@@ -201,13 +220,16 @@ async def test_omniroute_http_500_raises_provider_error():
 
 
 @pytest.mark.asyncio
-async def test_omniroute_empty_choices_raises_schema_error():
-    provider = OmniRouteProvider(base_url="http://localhost:20128/v1")
+async def test_nvidia_empty_choices_raises_schema_error():
+    provider = NvidiaProvider(
+        base_url="https://integrate.api.nvidia.com/v1",
+        api_key="test-key",
+    )
 
     mock_response = httpx.Response(
         200,
         json={"choices": []},
-        request=httpx.Request("POST", "http://localhost:20128/v1/chat/completions"),
+        request=httpx.Request("POST", "https://integrate.api.nvidia.com/v1/chat/completions"),
     )
 
     with patch.object(httpx.AsyncClient, "post", new_callable=AsyncMock) as mock_post:
@@ -219,6 +241,27 @@ async def test_omniroute_empty_choices_raises_schema_error():
                 prompt="prompt",
                 schema=SampleSchema,
             )
+
+
+def test_nvidia_enabled_property():
+    p_disabled = NvidiaProvider(base_url="https://integrate.api.nvidia.com/v1", api_key="")
+    assert p_disabled.enabled is False
+
+    p_enabled = NvidiaProvider(base_url="https://integrate.api.nvidia.com/v1", api_key="nvapi-test")
+    assert p_enabled.enabled is True
+    assert p_enabled.name == "nvidia"
+    assert p_enabled.model == "nvidia/nemotron-3.5-lightning-30b-a3b"
+
+
+@pytest.mark.asyncio
+async def test_nvidia_disabled_raises_configuration_error():
+    provider = NvidiaProvider(base_url="https://integrate.api.nvidia.com/v1", api_key="")
+    with pytest.raises(AIConfigurationError):
+        await provider.generate_structured(
+            system="system",
+            prompt="prompt",
+            schema=SampleSchema,
+        )
 
 
 # --- Gemini Provider Tests ----------------------------------------------------
@@ -248,15 +291,16 @@ async def test_gemini_disabled_raises_configuration_error():
 # --- Factory & Configuration Switching Tests ----------------------------------
 
 
-def test_factory_creates_omniroute_provider(monkeypatch):
-    monkeypatch.setattr("app.core.config.settings.ai_provider", "omniroute")
-    monkeypatch.setattr("app.core.config.settings.omniroute_base_url", "http://localhost:20128/v1")
-    monkeypatch.setattr("app.core.config.settings.omniroute_model", "auto/best-fast")
+def test_factory_creates_nvidia_provider(monkeypatch):
+    monkeypatch.setattr("app.core.config.settings.ai_provider", "nvidia")
+    monkeypatch.setattr("app.core.config.settings.nvidia_base_url", "https://integrate.api.nvidia.com/v1")
+    monkeypatch.setattr("app.core.config.settings.nvidia_api_key", "nvapi-test")
+    monkeypatch.setattr("app.core.config.settings.nvidia_model", "nvidia/nemotron-3.5-lightning-30b-a3b")
 
     provider = create_ai_provider()
-    assert isinstance(provider, OmniRouteProvider)
-    assert provider.name == "omniroute"
-    assert provider.model == "auto/best-fast"
+    assert isinstance(provider, NvidiaProvider)
+    assert provider.name == "nvidia"
+    assert provider.model == "nvidia/nemotron-3.5-lightning-30b-a3b"
     assert provider.enabled is True
 
 
@@ -299,7 +343,7 @@ async def test_architectural_provider_independence(db, user_id):
     user = db.query(User).filter(User.id == user_id).first()
     task = make_task(db, user_id, title="Sprint task", area=LifeArea.STARTUP.value)
 
-    # Provider A: OmniRoute-style mock
+    # Provider A: NIM-style mock
     class MockProviderA(AIProvider):
         @property
         def name(self) -> str:

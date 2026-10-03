@@ -321,6 +321,17 @@ async def ask_iris(
     conversation.title = conversation.title or data.question[:120]
     db.commit()
 
+    from app.services.memory_service import memory_service
+
+    await memory_service.extract_and_store_from_conversation(
+        db=db,
+        user=user,
+        user_message=data.question,
+        assistant_message=answer_text,
+        conversation_id=conversation.id,
+    )
+
+
     return {
         "answer": answer_text,
         "follow_ups": [],
@@ -364,3 +375,11 @@ def conversation_messages(
         {"id": m.id, "role": m.role, "content": m.content, "created_at": m.created_at}
         for m in conversation.messages
     ]
+
+
+@router.get("/status", summary="AI provider health and connectivity status")
+def ai_status() -> dict[str, Any]:
+    """Return live status of the active AI provider (OPERATIONAL, NOT_RESPONDING, NOT_CONFIGURED)."""
+    from app.ai.health import ai_health
+
+    return ai_health.get_status()

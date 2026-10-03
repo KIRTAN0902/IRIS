@@ -5,6 +5,7 @@
 
 import { api } from "@/api/client";
 import type {
+  AIStatusOut,
   AskIRISResponse,
   AttentionItemOut,
   AvailabilityOut,
@@ -37,10 +38,16 @@ import type {
   StartupAnalytics,
   StartupOut,
   StartupTrends,
+  AIMemoryIn,
+  AIMemoryOut,
+  AIMemoryUpdate,
+  BriefingOut,
+
   ChatMessageIn,
   ChatMessageOut,
   ConversationDetailOut,
   ConversationOut,
+
   TaskCreate,
   TaskOut,
   TaskUpdate,
@@ -218,6 +225,7 @@ export const aiApi = {
   conversations: () => api.get<ConversationRow[]>("/ai/conversations"),
   messages: (conversationId: number) =>
     api.get<MessageRow[]>(`/ai/conversations/${conversationId}/messages`),
+  status: () => api.get<AIStatusOut>("/ai/status"),
 };
 
 // --- Intelligence (Phase 3) ---------------------------------------------------------------
@@ -258,3 +266,25 @@ export const chatApi = {
     api.delete<void>(`/chat/conversations/${conversationId}`),
 };
 
+// --- Memories & Context Layer ------------------------------------------------
+
+export const memoriesApi = {
+  list: (params?: { category?: string; search?: string; limit?: number }) =>
+    api.get<AIMemoryOut[]>("/chat/memories", params),
+  create: (payload: AIMemoryIn) =>
+    api.post<AIMemoryOut>("/chat/memories", payload),
+  update: (id: number, payload: AIMemoryUpdate) =>
+    api.patch<AIMemoryOut>(`/chat/memories/${id}`, payload),
+  delete: (id: number) =>
+    api.delete<void>(`/chat/memories/${id}`),
+};
+
+
+
+// --- Assistant awareness -------------------------------------------------------
+
+export const assistantApi = {
+  briefing: (narrate = false) => api.get<BriefingOut>("/assistant/briefing", { narrate }),
+  situation: () => api.get<Record<string, unknown>>("/assistant/situation"),
+  profile: () => api.get<Record<string, unknown>>("/assistant/profile"),
+};

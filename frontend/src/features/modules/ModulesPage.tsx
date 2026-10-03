@@ -11,7 +11,7 @@ export function ModulesPage() {
   return (
     <div className="space-y-6">
       <header className="max-w-2xl space-y-1">
-        <h1 className="font-[family-name:var(--font-display)] text-[22px] font-semibold tracking-wide">Modules</h1>
+        <h1 className="text-[30px] font-bold leading-tight tracking-[-0.02em] text-ink">Modules</h1>
         <p className="text-[13px] leading-relaxed text-ink-dim">
           IRIS is built to absorb more of your life over time. Each module plugs into the same
           command center, the same intelligence layer, the same registry.
@@ -37,7 +37,7 @@ export function ModulesPage() {
               <mod.icon size={17} strokeWidth={1.5} />
             </span>
             <span>
-              <span className="block font-[family-name:var(--font-display)] text-[14px] font-semibold tracking-wide text-ink">
+              <span className="block text-[14px] font-semibold text-ink">
                 {mod.name}
               </span>
               <span className="label-caps text-go">Online</span>
@@ -52,7 +52,7 @@ export function ModulesPage() {
               <mod.icon size={17} strokeWidth={1.5} />
             </span>
             <span className="min-w-0">
-              <span className="block font-[family-name:var(--font-display)] text-[14px] font-semibold tracking-wide text-ink-dim">
+              <span className="block text-[14px] font-semibold text-ink-dim">
                 {mod.name}
               </span>
               <span className="block truncate text-[12px] leading-snug text-ink-faint">{mod.brief}</span>

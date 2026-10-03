@@ -10,7 +10,7 @@ from app.ai.provider import (
 )
 from app.ai.providers.gemini import GeminiProvider
 from app.ai.providers.mock import MockProvider
-from app.ai.providers.omniroute import OmniRouteProvider
+from app.ai.providers.nvidia import NvidiaProvider
 
 __all__ = [
     "AIProvider",
@@ -19,7 +19,7 @@ __all__ = [
     "AIConnectionError",
     "AISchemaValidationError",
     "AICapabilityError",
-    "OmniRouteProvider",
+    "NvidiaProvider",
     "GeminiProvider",
     "MockProvider",
 ]

@@ -1,16 +1,15 @@
 import { useEffect } from "react";
 import { Outlet, useLocation } from "react-router-dom";
-import { Command } from "lucide-react";
-import { MobileBottomNav, TopStrip } from "@/components/layout/TopStrip";
+import { Search } from "lucide-react";
+import { MobileBottomNav } from "@/components/layout/TopStrip";
 import { MobileTopBar, Sidebar } from "@/components/layout/Sidebar";
 import { AskIrisConsole } from "@/features/ai/AskIrisConsole";
 import { useFocusSessions } from "@/hooks/queries";
 import { useUiStore } from "@/stores";
-import { cn } from "@/lib/format";
 
 /**
- * The operating shell: module rail + status strip + workspace.
- * Every screen mounts inside this frame; the AI console overlays all of it.
+ * Notes-style shell: a quiet sidebar and one centred reading column.
+ * Cmd/Ctrl+K opens Ask IRIS from anywhere.
  */
 export function AppShell() {
   const location = useLocation();
@@ -19,7 +18,6 @@ export function AppShell() {
   // Hydrate any running focus session once at boot.
   useFocusSessions();
 
-  // Global keyboard chord: Cmd/Ctrl+K asks IRIS from anywhere.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
@@ -32,22 +30,21 @@ export function AppShell() {
   }, [setAskOpen]);
 
   return (
-    <div className="flex min-h-dvh">
+    <div className="flex min-h-dvh bg-ops-ground">
       <Sidebar />
       <div className="flex min-w-0 flex-1 flex-col">
-        <TopStrip />
         <MobileTopBar
           askTrigger={
             <button
               onClick={() => setAskOpen(true)}
               aria-label="Ask IRIS"
-              className="flex h-8 w-8 items-center justify-center border border-ops-line-bright text-ink-dim"
+              className="rounded-md p-1.5 text-ink-faint hover:bg-ops-raised hover:text-ink"
             >
-              <Command size={14} strokeWidth={1.75} />
+              <Search size={16} strokeWidth={1.75} />
             </button>
           }
         />
-        <main className={cn("min-w-0 flex-1 px-4 pb-24 pt-5 md:px-8 md:pb-10", "mx-auto w-full max-w-[1400px]")}>
+        <main className="mx-auto flex w-full min-w-0 max-w-[920px] flex-1 flex-col px-5 pb-24 pt-6 md:px-12 md:pb-10 md:pt-12">
           <Outlet key={location.pathname} />
         </main>
       </div>

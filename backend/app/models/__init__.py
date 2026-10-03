@@ -1,6 +1,7 @@
 """Import all models so Base.metadata and Alembic autogenerate see them."""
 
 from app.models.ai_conversation import AIConversation, AIMessage
+from app.models.ai_memory import AIMemory
 from app.models.ai_recommendation import AIRecommendation
 from app.models.calendar_event import CalendarEvent
 from app.models.daily_review import DailyReview
@@ -20,6 +21,7 @@ from app.models.user import User
 
 __all__ = [
     "AIConversation",
+    "AIMemory",
     "AIMessage",
     "AIRecommendation",
     "CalendarEvent",
@@ -38,3 +40,4 @@ __all__ = [
     "TimeBlock",
     "User",
 ]
+

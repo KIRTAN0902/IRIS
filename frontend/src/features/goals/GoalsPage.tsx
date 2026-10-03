@@ -17,7 +17,7 @@ export function GoalsPage() {
   return (
     <div className="space-y-5">
       <header className="flex flex-wrap items-center gap-4">
-        <h1 className="font-[family-name:var(--font-display)] text-[22px] font-semibold tracking-wide">Goals</h1>
+        <h1 className="text-[30px] font-bold leading-tight tracking-[-0.02em] text-ink">Goals</h1>
         <Select value={area} onChange={(e) => setArea(e.target.value)} aria-label="Filter area" className="h-8 w-auto pr-8">
           <option value="">All areas</option>
           {["STARTUP", "COLLEGE", "INTERNSHIP", "PERSONAL"].map((a) => <option key={a}>{a}</option>)}
@@ -62,7 +62,7 @@ function GoalBranch({ node, onAddChild, depth }: { node: GoalNode; onAddChild: (
       <div className={`flex items-center gap-3 px-4 ${depth === 0 ? "py-4" : "py-2.5"} ${depth > 0 ? "border-t border-ops-line" : ""}`}>
         <Lamp tone={tone} pulse={!achieved && node.status !== "ACTIVE"} />
         <div className="min-w-0 flex-1">
-          <p className={`truncate font-[family-name:var(--font-display)] tracking-wide text-ink ${depth === 0 ? "text-[17px] font-semibold" : "text-[14px] font-medium"} ${achieved ? "line-through text-ink-faint" : ""}`}>
+          <p className={`truncate text-ink ${depth === 0 ? "text-[17px] font-semibold" : "text-[14px] font-medium"} ${achieved ? "line-through text-ink-faint" : ""}`}>
             {node.name}
           </p>
           <p className="tnum flex flex-wrap gap-x-3 text-[11px] text-ink-faint">
@@ -70,7 +70,7 @@ function GoalBranch({ node, onAddChild, depth }: { node: GoalNode; onAddChild: (
               <span>{node.current_value}/{node.target_value} {node.unit ?? ""}</span>
             )}
             {node.deadline && <span>by {fmtDay(node.deadline)}</span>}
-            <span className="uppercase">{node.status}</span>
+            <span className="">{node.status}</span>
           </p>
         </div>
         {node.target_value != null && (
@@ -91,7 +91,7 @@ function GoalBranch({ node, onAddChild, depth }: { node: GoalNode; onAddChild: (
         <>
           <button
             onClick={() => setOpenChildren((v) => !v)}
-            className="flex w-full items-center gap-1.5 px-4 pb-1 text-[11px] uppercase tracking-[0.12em] text-ink-faint hover:text-ink"
+            className="flex w-full items-center gap-1.5 px-4 pb-1 text-[11px] text-ink-faint hover:text-ink"
           >
             <ChevronRight size={12} className={`transition-transform duration-200 ${openChildren ? "rotate-90" : ""}`} />
             {openChildren ? "Collapse" : `Expand (${node.children.length})`}

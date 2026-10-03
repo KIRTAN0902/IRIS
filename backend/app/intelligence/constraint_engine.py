@@ -122,9 +122,12 @@ def evaluate_constraints(
     recurring_schedules: list[Any] | None = None,
 ) -> ConstraintEvaluation:
     """Evaluate position relative to routine constraints, flexible windows, and sleep."""
+    from app.intelligence.profile_facts import normalize_facts
+
+    facts = normalize_facts(facts)
     routine = get_user_routine(facts, recurring_schedules=recurring_schedules)
-    sleep_str = (facts or {}).get("sleep", DEFAULT_SLEEP_TIME)
-    wake_str = (facts or {}).get("wake", DEFAULT_WAKE_TIME)
+    sleep_str = facts.get("sleep_time", DEFAULT_SLEEP_TIME)
+    wake_str = facts.get("wake_time", DEFAULT_WAKE_TIME)
 
     current_t = current_local_dt.time()
     day_abbr = current_local_dt.strftime("%a")

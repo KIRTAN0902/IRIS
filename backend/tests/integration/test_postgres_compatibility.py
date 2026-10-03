@@ -17,7 +17,9 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.core.database import is_sqlite_url, normalize_database_url
+from app.models.ai_memory import AIMemory
 from app.models.enums import GoalStatus, LifeArea, TaskPriority, TaskStatus
+
 from app.models.goal import Goal
 from app.models.project import Project
 from app.models.recurring_schedule import RecurringSchedule
@@ -150,6 +152,24 @@ def test_models_crud_and_json_columns(db: Session, user_id: int):
     db.refresh(sig)
     assert sig.is_active is True
     assert sig.payload["prospect"] == "Alpha Agency"
+
+    # 6. AIMemory with category, content, importance
+    mem = AIMemory(
+        user_id=user.id,
+        category="PREFERENCE",
+        key="deep_work_morning",
+        content="User prefers deep work in mornings before 11 AM",
+        importance=0.9,
+        source="CONVERSATION_EXTRACTED",
+        is_active=True,
+    )
+    db.add(mem)
+    db.commit()
+    db.refresh(mem)
+    assert mem.is_active is True
+    assert mem.category == "PREFERENCE"
+    assert mem.key == "deep_work_morning"
+
 
 
 def test_transaction_rollback(db: Session, user_id: int):

@@ -49,7 +49,9 @@ def test_migrations_apply_to_fresh_database(tmp_path):
         "ai_recommendations",
         "recurring_schedules",
         "signals",
+        "ai_memories",
         "alembic_version",
+
     }
     missing = expected - tables
     assert not missing, f"Migration output missing tables: {missing}"

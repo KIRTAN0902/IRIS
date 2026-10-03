@@ -7,6 +7,14 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from app.agent.schemas import ToolResult
+from app.agent.tools.awareness import (
+    GetCompletedTasksTool,
+    GetConversationTool,
+    GetPersonalProfileTool,
+    GetSituationTool,
+    SearchConversationsTool,
+)
+from app.agent.tools.actions import action_tools
 from app.agent.tools.base import Tool
 from app.agent.tools.goals import CreateGoalTool, GetGoalsTool, UpdateGoalTool
 from app.agent.tools.intelligence import (
@@ -17,6 +25,12 @@ from app.agent.tools.intelligence import (
     GetDecisionRecommendationTool,
     GetTodayStateTool,
     RecordDecisionFeedbackTool,
+)
+from app.agent.tools.memory import (
+    ForgetMemoryTool,
+    ListMemoriesTool,
+    SaveMemoryTool,
+    SearchMemoryTool,
 )
 from app.agent.tools.schedule import (
     CreateRecurringScheduleTool,
@@ -29,13 +43,16 @@ from app.agent.tools.schedule import (
 )
 from app.agent.tools.startup import GetOutreachStatusTool, GetStartupStatusTool, LogOutreachTool
 from app.agent.tools.tasks import (
+    CompleteTasksTool,
     CompleteTaskTool,
     CreateTaskTool,
+    DeleteTasksTool,
     DeleteTaskTool,
     GetTasksTool,
     GetTaskTool,
     UpdateTaskTool,
 )
+from app.ai.provider import ToolDefinition
 from app.models.user import User
 
 
@@ -53,6 +70,13 @@ class ToolRegistry:
 
     def list_specs(self) -> list[dict[str, Any]]:
         return [tool.to_spec() for tool in self._tools.values()]
+
+    def list_tool_definitions(self) -> list[ToolDefinition]:
+        return [tool.to_tool_definition() for tool in self._tools.values()]
+
+    def is_mutating(self, name: str) -> bool:
+        tool = self.get(name)
+        return bool(tool and tool.mutates_state)
 
     async def execute(
         self,
@@ -76,6 +100,13 @@ def create_default_registry() -> ToolRegistry:
     """Create and populate registry with all default IRIS tools."""
     registry = ToolRegistry()
 
+    # Awareness (situation + personal model)
+    registry.register(GetSituationTool())
+    registry.register(GetPersonalProfileTool())
+    registry.register(GetCompletedTasksTool())
+    registry.register(SearchConversationsTool())
+    registry.register(GetConversationTool())
+
     # Tasks
     registry.register(GetTasksTool())
     registry.register(GetTaskTool())
@@ -83,6 +114,8 @@ def create_default_registry() -> ToolRegistry:
     registry.register(UpdateTaskTool())
     registry.register(CompleteTaskTool())
     registry.register(DeleteTaskTool())
+    registry.register(CompleteTasksTool())
+    registry.register(DeleteTasksTool())
 
     # Goals
     registry.register(GetGoalsTool())
@@ -112,7 +145,18 @@ def create_default_registry() -> ToolRegistry:
     registry.register(GetDecisionHistoryTool())
     registry.register(RecordDecisionFeedbackTool())
 
+    # Memory
+    registry.register(SaveMemoryTool())
+    registry.register(SearchMemoryTool())
+    registry.register(ForgetMemoryTool())
+    registry.register(ListMemoriesTool())
+
+    # Everything else the app can change (projects, CRM, focus, profile, ...)
+    for tool in action_tools():
+        registry.register(tool)
+
     return registry
+
 
 
 # Global default instance

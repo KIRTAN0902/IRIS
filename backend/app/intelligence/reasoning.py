@@ -140,6 +140,9 @@ async def reason_over_context(
         return result, "AI"
 
     except (AIProviderError, Exception) as exc:
+        from app.ai.health import ai_health
+
+        ai_health.record_failure(provider.name, provider.model, exc)
         logger.warning(
             "Decision reasoning fallback to deterministic due to: %s: %s",
             type(exc).__name__,

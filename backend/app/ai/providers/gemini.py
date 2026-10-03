@@ -8,38 +8,64 @@ from __future__ import annotations
 
 import asyncio
 import json
-from typing import TypeVar
+from typing import Any, TypeVar
 
 from pydantic import BaseModel, ValidationError
 
+from app.ai.capabilities import ModelCapabilities, resolve_capabilities
 from app.ai.provider import (
     AIConfigurationError,
     AIConnectionError,
     AIProvider,
     AIProviderError,
     AISchemaValidationError,
+    ChatMessage,
+    ChatResult,
+    ToolDefinition,
 )
-from app.ai.providers.omniroute import _clean_json_markdown
+from app.ai.providers.openai_compatible import OpenAICompatibleProvider
+from app.ai.structured import _clean_json_markdown
 from app.core.logging import get_logger
 
 logger = get_logger("iris.ai.providers.gemini")
 
 T = TypeVar("T", bound=BaseModel)
 
+GEMINI_OPENAI_URL = "https://generativelanguage.googleapis.com/v1beta/openai"
+
 
 class GeminiProvider(AIProvider):
-    """AIProvider implementation for Google Gemini."""
+    """AIProvider implementation for Google Gemini.
+
+    Structured output uses the native SDK (server-side schema enforcement);
+    multi-turn chat and tool calling go through Gemini's OpenAI-compatible
+    endpoint so the agent harness can drive Gemini like any other model.
+    """
 
     def __init__(
         self,
         api_key: str | None = None,
         model: str = "gemini-2.5-flash",
         timeout_seconds: float = 45.0,
+        *,
+        capability_overrides: dict[str, Any] | None = None,
+        **chat_kwargs: Any,
     ):
         self._api_key = api_key or ""
         self._model = model or "gemini-2.5-flash"
         self._timeout = timeout_seconds
         self._client = None
+        self._caps: ModelCapabilities = resolve_capabilities(self._model, capability_overrides)
+        self._chat_backend = OpenAICompatibleProvider(
+            name="gemini",
+            label="Gemini",
+            base_url=GEMINI_OPENAI_URL,
+            model=self._model,
+            api_key=self._api_key,
+            timeout_seconds=timeout_seconds,
+            capabilities=self._caps,
+            **chat_kwargs,
+        )
 
     @property
     def name(self) -> str:
@@ -52,6 +78,32 @@ class GeminiProvider(AIProvider):
     @property
     def enabled(self) -> bool:
         return bool(self._api_key)
+
+    @property
+    def capabilities(self) -> ModelCapabilities:
+        return self._caps
+
+    async def chat(
+        self,
+        messages: list[ChatMessage],
+        *,
+        tools: list[ToolDefinition] | None = None,
+        response_format: dict[str, Any] | None = None,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+    ) -> ChatResult:
+        if not self.enabled:
+            raise AIConfigurationError(
+                "Gemini provider is not enabled (missing API key)",
+                provider=self.name,
+            )
+        return await self._chat_backend.chat(
+            messages,
+            tools=tools,
+            response_format=response_format,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
 
     def _get_client(self):
         if self._client is None:
@@ -98,6 +150,7 @@ class GeminiProvider(AIProvider):
 
             config = types.GenerateContentConfig(
                 system_instruction=system,
+                temperature=self._caps.structured_temperature,
                 response_mime_type="application/json",
                 response_schema=schema,
             )

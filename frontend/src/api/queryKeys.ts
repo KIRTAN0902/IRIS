@@ -29,6 +29,7 @@ export const qk = {
 
   recommendation: (params?: Record<string, unknown>) => ["ai-recommendation", params] as const,
   planDay: () => ["ai-plan-day", "draft"] as const,
+  aiStatus: () => ["ai-status"] as const,
 
   // --- Intelligence (Phase 3) ---
   todayState: () => ["intelligence-today"] as const,
@@ -40,4 +41,7 @@ export const qk = {
   // --- Chat & Assistant (Phase 4) ---
   chatConversations: () => ["chat-conversations"] as const,
   chatConversation: (id: number) => ["chat-conversation", id] as const,
+  memories: (params?: Record<string, unknown>) => ["memories", params] as const,
+  briefing: () => ["assistant-briefing"] as const,
 };
+

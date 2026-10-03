@@ -36,7 +36,7 @@ export function SchedulePage() {
   return (
     <div className="space-y-5">
       <header className="flex flex-wrap items-baseline gap-4">
-        <h1 className="font-[family-name:var(--font-display)] text-[22px] font-semibold tracking-wide">Schedule</h1>
+        <h1 className="text-[30px] font-bold leading-tight tracking-[-0.02em] text-ink">Schedule</h1>
         {availability.data && (
           <p className="tnum text-[12px] text-ink-dim">
             {humanDuration(availability.data.total_free_minutes)} free today
@@ -125,11 +125,11 @@ export function SchedulePage() {
                   </span>
                   <div className="min-w-0 flex-1 truncate">
                     <span className="text-[14px] font-medium text-ink">{r.name}</span>
-                    <span className="ml-2 text-[11px] uppercase tracking-wider text-ink-faint">
+                    <span className="ml-2 text-[11px] text-ink-faint">
                       {r.days_of_week}
                     </span>
                   </div>
-                  <span className="border border-ops-line px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-ink-faint">
+                  <span className="border border-ops-line px-1.5 py-0.5 text-[10px] text-ink-faint">
                     {r.is_hard_constraint ? "Hard constraint" : "Flexible routine"}
                   </span>
                 </li>

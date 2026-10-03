@@ -94,9 +94,10 @@ This utility:
    | `DEFAULT_TIMEZONE` | `Asia/Kolkata` |
    | `LOG_LEVEL` | `INFO` |
    | `SECRET_KEY` | *(Generate a 32+ character random secret)* |
-   | `AI_PROVIDER` | `omniroute` *(or `gemini`)* |
-   | `OMNIROUTE_BASE_URL` | `http://localhost:20128/v1` *(or your hosted OmniRoute gateway)* |
-   | `OMNIROUTE_API_KEY` | *(Your OmniRoute API key)* |
+   | `AI_PROVIDER` | `nvidia` *(or `gemini`)* |
+   | `NVIDIA_BASE_URL` | `https://integrate.api.nvidia.com/v1` |
+   | `NVIDIA_API_KEY` | *(Your NVIDIA API key from build.nvidia.com)* |
+   | `NVIDIA_MODEL` | `nvidia/nemotron-3.5-lightning-30b-a3b` |
    | `CORS_ORIGINS` | `["https://iris-frontend.onrender.com"]` *(Your frontend URL)* |
 
 ### 2. Deploy Frontend (Static Site)

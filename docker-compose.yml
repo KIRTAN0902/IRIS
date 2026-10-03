@@ -22,14 +22,22 @@ services:
       - DEFAULT_TIMEZONE=${DEFAULT_TIMEZONE:-Asia/Kolkata}
       - DATABASE_URL=${DATABASE_URL:-sqlite:////app/data/iris.db}
       - SECRET_KEY=${SECRET_KEY:-change-this-secret-key-in-production}
-      # AI Provider Configuration
-      - AI_PROVIDER=${AI_PROVIDER:-omniroute}
-      # OmniRoute (OpenAI-compatible)
-      - OMNIROUTE_BASE_URL=${OMNIROUTE_BASE_URL:-http://localhost:20128/v1}
-      - OMNIROUTE_API_KEY=${OMNIROUTE_API_KEY:-}
-      - OMNIROUTE_MODEL=${OMNIROUTE_MODEL:-auto/best-fast}
-      - OMNIROUTE_TIMEOUT_SECONDS=${OMNIROUTE_TIMEOUT_SECONDS:-45.0}
-      # Gemini (Fallback / Direct)
+      # AI model (any provider/model; see .env.example)
+      - AI_PROVIDER=${AI_PROVIDER:-nvidia}
+      - AI_MODEL=${AI_MODEL:-}
+      - AI_API_KEY=${AI_API_KEY:-}
+      - AI_BASE_URL=${AI_BASE_URL:-}
+      - AI_TIMEOUT_SECONDS=${AI_TIMEOUT_SECONDS:-}
+      - AI_AGENT_MAX_STEPS=${AI_AGENT_MAX_STEPS:-8}
+      - AI_AGENT_MAX_STEPS_HARD=${AI_AGENT_MAX_STEPS_HARD:-24}
+      - AI_CAPABILITIES=${AI_CAPABILITIES:-}
+      - AI_EXTRA_BODY=${AI_EXTRA_BODY:-}
+      - AI_EXTRA_HEADERS=${AI_EXTRA_HEADERS:-}
+      # Legacy vendor settings (used when AI_* are unset)
+      - NVIDIA_BASE_URL=${NVIDIA_BASE_URL:-https://integrate.api.nvidia.com/v1}
+      - NVIDIA_API_KEY=${NVIDIA_API_KEY:-}
+      - NVIDIA_MODEL=${NVIDIA_MODEL:-nvidia/nemotron-3.5-lightning-30b-a3b}
+      - NVIDIA_TIMEOUT_SECONDS=${NVIDIA_TIMEOUT_SECONDS:-45.0}
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
       - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.5-flash}
       - GEMINI_TIMEOUT_SECONDS=${GEMINI_TIMEOUT_SECONDS:-45.0}

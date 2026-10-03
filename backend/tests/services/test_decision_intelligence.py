@@ -379,8 +379,11 @@ def test_structured_user_facts_and_preferences(db, user_id):
 
     ctx = build_decision_context(db, user)
 
-    assert ctx["facts"]["wake"] == "05:30"
-    assert ctx["facts"]["sleep"] == "22:30"
+    # Legacy keys are folded into the canonical ones (no conflicting duplicates).
+    assert ctx["facts"]["wake_time"] == "05:30"
+    assert ctx["facts"]["sleep_time"] == "22:30"
+    assert "wake" not in ctx["facts"] and "sleep" not in ctx["facts"]
+    assert ctx["fixed_constraints"]["hard_sleep_time"] == "22:30"
     assert ctx["preferences"]["startup_time_allocation"] == "maximum"
     assert "fixed_constraints" in ctx
     assert "goals" in ctx

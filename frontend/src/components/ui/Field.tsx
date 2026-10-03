@@ -2,8 +2,8 @@ import { type InputHTMLAttributes, type SelectHTMLAttributes, type TextareaHTMLA
 import { cn } from "@/lib/format";
 
 const fieldBase =
-  "w-full border border-ops-line-bright bg-ops-void px-3 text-[14px] text-ink placeholder:text-ink-faint " +
-  "focus:border-caution focus:outline-none disabled:opacity-40";
+  "w-full rounded-md border border-ops-line bg-ops-void px-3 text-[14px] text-ink placeholder:text-ink-faint " +
+  "focus:border-ai/60 focus:outline-none disabled:opacity-40";
 
 export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(
   ({ className, ...props }, ref) => (
@@ -26,7 +26,7 @@ export const Select = forwardRef<HTMLSelectElement, SelectHTMLAttributes<HTMLSel
       className={cn(fieldBase, "h-9 appearance-none bg-ops-void pr-8", className)}
       style={{
         backgroundImage:
-          "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%238fa3b0'/%3E%3C/svg%3E\")",
+          "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%239a958c'/%3E%3C/svg%3E\")",
         backgroundRepeat: "no-repeat",
         backgroundPosition: "right 10px center",
       }}
@@ -41,7 +41,7 @@ Select.displayName = "Select";
 export function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block space-y-1.5">
-      <span className="label-caps block">{label}</span>
+      <span className="block text-[12px] font-medium text-ink-dim">{label}</span>
       {children}
     </label>
   );

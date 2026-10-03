@@ -30,7 +30,9 @@ from app.models.task import Task
 from app.models.user import User
 from app.schemas.task import TaskOut
 from app.services import analytics_service, time_engine
+from app.services.memory_service import memory_service
 from app.utils.datetime import minutes_between, to_local, utcnow
+
 
 
 class ContextProvider(Protocol):
@@ -73,9 +75,10 @@ class FactProvider:
                 "validation_approach": "Talk → Observe → Test → Iterate → Validate",
             },
         }
+        from app.intelligence.profile_facts import normalize_facts
+
         user_facts = dict(default_facts)
-        if user.facts:
-            user_facts.update(user.facts)
+        user_facts.update(normalize_facts(user.facts))
         return user_facts
 
 
@@ -275,6 +278,19 @@ class DecisionContextBuilder:
         attention_objects = generate_attention_items(db, user, signals=raw_signals, now_utc=now_utc)
         attention_items = [item.to_dict() for item in attention_objects]
 
+        # 12. Persistent User Memories
+        active_memories = memory_service.get_memories(db, user.id, is_active=True, limit=15)
+        memories_data = [
+            {
+                "id": m.id,
+                "category": m.category,
+                "key": m.key,
+                "content": m.content,
+                "importance": m.importance,
+            }
+            for m in active_memories
+        ]
+
         # Explicitly declare external domains that are currently not connected
         unavailable_domains = ["EMAIL", "FINANCE", "DOCUMENTS"]
 
@@ -286,8 +302,10 @@ class DecisionContextBuilder:
             "current_energy": current_energy or "NORMAL",
             "facts": facts,
             "preferences": preferences,
+            "memories": memories_data,
             "goals": goals_data,
             "urgent_obligations": urgent_obligations,
+
             "current_window": {
                 "is_in_flexible_window": constraint_eval.is_in_flexible_window,
                 "is_in_hard_constraint": constraint_eval.is_in_hard_constraint,

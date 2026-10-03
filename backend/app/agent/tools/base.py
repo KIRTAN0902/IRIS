@@ -9,6 +9,8 @@ from pydantic import BaseModel, ValidationError
 from sqlalchemy.orm import Session
 
 from app.agent.schemas import ToolResult
+from app.ai.provider import ToolDefinition
+from app.ai.structured import compact_schema
 from app.models.user import User
 
 TParams = TypeVar("TParams", bound=BaseModel)
@@ -21,6 +23,14 @@ class Tool(ABC):
     description: str
     parameters_schema: type[BaseModel] | None = None
     is_destructive: bool = False
+    # None = infer from the name (get_/list_/search_ tools are read-only).
+    read_only: bool | None = None
+
+    @property
+    def mutates_state(self) -> bool:
+        if self.read_only is not None:
+            return not self.read_only
+        return not self.name.startswith(("get_", "list_", "search_"))
 
     @abstractmethod
     async def run(self, db: Session, user: User, **kwargs: Any) -> ToolResult:
@@ -64,3 +74,16 @@ class Tool(ABC):
         else:
             spec["parameters"] = {}
         return spec
+
+    def to_tool_definition(self) -> ToolDefinition:
+        """Export a provider-neutral definition for native tool calling."""
+        if self.parameters_schema is not None:
+            parameters = compact_schema(self.parameters_schema)
+        else:
+            parameters = {"type": "object", "properties": {}}
+        parameters.setdefault("type", "object")
+        parameters.setdefault("properties", {})
+        description = self.description
+        if self.is_destructive:
+            description += " (Destructive: only call when the user clearly asked for it.)"
+        return ToolDefinition(name=self.name, description=description, parameters=parameters)

@@ -82,6 +82,9 @@ elif is_serverless_or_transaction_pooler(resolved_db_url):
     engine_kwargs = {
         "poolclass": NullPool,
         "pool_pre_ping": True,
+        # Transaction poolers can't keep server-side prepared statements, which
+        # psycopg 3 creates automatically after 5 runs of the same query.
+        "connect_args": {"prepare_threshold": None},
     }
 else:
     # Production / Long-running Session Pooler (:5432)

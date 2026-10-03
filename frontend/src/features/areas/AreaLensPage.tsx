@@ -17,7 +17,7 @@ export function AreaLensPage({ area, title }: { area: LifeArea; title: string })
   return (
     <div className="space-y-6">
       <header className="flex flex-wrap items-baseline gap-4">
-        <h1 className="font-[family-name:var(--font-display)] text-[22px] font-semibold tracking-wide">{title}</h1>
+        <h1 className="text-[30px] font-bold leading-tight tracking-[-0.02em] text-ink">{title}</h1>
         <span className="tnum text-[12px] text-ink-faint">{open.data?.length ?? 0} open</span>
         <Link to="/tasks" className="ml-auto text-[12px] text-ink-faint underline-offset-4 hover:text-ink hover:underline">
           Full register →

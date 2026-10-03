@@ -27,10 +27,10 @@ IRIS is engineered as a **Single-Domain, Zero-CORS, Multi-Service Architecture**
                │                                                 │
                └─────────────────────────────────────────────────┼── Alembic Migrations
                                                                  │
-                                                                 └── AIProvider
-                                                                         │
-                                                                         ▼
-                                                                     OmniRoute
+                                                                  └── AIProvider
+                                                                          │
+                                                                          ▼
+                                                                     NVIDIA NIM
 ```
 
 ### Key Highlights
@@ -39,7 +39,7 @@ IRIS is engineered as a **Single-Domain, Zero-CORS, Multi-Service Architecture**
 - **Persistent SQLite**: SQLite database resides in a Docker persistent volume (`/app/data/iris.db`) that survives container restarts, redeployments, and image updates.
 - **Automated Safe Migrations**: Container startup automatically executes `alembic upgrade head` before launching Uvicorn.
 - **Zero Dev Seed in Production**: Development seeds (`scripts/seed.py`) are never run automatically in production.
-- **Provider-Agnostic AI Layer**: Configured for OmniRoute gateway with automated fallback to deterministic reasoning or Gemini.
+- **Provider-Agnostic AI Layer**: Configured for NVIDIA NIM gateway with automated fallback to deterministic reasoning or Gemini.
 
 ---
 
@@ -48,7 +48,7 @@ IRIS is engineered as a **Single-Domain, Zero-CORS, Multi-Service Architecture**
 1. A running **Coolify (v4+)** server on a VPS.
 2. A registered domain or subdomain (e.g. `iris.yourdomain.com`).
 3. DNS **A** or **AAAA** record pointing `iris.yourdomain.com` to your Coolify server's public IP.
-4. (Optional) OmniRoute API credentials or Gemini API key.
+4. (Optional) NVIDIA API key (from build.nvidia.com) or Gemini API key.
 
 ---
 
@@ -94,16 +94,16 @@ DATABASE_URL=sqlite:////app/data/iris.db
 SECRET_KEY=replace-with-a-secure-random-secret-key-32-chars-minimum
 
 # AI Provider
-AI_PROVIDER=omniroute
+AI_PROVIDER=nvidia
 ```
 
 #### Secret Variables (Mark as "Secret" in Coolify)
 ```dotenv
-# OmniRoute Configuration
-OMNIROUTE_BASE_URL=http://localhost:20128/v1
-OMNIROUTE_API_KEY=your-omniroute-api-key-here
-OMNIROUTE_MODEL=auto/best-fast
-OMNIROUTE_TIMEOUT_SECONDS=45.0
+# NVIDIA NIM Configuration
+NVIDIA_BASE_URL=https://integrate.api.nvidia.com/v1
+NVIDIA_API_KEY=your-nvidia-api-key-here
+NVIDIA_MODEL=nvidia/nemotron-3.5-lightning-30b-a3b
+NVIDIA_TIMEOUT_SECONDS=45.0
 
 # (Optional) Gemini API Key for Fallback
 GEMINI_API_KEY=your-gemini-api-key-if-applicable
@@ -112,26 +112,28 @@ GEMINI_MODEL=gemini-2.5-flash
 
 ---
 
-## 4. OmniRoute Networking Configurations
+## 4. NVIDIA NIM Configurations
 
-IRIS communicates with OmniRoute using one of the following setups:
+IRIS communicates with NVIDIA NIM using one of the following setups:
 
-### Scenario A: OmniRoute is Hosted Externally
-If OmniRoute runs on another server or cloud endpoint:
+### Scenario A: NVIDIA Hosted NIM Cloud API (Recommended)
+Using build.nvidia.com cloud endpoints:
 ```dotenv
-OMNIROUTE_BASE_URL=https://omniroute.yourdomain.com/v1
-OMNIROUTE_API_KEY=your-secret-api-key
+NVIDIA_BASE_URL=https://integrate.api.nvidia.com/v1
+NVIDIA_API_KEY=nvapi-your-secret-api-key
+NVIDIA_MODEL=nvidia/nemotron-3.5-lightning-30b-a3b
 ```
 
-### Scenario B: OmniRoute is Deployed as a Coolify Service
-If OmniRoute is running in the same Coolify environment on an internal Docker network:
+### Scenario B: Self-Hosted NVIDIA NIM Container
+If running a local or private NIM container on your GPU infrastructure:
 ```dotenv
-OMNIROUTE_BASE_URL=http://omniroute:20128/v1
-OMNIROUTE_API_KEY=your-secret-api-key
+NVIDIA_BASE_URL=http://nim-service:8000/v1
+NVIDIA_API_KEY=optional-key-if-auth-enabled
+NVIDIA_MODEL=nvidia/nemotron-3.5-lightning-30b-a3b
 ```
 
 ### Scenario C: Deterministic Fallback Mode (No AI Key)
-If `OMNIROUTE_API_KEY` is omitted or OmniRoute is temporarily unreachable, IRIS **never crashes** — it gracefully operates using deterministic constraint, priority, and scoring engines.
+If `NVIDIA_API_KEY` is omitted or NVIDIA NIM is temporarily unreachable, IRIS **never crashes** — it gracefully operates using deterministic constraint, priority, and scoring engines.
 
 ---
 

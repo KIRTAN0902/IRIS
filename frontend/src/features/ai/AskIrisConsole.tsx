@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowUpRight, Command, CornerDownLeft } from "lucide-react";
-import { useAskIRIS } from "@/hooks/queries";
+import { AlertTriangle, ArrowUpRight, CornerDownLeft } from "lucide-react";
+import { useAIStatus, useAskIRIS, useTodayState } from "@/hooks/queries";
 import { useUiStore } from "@/stores";
 import { Button } from "@/components/ui/Button";
 import { Lamp } from "@/components/ui/Panel";
@@ -24,6 +24,10 @@ export function AskIrisConsole() {
   const open = useUiStore((s) => s.askOpen);
   const setOpen = useUiStore((s) => s.setAskOpen);
   const ask = useAskIRIS();
+  const aiStatusQuery = useAIStatus();
+  const todayState = useTodayState();
+  const aiStatus = aiStatusQuery.data ?? todayState.data?.ai_status;
+  const isAiOffline = aiStatus && (!aiStatus.responding || aiStatus.status === "NOT_RESPONDING");
 
   const [question, setQuestion] = useState("");
   const [conversationId, setConversationId] = useState<number | undefined>();
@@ -68,21 +72,9 @@ export function AskIrisConsole() {
 
   return (
     <>
-      {/* Mobile floating trigger */}
-      <button
-        onClick={() => setOpen(true)}
-        aria-label="Ask IRIS"
-        className={cn(
-          "fixed bottom-20 right-4 z-40 flex h-12 w-12 items-center justify-center",
-          "border border-caution bg-ops-panel text-caution shadow-lg shadow-black/50 md:hidden",
-        )}
-      >
-        <Command size={18} strokeWidth={1.75} />
-      </button>
-
       {open && (
         <div
-          className="fixed inset-0 z-50 flex items-start justify-center bg-ops-void/85 px-4 pt-[12vh]"
+          className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 backdrop-blur-[2px] px-4 pt-[12vh]"
           onClick={(e) => {
             if (e.target === e.currentTarget) setOpen(false);
           }}
@@ -106,10 +98,19 @@ export function AskIrisConsole() {
                 aria-label="Ask IRIS"
                 className="flex-1 bg-transparent text-[15px] text-ink placeholder:text-ink-faint focus:outline-none"
               />
-              <kbd className="border border-ops-line px-1.5 font-[family-name:var(--font-telemetry)] text-[10px] text-ink-faint">
+              <kbd className="border border-ops-line px-1.5 text-[10px] text-ink-faint">
                 esc
               </kbd>
             </form>
+
+            {isAiOffline && (
+              <div className="flex items-center gap-2 border-b border-caution/30 bg-caution/10 px-4 py-2 text-[12px] text-caution">
+                <AlertTriangle size={13} className="shrink-0 text-caution" />
+                <span className="truncate">
+                  AI provider offline ({aiStatus?.provider}: {aiStatus?.model}) · IRIS is answering via deterministic fallback rules.
+                </span>
+              </div>
+            )}
 
             <button onClick={() => setOpen(false)} className="sr-only">Close</button>
             <div

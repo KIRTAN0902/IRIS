@@ -407,6 +407,18 @@ export interface StartupTrends {
 
 export type AISource = "AI" | "DETERMINISTIC";
 
+export interface AIStatusOut {
+  provider: string;
+  model: string;
+  configured: boolean;
+  responding: boolean;
+  status: "OPERATIONAL" | "NOT_RESPONDING" | "NOT_CONFIGURED" | string;
+  message: string;
+  last_error?: string | null;
+  consecutive_failures?: number;
+  last_checked_at?: string;
+}
+
 export interface AIMeta {
   source: AISource;
   ai_available: boolean;
@@ -668,6 +680,7 @@ export interface TodayStateOut {
     feedback: string | null;
     created_at: Iso;
   }>;
+  ai_status?: AIStatusOut | null;
 }
 
 // --- Chat & Assistant (Phase 4) -----------------------------------------------
@@ -682,6 +695,14 @@ export interface ActionExecuted {
 
 export interface ChatMessageIn {
   content: string;
+}
+
+export interface AIMemoryUpdated {
+  id: number;
+  category: string;
+  key: string | null;
+  content: string;
+  importance: number;
 }
 
 export interface ChatMessageOut {
@@ -699,12 +720,16 @@ export interface ChatMessageOut {
     reason?: string;
   } | null;
   source: AISource | string;
+  memories_updated?: AIMemoryUpdated[];
   created_at: Iso;
 }
 
 export interface ConversationOut {
   id: number;
   title: string;
+  /** Rolling summary shared with every other conversation (IRIS's episodic memory). */
+  summary?: string | null;
+  topics?: string[] | null;
   created_at: Iso;
   updated_at: Iso;
 }
@@ -715,4 +740,67 @@ export interface ConversationDetailOut {
   created_at: Iso;
   updated_at: Iso;
   messages: ChatMessageOut[];
+}
+
+// --- Memories & Context Layer ------------------------------------------------
+
+export type MemoryCategory =
+  | "PREFERENCE"
+  | "ROUTINE"
+  | "WORK_STYLE"
+  | "FACT"
+  | "PEOPLE"
+  | "PROJECT"
+  | "CONSTRAINT"
+  | "INSTRUCTION"
+  | "GENERAL";
+
+export interface AIMemoryOut {
+  id: number;
+  user_id: number;
+  conversation_id: number | null;
+  category: MemoryCategory;
+  key: string | null;
+  content: string;
+  importance: number;
+  confidence: number;
+  source: string;
+  is_active: boolean;
+  access_count: number;
+  last_accessed_at: Iso | null;
+  created_at: Iso;
+  updated_at: Iso;
+}
+
+export interface AIMemoryIn {
+  content: string;
+  category?: MemoryCategory;
+  key?: string | null;
+  importance?: number;
+  confidence?: number;
+  conversation_id?: number | null;
+}
+
+export interface AIMemoryUpdate {
+  content?: string;
+  category?: MemoryCategory;
+  key?: string | null;
+  importance?: number;
+  is_active?: boolean;
+}
+
+
+// --- Assistant awareness (situation + personal model + briefing) -------------
+
+export interface BriefingPoint {
+  kind: "now" | "next" | "risk" | "deadline" | "focus" | "energy" | "tip" | "change" | "done";
+  text: string;
+}
+
+export interface BriefingOut {
+  greeting: string;
+  headline: string;
+  points: BriefingPoint[];
+  text: string;
+  source: "AI" | "DETERMINISTIC";
 }

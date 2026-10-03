@@ -1,5 +1,12 @@
 """IRIS Agent Tools package."""
 
+from app.agent.tools.awareness import (
+    GetCompletedTasksTool,
+    GetConversationTool,
+    GetPersonalProfileTool,
+    GetSituationTool,
+    SearchConversationsTool,
+)
 from app.agent.tools.base import Tool
 from app.agent.tools.goals import CreateGoalTool, GetGoalsTool, UpdateGoalTool
 from app.agent.tools.intelligence import (
@@ -10,6 +17,12 @@ from app.agent.tools.intelligence import (
     GetDecisionRecommendationTool,
     GetTodayStateTool,
     RecordDecisionFeedbackTool,
+)
+from app.agent.tools.memory import (
+    ForgetMemoryTool,
+    ListMemoriesTool,
+    SaveMemoryTool,
+    SearchMemoryTool,
 )
 from app.agent.tools.schedule import (
     CreateRecurringScheduleTool,
@@ -22,8 +35,10 @@ from app.agent.tools.schedule import (
 )
 from app.agent.tools.startup import GetOutreachStatusTool, GetStartupStatusTool, LogOutreachTool
 from app.agent.tools.tasks import (
+    CompleteTasksTool,
     CompleteTaskTool,
     CreateTaskTool,
+    DeleteTasksTool,
     DeleteTaskTool,
     GetTasksTool,
     GetTaskTool,
@@ -32,6 +47,12 @@ from app.agent.tools.tasks import (
 
 __all__ = [
     "Tool",
+    # Awareness
+    "GetSituationTool",
+    "GetPersonalProfileTool",
+    "GetCompletedTasksTool",
+    "SearchConversationsTool",
+    "GetConversationTool",
     # Tasks
     "GetTasksTool",
     "GetTaskTool",
@@ -39,6 +60,8 @@ __all__ = [
     "UpdateTaskTool",
     "CompleteTaskTool",
     "DeleteTaskTool",
+    "CompleteTasksTool",
+    "DeleteTasksTool",
     # Goals
     "GetGoalsTool",
     "CreateGoalTool",
@@ -63,5 +86,11 @@ __all__ = [
     "GetCurrentRecommendationTool",
     "GetDecisionHistoryTool",
     "RecordDecisionFeedbackTool",
+    # Memory
+    "SaveMemoryTool",
+    "SearchMemoryTool",
+    "ForgetMemoryTool",
+    "ListMemoriesTool",
 ]
+
 

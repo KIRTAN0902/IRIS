@@ -16,8 +16,10 @@ from app.models.goal import Goal
 from app.models.task import Task
 from app.schemas.task import TaskOut
 from app.services import analytics_service
+from app.services.memory_service import memory_service
 from app.services.priority_engine import PriorityBreakdown, breakdown_to_dict
 from app.utils.datetime import minutes_between, to_local, utcnow
+
 
 
 def _serialize_ranked(pair: tuple[Task, PriorityBreakdown]) -> dict:
@@ -245,11 +247,26 @@ def build_ask_context(db: Session, user, *, question: str) -> dict:
     except Exception:
         startup = None
 
+    memories = memory_service.search_relevant_memories(
+        db, user.id, query=question, limit=8, mark_accessed=True
+    )
+    memories_data = [
+        {
+            "id": m.id,
+            "category": m.category,
+            "key": m.key,
+            "content": m.content,
+            "importance": m.importance,
+        }
+        for m in memories
+    ]
+
     return {
         "question": question,
         "current_time_utc": now.isoformat(),
         "current_local_time": to_local(now, user.timezone).isoformat(),
         "user_timezone": user.timezone,
+        "memories": memories_data,
         "todays_tasks": [
             {"id": t.id, "title": t.title, "area": t.area, "status": t.status} for t in todays
         ],
@@ -266,6 +283,7 @@ def build_ask_context(db: Session, user, *, question: str) -> dict:
         "week_productivity": productivity_week,
         "startup_metrics": startup,
     }
+
 
 
 # --- helpers -----------------------------------------------------------------

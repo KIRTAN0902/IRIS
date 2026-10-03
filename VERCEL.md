@@ -39,9 +39,10 @@ In your **Vercel Project Settings → Environment Variables**, configure:
 | `DEFAULT_TIMEZONE` | `Asia/Kolkata` | User timezone |
 | `LOG_LEVEL` | `INFO` | Standard logging |
 | `SECRET_KEY` | `[GENERATE_A_RANDOM_32_CHAR_STRING]` | App secret key |
-| `AI_PROVIDER` | `omniroute` *(or `gemini`)* | Active AI provider |
-| `OMNIROUTE_BASE_URL` | `https://omniroute.yourdomain.com/v1` | Public/Hosted OmniRoute gateway URL |
-| `OMNIROUTE_API_KEY` | `[YOUR_OMNIROUTE_API_KEY]` | OmniRoute API Key |
+| `AI_PROVIDER` | `nvidia` *(or `gemini`)* | Active AI provider |
+| `NVIDIA_BASE_URL` | `https://integrate.api.nvidia.com/v1` | NVIDIA NIM endpoint URL |
+| `NVIDIA_API_KEY` | `[YOUR_NVIDIA_API_KEY]` | NVIDIA NIM API Key from build.nvidia.com |
+| `NVIDIA_MODEL` | `nvidia/nemotron-3.5-lightning-30b-a3b` | Active NIM model identifier |
 | `GEMINI_API_KEY` | `[OPTIONAL_GEMINI_KEY]` | Fallback Gemini API Key |
 
 ---

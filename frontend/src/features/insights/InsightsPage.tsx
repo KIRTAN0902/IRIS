@@ -22,10 +22,10 @@ import { Lamp, Panel, ProvenanceChip } from "@/components/ui/Panel";
 import { fmtTime } from "@/lib/format";
 
 const AREA_COLORS: Record<string, string> = {
-  COLLEGE: "#7dd3fc",
-  INTERNSHIP: "#fbbf24",
-  STARTUP: "#4ade80",
-  PERSONAL: "#8fa3b0",
+  COLLEGE: "var(--color-ai)",
+  INTERNSHIP: "var(--color-caution)",
+  STARTUP: "var(--color-go)",
+  PERSONAL: "var(--color-ink-faint)",
 };
 
 /** INSIGHTS — few charts, high signal. Time allocation + startup trend + decision history + signals. */
@@ -38,7 +38,7 @@ export function InsightsPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="font-[family-name:var(--font-display)] text-[22px] font-semibold tracking-wide">Insights</h1>
+      <h1 className="text-[30px] font-bold leading-tight tracking-[-0.02em] text-ink">Insights</h1>
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Panel title="Focus minutes by area · this week" lamp={<span />}>
@@ -47,14 +47,14 @@ export function InsightsPage() {
           ) : (
             <ResponsiveContainer width="100%" height={220}>
               <BarChart data={chartData(timeWeek.data?.focused_minutes)} margin={{ top: 8, right: 8, left: -2, bottom: 0 }}>
-                <CartesianGrid stroke="#223041" strokeDasharray="2 4" vertical={false} />
-                <XAxis dataKey="area" tick={{ fill: "#5c6f7c", fontSize: 11 }} axisLine={{ stroke: "#223041" }} tickLine={false} />
-                <YAxis tick={{ fill: "#5c6f7c", fontSize: 11 }} axisLine={false} tickLine={false} width={48} unit="m" />
+                <CartesianGrid stroke="var(--color-ops-line)" strokeDasharray="2 4" vertical={false} />
+                <XAxis dataKey="area" tick={{ fill: "var(--color-ink-faint)", fontSize: 11 }} axisLine={{ stroke: "var(--color-ops-line)" }} tickLine={false} />
+                <YAxis tick={{ fill: "var(--color-ink-faint)", fontSize: 11 }} axisLine={false} tickLine={false} width={48} unit="m" />
                 <Tooltip
-                  cursor={{ fill: "#18223066" }}
-                  contentStyle={{ background: "#131b24", border: "1px solid #223041", borderRadius: 0, fontFamily: "JetBrains Mono", fontSize: 12 }}
-                  labelStyle={{ color: "#e6edf3" }}
-                  itemStyle={{ color: "#8fa3b0" }}
+                  cursor={{ fill: "var(--color-ops-raised)" }}
+                  contentStyle={{ background: "var(--color-ops-void)", border: "1px solid var(--color-ops-line)", borderRadius: 8, fontFamily: "inherit", fontSize: 12 }}
+                  labelStyle={{ color: "var(--color-ink)" }}
+                  itemStyle={{ color: "var(--color-ink-faint)" }}
                 />
                 <Bar dataKey="minutes" radius={0} isAnimationActive={false}>
                   {(chartData(timeWeek.data?.focused_minutes) ?? []).map((d) => (
@@ -75,23 +75,23 @@ export function InsightsPage() {
           ) : (
             <ResponsiveContainer width="100%" height={220}>
               <LineChart data={trends.data?.weeks ?? []} margin={{ top: 8, right: 8, left: -18, bottom: 0 }}>
-                <CartesianGrid stroke="#223041" strokeDasharray="2 4" vertical={false} />
+                <CartesianGrid stroke="var(--color-ops-line)" strokeDasharray="2 4" vertical={false} />
                 <XAxis
                   dataKey="week_start"
                   tickFormatter={(v) => new Date(v).toLocaleDateString([], { day: "numeric", month: "short" })}
-                  tick={{ fill: "#5c6f7c", fontSize: 11 }}
-                  axisLine={{ stroke: "#223041" }}
+                  tick={{ fill: "var(--color-ink-faint)", fontSize: 11 }}
+                  axisLine={{ stroke: "var(--color-ops-line)" }}
                   tickLine={false}
                 />
-                <YAxis tick={{ fill: "#5c6f7c", fontSize: 11 }} axisLine={false} tickLine={false} width={36} allowDecimals={false} />
+                <YAxis tick={{ fill: "var(--color-ink-faint)", fontSize: 11 }} axisLine={false} tickLine={false} width={36} allowDecimals={false} />
                 <Tooltip
-                  contentStyle={{ background: "#131b24", border: "1px solid #223041", borderRadius: 0, fontFamily: "JetBrains Mono", fontSize: 12 }}
-                  labelStyle={{ color: "#e6edf3" }}
-                  itemStyle={{ color: "#8fa3b0" }}
+                  contentStyle={{ background: "var(--color-ops-void)", border: "1px solid var(--color-ops-line)", borderRadius: 8, fontFamily: "inherit", fontSize: 12 }}
+                  labelStyle={{ color: "var(--color-ink)" }}
+                  itemStyle={{ color: "var(--color-ink-faint)" }}
                 />
-                <Line type="monotone" dataKey="outreach_sent" name="outreach" stroke="#7dd3fc" strokeWidth={1.5} dot={false} isAnimationActive={false} />
-                <Line type="monotone" dataKey="replies" name="replies" stroke="#fbbf24" strokeWidth={1.5} dot={false} isAnimationActive={false} />
-                <Line type="monotone" dataKey="meetings" name="meetings" stroke="#4ade80" strokeWidth={1.5} dot={false} isAnimationActive={false} />
+                <Line type="monotone" dataKey="outreach_sent" name="outreach" stroke="var(--color-ai)" strokeWidth={1.5} dot={false} isAnimationActive={false} />
+                <Line type="monotone" dataKey="replies" name="replies" stroke="var(--color-caution)" strokeWidth={1.5} dot={false} isAnimationActive={false} />
+                <Line type="monotone" dataKey="meetings" name="meetings" stroke="var(--color-go)" strokeWidth={1.5} dot={false} isAnimationActive={false} />
               </LineChart>
             </ResponsiveContainer>
           )}
@@ -109,7 +109,7 @@ export function InsightsPage() {
             ].map(([label, value]) => (
               <div key={String(label)}>
                 <dd className="tnum text-[24px] font-semibold text-ink">{value}</dd>
-                <dt className="text-[11px] uppercase tracking-[0.12em] text-ink-dim">{label}</dt>
+                <dt className="text-[11px] text-ink-dim">{label}</dt>
               </div>
             ))}
           </dl>
@@ -161,7 +161,7 @@ export function InsightsPage() {
                     </p>
                   </div>
                   {d.feedback && (
-                    <span className="border border-ops-line bg-ops-raised px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-ink-dim">
+                    <span className="border border-ops-line bg-ops-raised px-1.5 py-0.5 text-[10px] text-ink-dim">
                       {d.feedback}
                     </span>
                   )}

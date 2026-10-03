@@ -35,7 +35,7 @@ export function FocusPage() {
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
-      <h1 className="font-[family-name:var(--font-display)] text-[22px] font-semibold tracking-wide">Focus</h1>
+      <h1 className="text-[30px] font-bold leading-tight tracking-[-0.02em] text-ink">Focus</h1>
 
       {/* Console */}
       <section className="border border-ops-line-bright bg-ops-panel/70 px-6 py-8 text-center">

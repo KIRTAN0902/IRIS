@@ -29,9 +29,18 @@ def test_get_today_state_with_tasks_and_goals(client, db, user_id):
     """GET /api/intelligence/today aggregates open tasks, active goals, and startup state."""
     from app.models.user import User
 
+    from datetime import timedelta
+
+    from app.utils.datetime import to_local, utcnow
+
     u = db.query(User).filter(User.id == user_id).first()
     if u:
-        u.facts = {"sleep": "04:00", "wake": "11:00"}
+        # Keep "now" well inside waking hours whatever time the suite runs.
+        now_local = to_local(utcnow(), u.timezone)
+        u.facts = {
+            "wake": f"{now_local - timedelta(hours=3):%H:%M}",
+            "sleep": f"{now_local + timedelta(hours=10):%H:%M}",
+        }
         db.commit()
 
     goal = make_goal(

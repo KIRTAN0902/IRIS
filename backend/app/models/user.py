@@ -46,3 +46,4 @@ class User(Base):
         "RecurringSchedule", back_populates="user", cascade="all, delete-orphan"
     )
     signals = relationship("Signal", back_populates="user", cascade="all, delete-orphan")
+    memories = relationship("AIMemory", back_populates="user", cascade="all, delete-orphan")

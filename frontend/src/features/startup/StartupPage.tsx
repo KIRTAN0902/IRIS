@@ -26,7 +26,7 @@ export function StartupPage() {
   return (
     <div className="space-y-6">
       <header className="space-y-1">
-        <h1 className="font-[family-name:var(--font-display)] text-[22px] font-semibold tracking-wide">
+        <h1 className="text-[30px] font-bold leading-tight tracking-[-0.02em] text-ink">
           {startup.data?.name ?? "Startup"}
         </h1>
         <p className="text-[13px] text-ink-dim">
@@ -66,7 +66,7 @@ function FunnelPanel({ metrics, isLoading }: { metrics?: StartupAnalytics; isLoa
       ].map((row) => (
         <div key={row.label}>
           <div className="mb-1 flex items-baseline justify-between gap-3">
-            <span className="text-[12px] uppercase tracking-[0.1em] text-ink-dim">{row.label}</span>
+            <span className="text-[12px] text-ink-dim">{row.label}</span>
             <span className="tnum text-[20px] font-semibold text-ink">{row.value}</span>
           </div>
           {row.ladder != null && (
@@ -195,7 +195,7 @@ function OutreachJournal({ startupId }: { startupId?: number }) {
             <li key={a.id} className="flex items-center gap-3 px-4 py-2">
               <span className="tnum w-16 shrink-0 text-[11px] text-ink-faint">{fmtDay(a.timestamp)}</span>
               <span className="min-w-0 flex-1 truncate text-[13px] text-ink">{nameFor(a.lead_id) ?? `Lead #${a.lead_id}`}</span>
-              <span className="text-[11px] uppercase tracking-wide text-ink-faint">{a.type}</span>
+              <span className="text-[11px] text-ink-faint">{a.type}</span>
               <ResultTag result={a.result} />
             </li>
           ))}

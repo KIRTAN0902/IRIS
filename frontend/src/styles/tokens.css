@@ -1,44 +1,46 @@
 @import "tailwindcss";
-@import "@fontsource/chakra-petch/500.css";
-@import "@fontsource/chakra-petch/600.css";
-@import "@fontsource/chakra-petch/700.css";
-@import "@fontsource/barlow/400.css";
-@import "@fontsource/barlow/500.css";
-@import "@fontsource/barlow/600.css";
-@import "@fontsource/jetbrains-mono/400.css";
-@import "@fontsource/jetbrains-mono/600.css";
 
 /*
- * IRIS DESIGN SYSTEM — Semantic Tokens: Monastic Graphite.
- * Minimalist, matte, distraction-free architectural dark design. Zero neon.
+ * IRIS DESIGN SYSTEM — "Midnight".
+ * Plain black like ChatGPT's dark mode, with bright neon-white text, system
+ * type and whitespace instead of boxes. Always dark.
+ *
+ * Token names are kept from earlier systems (ops-*, ink-*, ai, go, ...)
+ * so every screen re-themes from this file alone:
+ *   ops-void   input / card surface        ops-ground  page background
+ *   ops-panel  sidebar                     ops-raised  hover / selection / bubbles
+ *   ops-line   hairline                    ops-line-bright  stronger hairline
+ *   ink / ink-dim / ink-faint              text, secondary, tertiary
+ *   ai         the accent (white)          go / caution / critical  status
  */
 @theme {
-  --color-ops-void: #090a0c;
-  --color-ops-ground: #0e1013;
-  --color-ops-panel: #14171b;
-  --color-ops-raised: #1c2026;
-  --color-ops-line: #242930;
-  --color-ops-line-bright: #353c46;
-  
-  --color-ink: #f2f4f6;
-  --color-ink-dim: #9aa5b1;
-  --color-ink-faint: #606b77;
-  
-  --color-ai: #dbe4ee;
-  --color-ai-dim: #2c333d;
+  --color-ops-void: #121212;
+  --color-ops-ground: #000000;
+  --color-ops-panel: #0a0a0a;
+  --color-ops-raised: #1f1f1f;
+  --color-ops-line: #1f1f1f;
+  --color-ops-line-bright: #303030;
 
-  --color-go: #10b981;
-  --color-go-dim: #064e3b;
-  
-  --color-caution: #f59e0b;
-  --color-caution-dim: #78350f;
-  
-  --color-critical: #f43f5e;
-  --color-critical-dim: #881337;
+  --color-ink: #ffffff;
+  --color-ink-dim: #cfcfcf;
+  --color-ink-faint: #8c8c8c;
 
-  --font-display: "Chakra Petch", -apple-system, BlinkMacSystemFont, sans-serif;
-  --font-body: "Barlow", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  --font-telemetry: "JetBrains Mono", "Cascadia Mono", monospace;
+  --color-ai: #ffffff;
+  --color-ai-dim: #262626;
+
+  --color-go: #4ade80;
+  --color-go-dim: #0f2a1a;
+
+  --color-caution: #fbbf24;
+  --color-caution-dim: #2b2108;
+
+  --color-critical: #f87171;
+  --color-critical-dim: #2d1414;
+
+  --font-display: -apple-system, BlinkMacSystemFont, "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
+  --font-body: -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  --font-telemetry: -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  --font-mono: ui-monospace, "Cascadia Mono", "SF Mono", Menlo, monospace;
 
   --animate-lamp: lamp 2.4s ease-in-out infinite;
 
@@ -53,78 +55,89 @@
   }
 }
 
-/* --- Browser & Surface Defaults ------------------------------------------ */
+/* --- Browser & Surface Defaults (base layer, so utilities can override) --- */
 
-::selection {
-  background: rgba(255, 255, 255, 0.15);
-  color: var(--color-ink);
+@layer base {
+
+  ::selection {
+    background: color-mix(in srgb, var(--color-ai) 22%, transparent);
+    color: var(--color-ink);
+  }
+
+  * {
+    scrollbar-color: var(--color-ops-line-bright) transparent;
+    scrollbar-width: thin;
+  }
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-ops-line-bright);
+    border-radius: 9999px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  :focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--color-ai) 55%, transparent);
+    outline-offset: 2px;
+  }
+
+  input,
+  textarea {
+    caret-color: var(--color-ai);
+  }
+
+  html {
+    color-scheme: dark;
+  }
+
+  html,
+  body {
+    overflow-x: clip;
+  }
+
+  #root {
+    min-height: 100dvh;
+  }
+
+  body {
+    background: var(--color-ops-ground);
+    color: var(--color-ink);
+    font-family: var(--font-body);
+    font-size: 15px;
+    line-height: 1.6;
+    letter-spacing: -0.006em;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    /* A faint glow so white text reads as "neon" on black. */
+    text-shadow: 0 0 10px rgb(255 255 255 / 0.12);
+  }
+
 }
 
-* {
-  scrollbar-color: var(--color-ops-line-bright) transparent;
-  scrollbar-width: thin;
-}
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-::-webkit-scrollbar-thumb {
-  background: var(--color-ops-line-bright);
-  border-radius: 9999px;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
+/* Neon glow for the IRIS wordmark. */
+.neon {
+  text-shadow:
+    0 0 6px rgb(255 255 255 / 0.65),
+    0 0 18px rgb(255 255 255 / 0.35),
+    0 0 42px rgb(255 255 255 / 0.18);
 }
 
-:focus-visible {
-  outline: 2px solid var(--color-ink-dim);
-  outline-offset: 2px;
-}
-
-input,
-textarea {
-  caret-color: var(--color-ink);
-}
-
-html {
-  color-scheme: dark;
-}
-
-html,
-body {
-  overflow-x: clip;
-}
-
-#root {
-  min-height: 100dvh;
-}
-
-body {
-  background: var(--color-ops-ground);
-  color: var(--color-ink);
-  font-family: var(--font-body);
-  font-size: 15px;
-  line-height: 1.5;
-  letter-spacing: -0.011em;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
-
-/* Tabular numerals everywhere metrics or times are measured */
+/* Tabular numerals for times and counts (same face, aligned digits). */
 .tnum {
-  font-family: var(--font-telemetry);
   font-variant-numeric: tabular-nums;
-  letter-spacing: -0.02em;
 }
 
-/* Tracked uppercase labels */
+/* Small section label, the way notes apps title a group. */
 .label-caps {
-  font-family: var(--font-display);
+  font-family: var(--font-body);
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.14em;
-  font-size: 11px;
-  color: var(--color-ink-dim);
+  font-size: 12px;
+  letter-spacing: 0;
+  color: var(--color-ink-faint);
 }
 
 /* Status lamp breathing motion */
@@ -137,4 +150,3 @@ body {
     animation: none;
   }
 }
-

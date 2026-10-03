@@ -1,6 +1,6 @@
 """Provider Switching Verification Script.
 
-Demonstrates that changing AI_PROVIDER (omniroute vs gemini vs mock) executes the exact
+Demonstrates that changing AI_PROVIDER (nvidia vs gemini vs mock) executes the exact
 same IRIS Decision Engine and returns identical structured schemas without changing any
 business logic or intelligence layers.
 """
@@ -8,10 +8,12 @@ business logic or intelligence layers.
 from __future__ import annotations
 
 import asyncio
+import os
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+os.environ["DATABASE_URL"] = "sqlite:///:memory:"
 
 from app.ai.factory import create_ai_provider, reset_ai_provider, set_ai_provider
 from app.ai.providers.mock import MockProvider
@@ -67,14 +69,14 @@ async def test_provider_switching():
     assert isinstance(res_mock, DecisionRecommendationOut)
     assert src_mock == "AI"
 
-    # Configuration B: OmniRoute Provider
-    print("\n--- Configuration B: AI_PROVIDER = 'omniroute' ---")
+    # Configuration B: NVIDIA NIM Provider
+    print("\n--- Configuration B: AI_PROVIDER = 'nvidia' ---")
     reset_ai_provider()
-    omni_prov = create_ai_provider("omniroute")
-    print(f"  Instantiated Provider: {omni_prov.name}")
-    print(f"  Configured Model: {omni_prov.model}")
-    print(f"  Enabled: {omni_prov.enabled}")
-    assert omni_prov.name == "omniroute"
+    nvidia_prov = create_ai_provider("nvidia")
+    print(f"  Instantiated Provider: {nvidia_prov.name}")
+    print(f"  Configured Model: {nvidia_prov.model}")
+    print(f"  Enabled: {nvidia_prov.enabled}")
+    assert nvidia_prov.name == "nvidia"
 
     # Configuration C: Gemini Provider
     print("\n--- Configuration C: AI_PROVIDER = 'gemini' ---")

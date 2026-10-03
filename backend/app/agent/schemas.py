@@ -40,6 +40,14 @@ class AgentResponseSchema(BaseModel):
         default_factory=list,
         description="List of tools to execute in sequence (if action requested)",
     )
+    continue_after_actions: bool = Field(
+        False,
+        description=(
+            "Set true when you need to see the results of 'actions' before giving your "
+            "final answer (e.g. after calling a get_/search_ tool). You will be called "
+            "again with the results. Leave false when 'message' is already your final reply."
+        ),
+    )
     message: str = Field(
         ..., description="Conversational reply to user, grounded in IRIS context and tool results"
     )
@@ -78,7 +86,9 @@ class ChatMessageOut(BaseModel):
     evidence: list[str] = Field(default_factory=list)
     recommended_action: dict[str, Any] | None = None
     source: str = "AI"
+    memories_updated: list[dict[str, Any]] = Field(default_factory=list)
     created_at: datetime
+
 
 
 class ConversationOut(BaseModel):
@@ -88,6 +98,8 @@ class ConversationOut(BaseModel):
 
     id: int
     title: str
+    summary: str | None = None
+    topics: list[str] | None = None
     created_at: datetime
     updated_at: datetime
 

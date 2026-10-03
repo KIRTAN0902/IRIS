@@ -63,6 +63,7 @@ def create_app() -> FastAPI:
     from app.api.routes import (
         ai,
         analytics,
+        assistant,
         chat,
         focus,
         goals,
@@ -90,6 +91,7 @@ def create_app() -> FastAPI:
     app.include_router(ai.router, prefix=api)
     app.include_router(intelligence.router, prefix=api)
     app.include_router(chat.router, prefix=api)
+    app.include_router(assistant.router, prefix=api)
 
     return app
 

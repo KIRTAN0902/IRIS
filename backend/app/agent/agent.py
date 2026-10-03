@@ -7,14 +7,26 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
+from app.agent.harness import AgentHarness
 from app.agent.registry import ToolRegistry, default_registry
 from app.agent.schemas import AgentResponseSchema, ChatMessageOut
 from app.ai.factory import get_ai_provider
+from app.ai.provider import ChatMessage
 from app.intelligence.context import build_decision_context
 from app.intelligence.decision_engine import deterministic_decision
+from app.intelligence.personal_model import build_personal_model, render_personal_model
+from app.intelligence.situation import (
+    build_situation,
+    detail_for_context_window,
+    last_user_message_at,
+    render_situation,
+)
 from app.models.ai_conversation import AIConversation, AIMessage
+from app.models.ai_memory import AIMemory
 from app.models.enums import AIRole
 from app.models.user import User
+from app.services import conversation_memory
+from app.services.memory_service import memory_service
 
 
 class IrisAgent:
@@ -22,6 +34,7 @@ class IrisAgent:
 
     def __init__(self, registry: ToolRegistry | None = None) -> None:
         self.registry = registry or default_registry
+        self.harness = AgentHarness(self.registry)
 
     async def run_turn(
         self,
@@ -36,71 +49,99 @@ class IrisAgent:
 
         # 2. Build focused personal context
         context = build_decision_context(db, user)
+        context["user_name"] = user.name.split(" ")[0] if user.name else None
+        since = last_user_message_at(db, user.id)
 
-        # 3. Fetch recent conversation history
-        history_messages = conversation.messages[-6:] if conversation.messages else []
+        # 3. Retrieve relevant long-term memories for this turn
+        relevant_memories = memory_service.search_relevant_memories(
+            db=db,
+            user_id=user.id,
+            query=user_message,
+            limit=8,
+            mark_accessed=True,
+        )
 
-        # 4. Generate response via AIProvider or fallback
+        # 4. Generate the reply through the model-agnostic harness, or fall back
         provider = get_ai_provider()
         response_schema: AgentResponseSchema | None = None
+        actions_executed: list[dict[str, Any]] = []
         source = "DETERMINISTIC"
+        harness_meta: dict[str, Any] = {}
 
         if provider.enabled:
             try:
-                system_prompt = self._build_system_prompt(context)
-                turn_prompt = self._build_turn_prompt(history_messages, user_message)
-                response_schema = await provider.generate_structured(
-                    system=system_prompt,
-                    prompt=turn_prompt,
-                    schema=AgentResponseSchema,
+                caps = provider.capabilities
+                history = self._history_messages(conversation, caps.history_messages)
+                detail = detail_for_context_window(caps.context_window)
+                personal_model = build_personal_model(db, user)
+                profile_ids = {m["id"] for m in personal_model["stated"]}
+                situation = build_situation(db, user, context, since=since)
+                recent = conversation_memory.recent_conversations(
+                    db, user.id, user.timezone,
+                    exclude_id=conversation.id,
+                    limit={"compact": 3, "standard": 5, "full": 8}[detail],
                 )
+                related = conversation_memory.search_conversations(
+                    db, user.id, user.timezone, user_message,
+                    exclude_id=conversation.id,
+                    exclude_ids={r["conversation_id"] for r in recent},
+                    limit=3,
+                )
+                result = await self.harness.run(
+                    provider=provider,
+                    db=db,
+                    user=user,
+                    system_prompt=self._build_system_prompt(
+                        context,
+                        # Profile memories are already in the personal model.
+                        [m for m in relevant_memories if m.id not in profile_ids],
+                        personal_model=render_personal_model(personal_model, detail),
+                        situation=render_situation(situation, detail),
+                        shared=conversation_memory.render_conversations(recent, related),
+                    ),
+                    history=history,
+                    user_message=user_message,
+                )
+                response_schema = result.response
+                actions_executed = result.actions_executed
                 source = "AI"
-            except Exception:
+                harness_meta = {
+                    "provider": provider.name,
+                    "model": provider.model,
+                    "strategy": result.strategy,
+                    "steps": result.steps,
+                }
+            except Exception as exc:
+                from app.ai.health import ai_health
+
+                ai_health.record_failure(provider.name, provider.model, exc)
                 response_schema = None
 
         # 5. Deterministic fallback if AI is unavailable or failed
         if response_schema is None:
             response_schema = self._deterministic_fallback(db, user, context, user_message)
             source = "DETERMINISTIC"
+            if not response_schema.missing_information:
+                response_schema.missing_information = "AI provider offline. Local deterministic intelligence engine active."
+            for action in response_schema.actions:
+                res = await self.registry.execute(
+                    name=action.tool_name, db=db, user=user, parameters=action.parameters
+                )
+                actions_executed.append(
+                    {
+                        "tool_name": res.tool_name,
+                        "success": res.success,
+                        "summary": res.summary,
+                        "error": res.error,
+                        "data": res.data,
+                    }
+                )
 
-        # 6. Execute tools requested by the agent
-        actions_executed: list[dict[str, Any]] = []
-        state_mutated = False
+        state_mutated = any(
+            a["success"] and self.registry.is_mutating(a["tool_name"]) for a in actions_executed
+        )
 
-        for action in response_schema.actions:
-            res = await self.registry.execute(
-                name=action.tool_name,
-                db=db,
-                user=user,
-                parameters=action.parameters,
-            )
-            actions_executed.append(
-                {
-                    "tool_name": res.tool_name,
-                    "success": res.success,
-                    "summary": res.summary,
-                    "error": res.error,
-                    "data": res.data,
-                }
-            )
-            if res.success and action.tool_name in {
-                "create_task",
-                "update_task",
-                "complete_task",
-                "delete_task",
-                "create_time_block",
-                "update_time_block",
-                "delete_time_block",
-                "create_goal",
-                "update_goal",
-                "create_recurring_schedule",
-                "update_recurring_schedule",
-                "record_decision_feedback",
-                "log_outreach",
-            }:
-                state_mutated = True
-
-        # 7. Post-action recalculation for mixed requests (e.g. "I finished my task. What next?")
+        # 6. Post-action recalculation for mixed requests (e.g. "I finished my task. What next?")
         recommended_action = response_schema.recommended_action
         if state_mutated:
             # Refresh decision context and recommendation
@@ -113,6 +154,25 @@ class IrisAgent:
                     "decision_type": new_rec.decision_type,
                     "reason": new_rec.reason,
                 }
+
+        # 7. Extract and persist contextual memory from this conversational turn
+        extracted_memories = await memory_service.extract_and_store_from_conversation(
+            db=db,
+            user=user,
+            user_message=user_message,
+            assistant_message=response_schema.message,
+            conversation_id=conversation.id,
+        )
+        memories_meta = [
+            {
+                "id": m.id,
+                "category": m.category,
+                "key": m.key,
+                "content": m.content,
+                "importance": m.importance,
+            }
+            for m in extracted_memories
+        ]
 
         # 8. Persist conversation turn
         user_msg_row = AIMessage(
@@ -131,6 +191,8 @@ class IrisAgent:
                 "evidence": response_schema.evidence,
                 "recommended_action": recommended_action,
                 "source": source,
+                "memories_updated": memories_meta,
+                "harness": harness_meta,
             },
         )
         db.add(assistant_msg_row)
@@ -148,9 +210,11 @@ class IrisAgent:
             evidence=response_schema.evidence,
             recommended_action=recommended_action,
             source=source,
+            memories_updated=memories_meta,
             created_at=assistant_msg_row.created_at,
         )
         return out, conversation
+
 
     def _resolve_conversation(
         self,
@@ -176,52 +240,59 @@ class IrisAgent:
         db.flush()
         return conv
 
-    def _build_system_prompt(self, context: dict[str, Any]) -> str:
-        tool_specs = self.registry.list_specs()
-        cur_win = context.get("current_window", {})
-        win_block = cur_win.get("active_block_name") or "None"
-        win_rem = cur_win.get("minutes_remaining_in_block") or 0
-        nxt_name = cur_win.get("next_hard_constraint_name") or "None"
-        nxt_rem = cur_win.get("minutes_until_next_hard_constraint") or 0
+    def _build_system_prompt(
+        self,
+        context: dict[str, Any],
+        memories: list[AIMemory] | None = None,
+        *,
+        personal_model: str = "",
+        situation: str = "",
+        shared: str = "",
+    ) -> str:
+        memory_section = memory_service.format_memories_for_prompt(memories or [])
+        bottlenecks = (context.get("startup_state", {}) or {}).get("bottlenecks") or []
+        attention = [a["title"] for a in context.get("attention_items", [])[:4]]
+        unavailable = ", ".join(context.get("unavailable_domains", []) or []) or "none"
 
-        fixed_comm = json.dumps(context.get("fixed_constraints", {}).get("fixed_commitments", []))
+        sections = [
+            f"""You are IRIS, {context.get("user_name") or "the user"}'s personal intelligence assistant, in the spirit of JARVIS: always aware of their situation, deeply familiar with how they live and work, and one step ahead.
 
-        return f"""You are IRIS, a personal decision intelligence assistant.
+HOW YOU OPERATE:
+1. GROUNDED: Everything below is live data and real memory. Never invent tasks, IDs, times or facts; use tools to look up anything not shown.
+2. AWARE: Know what is pending, what matters most, what is already done and what is next. Do not ask the user for information that is already in your context.
+3. PERSONAL: Tailor every suggestion to their routine, work style, peak hours, focus length and estimation habits (e.g. pad estimates if they usually run long, put deep work in their peak window). Honour every stated preference, constraint and instruction.
+4. ANTICIPATE: If something important needs attention (overdue work, a deadline today, a clash with the next commitment, working past sleep time, a goal falling behind), say so briefly even if not asked.
+5. ACT: When the user asks to change something or to remember something, use the tools. When they share a lasting fact about their routine, work style, preferences or people, save it with save_memory.
+6. ONE MEMORY: Every conversation with the user shares the same memory. What was discussed in other conversations (below) is something you already know; connect it naturally (e.g. relate internship plans to startup decisions). Never say you cannot see other conversations; use search_conversations / get_conversation for details.
+7. HONEST: Not connected yet: {unavailable}. Say so instead of guessing.
+8. CONCISE: Talk like a sharp chief of staff: direct, specific, no filler. Lead with the answer.""",
+        ]
+        if personal_model:
+            sections.append(personal_model)
+        if situation:
+            sections.append(situation)
+        if shared:
+            sections.append(shared)
+        if bottlenecks or attention:
+            extra = ["SIGNALS:"]
+            if bottlenecks:
+                extra.append(f"- Bottlenecks: {json.dumps(bottlenecks)[:400]}")
+            if attention:
+                extra.append(f"- Needs attention: {json.dumps(attention)}")
+            sections.append("\n".join(extra))
+        if memory_section:
+            sections.append(memory_section)
+        return "\n\n".join(sections)
 
-CORE IDENTITY & PRINCIPLES:
-1. You are grounded in real structured context. Never fabricate tasks.
-2. HONEST LIMITATIONS: External tools (Gmail, Drive) are offline.
-3. NO INVENTED WORK: If all work is completed, suggest rest or planning.
-4. CONTROLLED ACTIONS: When asked to change state, emit tool calls in 'actions'.
-5. EXPLAIN WITH EVIDENCE: Back recommendations with observed facts.
-6. KEEP MESSAGES CLEAR & CONCISE: Speak with precision.
-
-CURRENT PERSONAL CONTEXT:
-- Local Time: {context.get("current_local_time")}
-- Flexible Minutes: {context.get("available_minutes", 0)}m
-- Window: Active '{win_block}' ({win_rem}m), Next '{nxt_name}' ({nxt_rem}m)
-- Flexible Windows: {json.dumps(context.get("flexible_windows", []))}
-- Fixed Commitments: {fixed_comm}
-- Urgent Obligations: {json.dumps(context.get("urgent_obligations", []))}
-- Goals: {json.dumps([g["name"] for g in context.get("goals", {}).get("goals", [])[:5]])}
-- Bottleneck: {json.dumps(context.get("startup_state", {}).get("bottleneck"))}
-- Attention: {json.dumps([a["title"] for a in context.get("attention_items", [])[:4]])}
-
-AVAILABLE TOOLS:
-{json.dumps(tool_specs, indent=2)}
-
-OUTPUT FORMAT:
-Respond strictly conforming to AgentResponseSchema."""
-
-    def _build_turn_prompt(self, history: list[AIMessage], user_message: str) -> str:
-        transcript_lines = []
-        for m in history:
-            transcript_lines.append(f"{m.role}: {m.content}")
-
-        transcript_str = "\n".join(transcript_lines)
-        if transcript_str:
-            return f"Conversation History:\n{transcript_str}\n\nUser: {user_message}"
-        return f"User: {user_message}"
+    @staticmethod
+    def _history_messages(conversation: AIConversation, limit: int) -> list[ChatMessage]:
+        rows = conversation.messages[-limit:] if conversation.messages and limit > 0 else []
+        roles = {AIRole.USER.value: "user", AIRole.ASSISTANT.value: "assistant"}
+        return [
+            ChatMessage(role=roles[m.role], content=m.content)
+            for m in rows
+            if m.role in roles and m.content
+        ]
 
     def _deterministic_fallback(
         self,
@@ -234,7 +305,64 @@ Respond strictly conforming to AgentResponseSchema."""
         msg_lower = user_message.lower()
         evidence: list[str] = []
 
+        # Check for explicit memory or recall queries
+        mem_queries = [
+            "what do you remember",
+            "what do you know about me",
+            "my preferences",
+            "do you remember",
+            "what did i say",
+            "recall my",
+            "stored memory",
+            "my memories",
+        ]
+        if any(mq in msg_lower for mq in mem_queries):
+            recalled = memory_service.search_relevant_memories(db, user.id, user_message, limit=6)
+            if recalled:
+                bullets = "\n".join(f"- [{m.category}] {m.content}" for m in recalled)
+                return AgentResponseSchema(
+                    thought="User asked about memories/context; returning recalled items.",
+                    actions=[],
+                    message=f"Here is what I currently remember from our conversations:\n{bullets}",
+                    actions_summary=[],
+                    evidence=[f"Recalled {len(recalled)} memories"],
+                )
+            else:
+                return AgentResponseSchema(
+                    thought="User asked about memories, but none are stored yet.",
+                    actions=[],
+                    message="I don't have any specific memories stored yet. Tell me about your preferences, routine, or projects and I will remember them across all our conversations.",
+                    actions_summary=[],
+                    evidence=["Memory store is currently empty"],
+                )
+
+        # Check for explicit 'remember that' / 'note that'
+        if msg_lower.startswith("remember that") or msg_lower.startswith("keep in mind that") or msg_lower.startswith("note that"):
+            extracted = memory_service._heuristic_extract(user_message)
+            if extracted:
+                saved = [
+                    memory_service.store_memory(
+                        db,
+                        user,
+                        item["content"],
+                        category=item["category"],
+                        key=item.get("key"),
+                        importance=item.get("importance", 0.8),
+                        source="CONVERSATION_EXTRACTED",
+                    )
+                    for item in extracted
+                ]
+                content_preview = "; ".join(f"'{m.content}'" for m in saved)
+                return AgentResponseSchema(
+                    thought="User explicitly commanded IRIS to remember context in offline mode.",
+                    actions=[],
+                    message=f"Understood. I have committed this to memory: {content_preview}. I will keep this in mind across all our conversations.",
+                    actions_summary=["Saved context to memory"],
+                    evidence=[f"Stored memory #{m.id}" for m in saved],
+                )
+
         # Check for Gmail / Email query
+
         if "email" in msg_lower or "gmail" in msg_lower or "inbox" in msg_lower:
             return AgentResponseSchema(
                 thought="User inquired about emails; Gmail is not connected.",

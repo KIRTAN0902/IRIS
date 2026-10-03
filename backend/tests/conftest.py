@@ -18,7 +18,11 @@ _TMP_DIR = Path(tempfile.mkdtemp(prefix="iris-tests-"))
 os.environ["DATABASE_URL"] = f"sqlite:///{(_TMP_DIR / 'test.db').as_posix()}"
 os.environ["AI_PROVIDER"] = "gemini"
 os.environ["GEMINI_API_KEY"] = ""
-os.environ["OMNIROUTE_BASE_URL"] = ""
+os.environ["NVIDIA_BASE_URL"] = ""
+os.environ["NVIDIA_API_KEY"] = ""
+# Provider-neutral settings must not leak in from a developer's .env.
+for _var in ("AI_MODEL", "AI_BASE_URL", "AI_API_KEY", "AI_CAPABILITIES", "AI_EXTRA_BODY", "AI_EXTRA_HEADERS"):
+    os.environ[_var] = ""
 os.environ.setdefault("ENVIRONMENT", "development")
 os.environ.setdefault("DEFAULT_TIMEZONE", "Asia/Kolkata")
 

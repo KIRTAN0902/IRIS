@@ -7,6 +7,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
+from app.ai.health import ai_health
 from app.api.deps import current_user
 from app.core.database import get_db
 from app.intelligence.attention_engine import generate_attention_items
@@ -125,6 +126,7 @@ def get_today_state(
         attention_items=context.get("attention_items", []),
         domain_signals=context.get("domain_signals", {}),
         recent_decisions=recent_list,
+        ai_status=ai_health.get_status(),
     )
 
 

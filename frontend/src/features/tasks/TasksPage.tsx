@@ -1,17 +1,6 @@
 import { useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import {
-  Briefcase,
-  CheckCircle2,
-  Circle,
-  Clock,
-  FolderTree,
-  GraduationCap,
-  Plus,
-  Rocket,
-  Search,
-  Trash2,
-} from "lucide-react";
+import { Briefcase, Check, GraduationCap, Plus, Rocket, Search, Trash2 } from "lucide-react";
 import {
   useCompleteTask,
   useCreateTask,
@@ -25,29 +14,20 @@ import type { TaskOut } from "@/types/api";
 import { Button } from "@/components/ui/Button";
 import { Dialog, DialogContent, ErrorState, Skeleton } from "@/components/ui/Overlay";
 import { Field, Input, Select, Textarea } from "@/components/ui/Field";
-import { Lamp } from "@/components/ui/Panel";
 import { cn, humanDuration, urgencyLabel } from "@/lib/format";
 import { TASK_PRIORITIES, type LifeArea, type TaskPriority } from "@/types/api";
 
 type FilterTab = "active" | "all" | "completed" | "overdue";
 
+const AREAS: { area: LifeArea; title: string }[] = [
+  { area: "STARTUP", title: "Startup" },
+  { area: "INTERNSHIP", title: "Internship" },
+  { area: "COLLEGE", title: "College" },
+  { area: "PERSONAL", title: "Personal" },
+];
+
 /**
- * TASKS — Domain-Organized Action Register.
- *
- * Information Architecture:
- * - STARTUP (Marketory, NEXUS, Outreach, Customer Discovery, Experiments)
- * - INTERNSHIP (AI Internship, Deliverables, Client Work, Reports)
- * - COLLEGE (Assignments, Compiler Design, Agentic AI, SPM, DSA, Exams)
- *
- * Desktop Layout:
- * ┌───────────────────────┬───────────────────────┐
- * │       STARTUP         │      INTERNSHIP       │
- * └───────────────────────┴───────────────────────┘
- * ┌───────────────────────────────────────────────┐
- * │                    COLLEGE                    │
- * └───────────────────────────────────────────────┘
- *
- * Mobile Layout: Clean vertical stack with zero horizontal overflow.
+ * TASKS: one checklist, grouped by area, the way a notes app does it.
  */
 export function TasksPage() {
   const [params] = useSearchParams();
@@ -61,506 +41,241 @@ export function TasksPage() {
   const projects = useProjects();
   const projectsMap = useMemo(() => {
     const map = new Map<number, string>();
-    for (const p of projects.data ?? []) {
-      map.set(p.id, p.name);
-    }
+    for (const p of projects.data ?? []) map.set(p.id, p.name);
     return map;
   }, [projects.data]);
 
-  // Retrieve all tasks to categorize dynamically by domain
-  const tasksQuery = useTasks({
-    limit: 300,
-  });
-
+  const tasksQuery = useTasks({ limit: 300 });
   const allTasks = tasksQuery.data ?? [];
 
-  // Filter tasks by active status / tab & search query
   const filteredTasks = useMemo(() => {
+    const q = query.trim().toLowerCase();
     return allTasks.filter((t) => {
-      // Status filter
       if (filterTab === "active" && t.status === "COMPLETED") return false;
       if (filterTab === "completed" && t.status !== "COMPLETED") return false;
       if (filterTab === "overdue" && (!t.is_overdue || t.status === "COMPLETED")) return false;
-
-      // Search query filter
-      if (query.trim()) {
-        const q = query.toLowerCase();
+      if (q) {
         const projectName = t.project_id ? projectsMap.get(t.project_id) || "" : "";
-        const matchTitle = t.title.toLowerCase().includes(q);
-        const matchDesc = t.description ? t.description.toLowerCase().includes(q) : false;
-        const matchProject = projectName.toLowerCase().includes(q);
-        if (!matchTitle && !matchDesc && !matchProject) return false;
+        return [t.title, t.description ?? "", projectName].some((s) => s.toLowerCase().includes(q));
       }
-
       return true;
     });
   }, [allTasks, filterTab, query, projectsMap]);
 
-  // Partition into the three primary domains (+ optional personal overflow)
-  const startupTasks = useMemo(
-    () => filteredTasks.filter((t) => t.area === "STARTUP"),
-    [filteredTasks],
-  );
-  const internshipTasks = useMemo(
-    () => filteredTasks.filter((t) => t.area === "INTERNSHIP"),
-    [filteredTasks],
-  );
-  const collegeTasks = useMemo(
-    () => filteredTasks.filter((t) => t.area === "COLLEGE"),
-    [filteredTasks],
-  );
-  const personalTasks = useMemo(
-    () => filteredTasks.filter((t) => t.area === "PERSONAL" || !t.area),
-    [filteredTasks],
-  );
-
-  // Overall statistics
   const totalActive = allTasks.filter((t) => t.status !== "COMPLETED").length;
   const totalOverdue = allTasks.filter((t) => t.is_overdue && t.status !== "COMPLETED").length;
   const totalCompleted = allTasks.filter((t) => t.status === "COMPLETED").length;
 
-  const handleOpenCreate = (area: LifeArea = "STARTUP") => {
+  const openCreate = (area: LifeArea = "STARTUP") => {
     setDefaultArea(area);
     setCreateOpen(true);
   };
 
+  const tabs: { id: FilterTab; label: string; count: number }[] = [
+    { id: "active", label: "Open", count: totalActive },
+    { id: "overdue", label: "Overdue", count: totalOverdue },
+    { id: "completed", label: "Done", count: totalCompleted },
+    { id: "all", label: "All", count: allTasks.length },
+  ];
+
   return (
-    <div className="space-y-6">
-      {/* --- Page Header & Controls --- */}
-      <header className="flex flex-col gap-4 border-b border-ops-line pb-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-baseline gap-3">
-            <h1 className="font-[family-name:var(--font-display)] text-[24px] font-bold tracking-wide text-ink">
-              TASKS
-            </h1>
-            <span className="font-[family-name:var(--font-telemetry)] text-[12px] text-ink-faint">
-              {totalActive} active · {totalOverdue > 0 && <span className="text-critical">{totalOverdue} overdue · </span>}{totalCompleted} done
-            </span>
-          </div>
-
-          <Button
-            variant="go"
-            size="sm"
-            onClick={() => handleOpenCreate("STARTUP")}
-            className="flex items-center gap-1.5 shadow-sm"
+    <div className="mx-auto w-full max-w-[680px]">
+      <header className="mb-6">
+        <div className="flex items-end justify-between gap-3">
+          <h1 className="text-[30px] font-bold leading-tight tracking-[-0.02em] text-ink">Tasks</h1>
+          <button
+            onClick={() => openCreate("STARTUP")}
+            className="mb-1 inline-flex items-center gap-1 text-[14px] text-ai hover:underline cursor-pointer"
           >
-            <Plus size={14} strokeWidth={2.5} />
-            <span>Add Task</span>
-          </Button>
+            <Plus size={14} /> New task
+          </button>
         </div>
+        <p className="mt-1 text-[14px] text-ink-faint">
+          {totalActive} open
+          {totalOverdue > 0 && <span className="text-critical"> · {totalOverdue} overdue</span>} · {totalCompleted} done
+        </p>
 
-        {/* Filter Bar */}
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          {/* Quick Filters */}
-          <div className="flex items-center gap-1.5 border border-ops-line bg-ops-panel/40 p-1">
-            <FilterButton
-              active={filterTab === "active"}
-              label="Active"
-              count={totalActive}
-              onClick={() => setFilterTab("active")}
-            />
-            <FilterButton
-              active={filterTab === "all"}
-              label="All"
-              count={allTasks.length}
-              onClick={() => setFilterTab("all")}
-            />
-            <FilterButton
-              active={filterTab === "overdue"}
-              label="Overdue"
-              count={totalOverdue}
-              tone={totalOverdue > 0 ? "critical" : undefined}
-              onClick={() => setFilterTab("overdue")}
-            />
-            <FilterButton
-              active={filterTab === "completed"}
-              label="Completed"
-              count={totalCompleted}
-              onClick={() => setFilterTab("completed")}
-            />
-          </div>
-
-          {/* Search Box */}
-          <div className="relative flex-1 sm:w-64 sm:flex-initial">
-            <Search
-              size={13}
-              className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-faint"
-            />
-            <Input
+        <div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-3">
+          <nav className="flex items-center gap-4 text-[14px]" aria-label="Filter tasks">
+            {tabs.map((t) => (
+              <button
+                key={t.id}
+                onClick={() => setFilterTab(t.id)}
+                className={cn(
+                  "cursor-pointer transition-colors",
+                  filterTab === t.id ? "font-medium text-ink" : "text-ink-faint hover:text-ink-dim",
+                )}
+              >
+                {t.label}
+                <span className="ml-1 text-[12px] text-ink-faint tnum">{t.count}</span>
+              </button>
+            ))}
+          </nav>
+          <label className="ml-auto flex min-w-[180px] flex-1 items-center gap-2 sm:max-w-[240px]">
+            <Search size={14} className="shrink-0 text-ink-faint" />
+            <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search tasks or projects…"
+              placeholder="Search"
               aria-label="Search tasks"
-              className="h-8 w-full pl-8 text-[13px]"
+              className="w-full bg-transparent text-[14px] text-ink placeholder:text-ink-faint focus:outline-none"
             />
-          </div>
+          </label>
         </div>
       </header>
 
-      {/* --- Main Content Grid --- */}
       {tasksQuery.isLoading ? (
-        <div className="grid gap-5 md:grid-cols-2">
-          <Skeleton className="h-64" />
-          <Skeleton className="h-64" />
-          <Skeleton className="h-64 md:col-span-2" />
+        <div className="space-y-3">
+          <Skeleton className="h-5 w-1/4" />
+          <Skeleton className="h-4 w-full" />
+          <Skeleton className="h-4 w-5/6" />
         </div>
       ) : tasksQuery.error ? (
         <ErrorState message={(tasksQuery.error as Error).message} />
       ) : (
-        <div className="space-y-6">
-          {/* Top Row: STARTUP (Left) + INTERNSHIP (Right) */}
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-            {/* 1. STARTUP SECTION */}
-            <DomainSection
-              title="STARTUP"
-              subtitle="MARKETORY · NEXUS · Outreach · Distribution · Growth"
-              tone="go"
-              tasks={startupTasks}
-              projectsMap={projectsMap}
-              onAddTask={() => handleOpenCreate("STARTUP")}
-              emptyMessage="No startup tasks yet."
-              emptyHint="Add Marketory, NEXUS, outreach, or validation tasks."
-            />
-
-            {/* 2. INTERNSHIP SECTION */}
-            <DomainSection
-              title="INTERNSHIP"
-              subtitle="AI Internship · Deliverables · Client Work · Reports"
-              tone="caution"
-              tasks={internshipTasks}
-              projectsMap={projectsMap}
-              onAddTask={() => handleOpenCreate("INTERNSHIP")}
-              emptyMessage="No internship tasks yet."
-              emptyHint="Add internship deliverables, client work, or sprint milestones."
-            />
-          </div>
-
-          {/* Bottom Row: COLLEGE (Full Width) */}
-          <div>
-            <DomainSection
-              title="COLLEGE"
-              subtitle="Coursework · Compiler Design · Agentic AI · SPM · DSA · Exams"
-              tone="ai"
-              tasks={collegeTasks}
-              projectsMap={projectsMap}
-              onAddTask={() => handleOpenCreate("COLLEGE")}
-              emptyMessage="No college tasks yet."
-              emptyHint="Add assignments, lab submissions, exam preparation, or coursework."
-            />
-          </div>
-
-          {/* Optional: PERSONAL OVERFLOW (if any tasks exist with personal area) */}
-          {personalTasks.length > 0 && (
-            <div className="border border-ops-line/60 bg-ops-panel/20 p-4">
-              <div className="mb-3 flex items-center justify-between">
-                <span className="font-[family-name:var(--font-display)] text-[13px] font-semibold uppercase tracking-wider text-ink-dim">
-                  Personal & Administration ({personalTasks.length})
-                </span>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => handleOpenCreate("PERSONAL")}
-                  className="h-6 text-[11px]"
-                >
-                  <Plus size={12} /> Add
-                </Button>
-              </div>
-              <ul className="divide-y divide-ops-line/60">
-                {personalTasks.map((t) => (
-                  <li key={t.id}>
-                    <TaskItemRow task={t} projectsMap={projectsMap} />
-                  </li>
-                ))}
-              </ul>
-            </div>
+        <div className="space-y-9">
+          {AREAS.map(({ area, title }) => {
+            const tasks = filteredTasks.filter((t) => (t.area || "PERSONAL") === area);
+            if (tasks.length === 0 && (filterTab !== "active" || area === "PERSONAL" || query)) return null;
+            return (
+              <AreaSection
+                key={area}
+                title={title}
+                tasks={tasks}
+                projectsMap={projectsMap}
+                onAdd={() => openCreate(area)}
+              />
+            );
+          })}
+          {filteredTasks.length === 0 && (filterTab !== "active" || query) && (
+            <p className="text-[15px] text-ink-faint">
+              {query ? "No tasks match your search." : "Nothing here."}
+            </p>
           )}
         </div>
       )}
 
-      {/* --- Add Task Modal --- */}
-      <CreateTaskDialog
-        open={createOpen}
-        onOpenChange={setCreateOpen}
-        defaultArea={defaultArea}
-      />
+      <CreateTaskDialog open={createOpen} onOpenChange={setCreateOpen} defaultArea={defaultArea} />
     </div>
   );
 }
 
-// --- Domain Section Component ------------------------------------------------
+// --- Area section ------------------------------------------------------------------
 
-interface DomainSectionProps {
-  title: string;
-  subtitle: string;
-  tone: "go" | "caution" | "ai" | "dim";
-  tasks: TaskOut[];
-  projectsMap: Map<number, string>;
-  onAddTask: () => void;
-  emptyMessage: string;
-  emptyHint: string;
-}
-
-function DomainSection({
+function AreaSection({
   title,
-  subtitle,
-  tone,
   tasks,
   projectsMap,
-  onAddTask,
-  emptyMessage,
-  emptyHint,
-}: DomainSectionProps) {
-  const activeCount = tasks.filter((t) => t.status !== "COMPLETED").length;
-  const overdueCount = tasks.filter((t) => t.is_overdue && t.status !== "COMPLETED").length;
-
+  onAdd,
+}: {
+  title: string;
+  tasks: TaskOut[];
+  projectsMap: Map<number, string>;
+  onAdd: () => void;
+}) {
+  const overdue = tasks.filter((t) => t.is_overdue && t.status !== "COMPLETED").length;
   return (
-    <section className="flex flex-col border border-ops-line bg-ops-panel/60 shadow-xs">
-      {/* Section Header */}
-      <header className="flex flex-wrap items-center justify-between gap-2 border-b border-ops-line bg-ops-raised/40 px-4 py-3">
-        <div className="flex items-center gap-2.5">
-          <Lamp tone={tone} />
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="font-[family-name:var(--font-display)] text-[15px] font-bold tracking-wider text-ink">
-                {title}
-              </span>
-              <span className="font-[family-name:var(--font-telemetry)] text-[11px] text-ink-faint">
-                ({activeCount} active{overdueCount > 0 && `, ${overdueCount} overdue`})
-              </span>
-            </div>
-            <p className="hidden text-[11px] text-ink-faint sm:block">{subtitle}</p>
-          </div>
-        </div>
-
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={onAddTask}
-          className="h-7 gap-1 border-ops-line-bright px-2.5 text-[11px] hover:text-ink"
+    <section className="group/section">
+      <header className="mb-1 flex items-baseline gap-2 border-b border-ops-line pb-1.5">
+        <h2 className="text-[17px] font-semibold text-ink">{title}</h2>
+        <span className="text-[13px] text-ink-faint tnum">
+          {tasks.length}
+          {overdue > 0 && <span className="text-critical"> · {overdue} overdue</span>}
+        </span>
+        <button
+          onClick={onAdd}
+          aria-label={`Add ${title} task`}
+          title={`Add ${title} task`}
+          className="ml-auto rounded p-0.5 text-ink-faint opacity-0 transition-opacity hover:text-ink group-hover/section:opacity-100 focus-visible:opacity-100 cursor-pointer"
         >
-          <Plus size={12} />
-          <span>Add</span>
-        </Button>
+          <Plus size={16} />
+        </button>
       </header>
-
-      {/* Task List or Empty State */}
-      <div className="flex-1 p-2 sm:p-3">
-        {tasks.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-8 text-center">
-            <p className="font-[family-name:var(--font-display)] text-[13px] text-ink-dim">
-              {emptyMessage}
-            </p>
-            <p className="mt-1 text-[11px] text-ink-faint">{emptyHint}</p>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={onAddTask}
-              className="mt-3 text-[12px] text-caution hover:text-ink"
-            >
-              + Add {title.charAt(0) + title.slice(1).toLowerCase()} Task
-            </Button>
-          </div>
-        ) : (
-          <ul className="space-y-2">
-            {tasks.map((task) => (
-              <li key={task.id}>
-                <TaskItemRow task={task} projectsMap={projectsMap} />
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
+      {tasks.length === 0 ? (
+        <button onClick={onAdd} className="py-2 text-[14px] text-ink-faint hover:text-ink-dim cursor-pointer">
+          No tasks. Add one…
+        </button>
+      ) : (
+        <ul>
+          {tasks.map((task) => (
+            <li key={task.id}>
+              <TaskItemRow task={task} projectsMap={projectsMap} />
+            </li>
+          ))}
+        </ul>
+      )}
     </section>
   );
 }
 
-// --- Task Item Row Component -------------------------------------------------
+// --- Checklist row -------------------------------------------------------------------
 
-function TaskItemRow({
-  task,
-  projectsMap,
-}: {
-  task: TaskOut;
-  projectsMap: Map<number, string>;
-}) {
+function TaskItemRow({ task, projectsMap }: { task: TaskOut; projectsMap: Map<number, string> }) {
   const complete = useCompleteTask();
   const updateTask = useUpdateTask();
   const del = useDeleteTask();
 
   const isDone = task.status === "COMPLETED";
-  const isInProgress = task.status === "IN_PROGRESS";
-  const urgency = task.deadline ? urgencyLabel(task.deadline) : null;
+  const urgency = task.deadline && !isDone ? urgencyLabel(task.deadline) : null;
   const projectName = task.project_id ? projectsMap.get(task.project_id) : null;
+  const priority =
+    task.priority === "CRITICAL" ? "Critical" : task.priority === "HIGH" ? "High priority" : null;
 
-  const handleToggle = () => {
-    if (isDone) {
-      // Re-open
-      updateTask.mutate({
-        id: task.id,
-        patch: { status: "TODO" },
-      });
-    } else {
-      // Complete
-      complete.mutate({ id: task.id });
-    }
-  };
+  const toggle = () =>
+    isDone ? updateTask.mutate({ id: task.id, patch: { status: "TODO" } }) : complete.mutate({ id: task.id });
 
   return (
-    <div
-      className={cn(
-        "group relative flex items-start gap-3 border border-ops-line/80 bg-ops-panel/40 p-2.5 transition-all",
-        "hover:border-ops-line-bright hover:bg-ops-raised/40",
-        isDone && "opacity-60 bg-ops-panel/20",
-      )}
-    >
-      {/* Checkbox / Status Toggle */}
+    <div className="group flex items-start gap-3 py-2">
       <button
-        onClick={handleToggle}
-        aria-label={isDone ? `Reopen task "${task.title}"` : `Complete task "${task.title}"`}
+        onClick={toggle}
+        aria-label={isDone ? `Reopen "${task.title}"` : `Mark "${task.title}" done`}
         className={cn(
-          "mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center border transition-colors",
-          isDone
-            ? "border-go bg-go-dim/40 text-go"
-            : "border-ops-line-bright text-transparent hover:border-caution hover:text-caution/60",
+          "mt-[3px] flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full border-[1.5px] transition-colors cursor-pointer",
+          isDone ? "border-go bg-go text-ops-ground" : "border-ops-line-bright hover:border-go hover:bg-go-dim",
         )}
       >
-        {isDone ? <CheckCircle2 size={12} strokeWidth={2.5} /> : <Circle size={10} />}
+        {isDone && <Check size={11} strokeWidth={3} />}
       </button>
 
-      {/* Task Content */}
-      <div className="min-w-0 flex-1 space-y-1">
-        <div className="flex items-baseline justify-between gap-2">
-          <p
-            className={cn(
-              "text-[13px] leading-snug font-medium text-ink",
-              isDone && "line-through text-ink-faint",
-            )}
-          >
-            {task.title}
-          </p>
-
-          {/* Status Badge */}
-          <span
-            className={cn(
-              "shrink-0 font-[family-name:var(--font-telemetry)] text-[10px] uppercase tracking-wider px-1.5 py-0.2",
-              isDone
-                ? "text-go bg-go-dim/30 border border-go-dim"
-                : isInProgress
-                  ? "text-caution bg-caution-dim/30 border border-caution-dim"
-                  : "text-ink-faint border border-ops-line",
-            )}
-          >
-            {task.status}
-          </span>
-        </div>
-
-        {/* Task Metadata Row */}
-        <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[11px] text-ink-faint">
-          {/* Priority Lamp/Badge */}
-          {(task.priority === "CRITICAL" || task.priority === "HIGH") && (
-            <span
-              className={cn(
-                "inline-flex items-center gap-1 font-[family-name:var(--font-telemetry)] text-[10px] uppercase tracking-wider",
-                task.priority === "CRITICAL" ? "text-critical font-bold" : "text-caution",
-              )}
-            >
-              <Lamp tone={task.priority === "CRITICAL" ? "critical" : "caution"} pulse={!isDone} />
-              {task.priority}
-            </span>
-          )}
-
-          {/* Deadline / Urgency */}
+      <div className="min-w-0 flex-1">
+        <p className={cn("text-[15px] leading-snug", isDone ? "text-ink-faint line-through" : "text-ink")}>
+          {task.title}
+          {task.status === "IN_PROGRESS" && <span className="ml-2 text-[12px] text-ai">in progress</span>}
+          {task.status === "BLOCKED" && <span className="ml-2 text-[12px] text-caution">blocked</span>}
+        </p>
+        <p className="mt-0.5 flex flex-wrap items-center gap-x-2.5 text-[12px] text-ink-faint">
           {urgency && (
             <span
               className={cn(
-                "font-[family-name:var(--font-telemetry)] tnum flex items-center gap-1",
-                task.is_overdue
-                  ? "text-critical font-semibold"
-                  : urgency.tone === "caution"
-                    ? "text-caution"
-                    : "text-ink-dim",
+                "tnum",
+                task.is_overdue ? "text-critical" : urgency.tone === "caution" ? "text-caution" : undefined,
               )}
             >
-              <Clock size={11} className="shrink-0" />
               {urgency.text}
             </span>
           )}
-
-          {/* Duration */}
+          {priority && (
+            <span className={task.priority === "CRITICAL" ? "text-critical" : undefined}>{priority}</span>
+          )}
           {task.estimated_duration != null && task.estimated_duration > 0 && (
-            <span className="font-[family-name:var(--font-telemetry)] tnum text-ink-dim">
-              {humanDuration(task.estimated_duration)}
-            </span>
+            <span className="tnum">{humanDuration(task.estimated_duration)}</span>
           )}
-
-          {/* Project Link */}
-          {projectName && (
-            <span className="flex items-center gap-1 border border-ops-line px-1 text-[10px] text-ink-dim">
-              <FolderTree size={10} className="text-ai" />
-              {projectName}
-            </span>
-          )}
-        </div>
-
-        {/* Description snippet if present */}
-        {task.description && (
-          <p className="line-clamp-1 text-[11px] text-ink-dim/80">{task.description}</p>
+          {projectName && <span className="truncate">{projectName}</span>}
+        </p>
+        {task.description && !isDone && (
+          <p className="mt-0.5 line-clamp-1 text-[13px] text-ink-faint">{task.description}</p>
         )}
       </div>
 
-      {/* Delete / Actions (Visible on hover/focus) */}
-      <div className="shrink-0 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
-        <button
-          onClick={() => del.mutate(task.id)}
-          aria-label={`Delete "${task.title}"`}
-          title="Delete task"
-          className="flex h-6 w-6 items-center justify-center text-ink-faint hover:text-critical transition-colors"
-        >
-          <Trash2 size={13} strokeWidth={1.5} />
-        </button>
-      </div>
+      <button
+        onClick={() => del.mutate(task.id)}
+        aria-label={`Delete "${task.title}"`}
+        title="Delete"
+        className="mt-0.5 rounded p-1 text-ink-faint opacity-0 transition-opacity hover:text-critical group-hover:opacity-100 focus-visible:opacity-100 cursor-pointer"
+      >
+        <Trash2 size={14} strokeWidth={1.75} />
+      </button>
     </div>
-  );
-}
-
-// --- Filter Button -----------------------------------------------------------
-
-function FilterButton({
-  active,
-  label,
-  count,
-  tone,
-  onClick,
-}: {
-  active: boolean;
-  label: string;
-  count?: number;
-  tone?: "critical" | "caution";
-  onClick: () => void;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={cn(
-        "flex h-7 items-center gap-1.5 px-2.5 text-[11px] uppercase tracking-wider transition-colors",
-        active
-          ? "bg-ops-raised text-ink font-semibold border-b-2 border-caution"
-          : "text-ink-dim hover:text-ink hover:bg-ops-panel",
-        tone === "critical" && "text-critical",
-      )}
-    >
-      <span>{label}</span>
-      {count != null && (
-        <span
-          className={cn(
-            "font-[family-name:var(--font-telemetry)] text-[10px] tnum",
-            active ? "text-caution" : "text-ink-faint",
-          )}
-        >
-          {count}
-        </span>
-      )}
-    </button>
   );
 }
 
@@ -796,7 +511,7 @@ function AreaOption({
       type="button"
       onClick={onClick}
       className={cn(
-        "flex items-center justify-center gap-2 border p-2 text-[12px] font-medium tracking-wide transition-colors",
+        "flex items-center justify-center gap-2 border p-2 text-[12px] font-medium transition-colors",
         selected
           ? "border-caution bg-caution-dim/30 text-ink font-semibold"
           : "border-ops-line bg-ops-panel/60 text-ink-dim hover:text-ink hover:border-ops-line-bright",

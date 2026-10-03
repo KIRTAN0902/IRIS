@@ -19,6 +19,10 @@ def health() -> dict:
             conn.execute(text("SELECT 1"))
     except Exception:
         db_ok = False
+    from app.ai.health import ai_health
+
+    ai_info = ai_health.get_status()
+
     return {
         "status": "ok" if db_ok else "degraded",
         "service": "IRIS",
@@ -26,4 +30,5 @@ def health() -> dict:
         "environment": settings.environment,
         "database": "ok" if db_ok else "unreachable",
         "ai": "enabled" if settings.ai_enabled else "deterministic-only",
+        "ai_status": ai_info,
     }

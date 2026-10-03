@@ -63,7 +63,7 @@ attention_score = urgency × 35.0
 * Python **3.12+**
 * PostgreSQL (Supabase / Render / Local) or SQLite (for local testing/dev)
 * psycopg 3 driver (`psycopg[binary]>=3.2`)
-* OmniRoute Gateway / Google Gemini API key *(optional — deterministic fallback operates fully without AI keys)*
+* An API key for any LLM provider, or a local model server *(optional — deterministic fallback operates fully without AI)*
 
 ```bash
 cd backend
@@ -94,12 +94,87 @@ ENVIRONMENT=production
 DEFAULT_TIMEZONE=Asia/Kolkata
 LOG_LEVEL=INFO
 
-# AI Provider Configuration
-AI_PROVIDER=omniroute
-OMNIROUTE_BASE_URL=http://localhost:20128/v1
-OMNIROUTE_API_KEY=your-omniroute-api-key
-OMNIROUTE_MODEL=auto/best-fast
+# AI model: any provider, any model
+AI_PROVIDER=nvidia
+AI_MODEL=nvidia/nemotron-3.5-lightning-30b-a3b
+AI_API_KEY=your-api-key
 ```
+
+### AI Model Harness (model-agnostic)
+
+IRIS does not depend on any particular model. The agent is a **harness**: IRIS
+owns the loop, tools, memory, context and safety rails, and the model only
+decides what to say and which tool to call next. To change models, edit `.env`:
+
+```env
+AI_PROVIDER=openrouter                  # or openai, groq, together, deepseek, mistral,
+AI_MODEL=anthropic/claude-sonnet-4.5    # fireworks, anthropic, nvidia, gemini, ollama,
+AI_API_KEY=sk-or-...                    # lmstudio, vllm, openai_compatible (+ AI_BASE_URL)
+```
+
+How the harness adapts to each model:
+
+| Layer | What it does | Where |
+|---|---|---|
+| Capability profile | Detects native tool calling, JSON mode, reasoning output, system-role support, temperature support, token parameter name and context window from the model id; override with `AI_CAPABILITIES` | `app/ai/capabilities.py` |
+| Runtime adaptation | If an endpoint rejects `tools`, `response_format`, `temperature`, a system message or `max_tokens`, that capability is turned off and the request retried. The change is remembered for later calls | `app/ai/providers/openai_compatible.py` |
+| Output normalisation | Strips `<think>` blocks and `reasoning_content`, markdown fences and prose around JSON; inlines `$ref` schemas for strict tool APIs | `app/ai/structured.py` |
+| Self-repair | Invalid structured output is sent back to the model with the validation error to fix (`AI_STRUCTURED_RETRIES`) | `AIProvider.generate_structured` |
+| Agent loop | Multi-step: the model sees tool results and can read → decide → act before answering (`AI_AGENT_MAX_STEPS`) | `app/agent/harness.py` |
+| Strategy selection | `native_tools` (provider function calling) → `structured_json` (prompted JSON protocol) → deterministic engine | `AgentHarness.run` |
+| Safety rails | Parameter validation, tool errors returned to the model, no repeated state changes in a turn, tool output truncated to the context budget, a truthful summary if the model stops partway | `app/agent/harness.py` |
+
+`GET /api/ai/status` shows the active provider, model, strategy and resolved
+capabilities. To smoke-test a model live:
+
+```bash
+python scripts/verify_live_model.py              # uses .env
+AI_PROVIDER=groq AI_MODEL=llama-3.3-70b-versatile python scripts/verify_live_model.py
+```
+
+Adding a provider that does not speak the OpenAI protocol means subclassing
+`AIProvider` and implementing `chat()`. Structured output, the agent loop and
+fallbacks then work with no further changes.
+
+### Awareness & Memory (contextual + personal)
+
+Every chat turn, IRIS gives the model two always-fresh blocks, sized to the
+model's context window:
+
+* **Situation** (contextual memory, `app/intelligence/situation.py`): the time
+  and current block (and whether it is a hard commitment), next commitment and
+  next free window, today's schedule, in-progress / overdue / due-today /
+  due-this-week / blocked tasks, the deterministic priority ranking, what got
+  done today and this week, goal progress, and what changed since the last
+  conversation.
+* **Personal model** (external memory, `app/intelligence/personal_model.py`):
+  *stated*: profile facts, operating preferences, the weekly routine (recurring
+  schedules) and memories in the `ROUTINE`, `WORK_STYLE`, `PREFERENCE`,
+  `CONSTRAINT` and `INSTRUCTION` categories; *observed*: patterns learned from
+  behaviour (peak hours, active span, best days, throughput, area mix,
+  estimate vs. actual, focus-session length and completion rate, self-rated
+  productivity). Observed patterns only appear once there is enough data, and
+  each carries its sample size.
+
+Memories in other categories (`FACT`, `PEOPLE`, `PROJECT`, `GENERAL`) are
+retrieved per message by relevance. The model can go deeper with the
+`get_situation`, `get_personal_profile` and `get_completed_tasks` tools, and
+saves new routine/work-style facts with `save_memory`.
+
+**One memory across conversations.** Facts live in `ai_memories`; *what was
+discussed* lives in each conversation's rolling `summary` (topics, decisions,
+plans, open questions). It is refreshed every turn by the same model call that
+extracts memories (deterministic fallback offline). Every turn sees the most
+recent other conversations plus older ones relevant to the message, and can dig
+deeper with `search_conversations` / `get_conversation`
+(`app/services/conversation_memory.py`). Requires migration `e7a2c4f19b30`
+(`alembic upgrade head`).
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /api/assistant/situation` | Live situation snapshot |
+| `GET /api/assistant/profile` | Personal model (stated + observed) |
+| `GET /api/assistant/briefing?narrate=true` | Proactive briefing; with `narrate`, the active model writes a spoken version |
 
 ### Database Migrations (Alembic)
 

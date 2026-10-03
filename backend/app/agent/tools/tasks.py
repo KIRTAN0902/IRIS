@@ -266,3 +266,79 @@ class DeleteTaskTool(Tool):
             summary=f"Deleted task #{task_id} ('{title}').",
             audit_event={"action": "DELETE_TASK", "task_id": task_id, "title": title},
         )
+
+
+# --- 7. Bulk tools: one call for many tasks ---
+
+
+class BulkTaskIdsParams(BaseModel):
+    task_ids: list[int] = Field(
+        ...,
+        min_length=1,
+        max_length=100,
+        description="IDs of every task to act on (look them up with get_tasks first)",
+    )
+
+
+def _bulk_apply(task_ids: list[int], action) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    done: list[dict[str, Any]] = []
+    failed: list[dict[str, Any]] = []
+    for task_id in dict.fromkeys(task_ids):  # de-duplicate, keep order
+        try:
+            done.append(action(task_id))
+        except Exception as exc:  # noqa: BLE001 - report per task, keep going
+            failed.append({"task_id": task_id, "error": str(exc) or type(exc).__name__})
+    return done, failed
+
+
+def _bulk_result(name: str, verb: str, done: list[dict], failed: list[dict]) -> ToolResult:
+    summary = f"{verb} {len(done)} task{'s' if len(done) != 1 else ''}"
+    if done:
+        summary += ": " + ", ".join(f"#{d['task_id']} {d['title']}" for d in done[:8])
+        if len(done) > 8:
+            summary += f" and {len(done) - 8} more"
+    if failed:
+        summary += f" ({len(failed)} could not be {verb.lower()})"
+    return ToolResult(
+        tool_name=name,
+        success=bool(done),
+        data={"done": done, "failed": failed},
+        error="; ".join(f"#{f['task_id']}: {f['error']}" for f in failed) or None,
+        summary=summary + ".",
+    )
+
+
+class DeleteTasksTool(Tool):
+    name = "delete_tasks"
+    description = (
+        "Permanently delete several tasks in ONE call. Use this instead of repeated "
+        "delete_task calls whenever more than one task should go. Only when the user asked."
+    )
+    parameters_schema = BulkTaskIdsParams
+    is_destructive = True
+
+    async def run(self, db: Session, user: User, **kwargs: Any) -> ToolResult:
+        def delete(task_id: int) -> dict[str, Any]:
+            title = task_service.get_task(db, user.id, task_id).title
+            task_service.delete_task(db, user.id, task_id)
+            return {"task_id": task_id, "title": title}
+
+        done, failed = _bulk_apply(kwargs["task_ids"], delete)
+        return _bulk_result(self.name, "Deleted", done, failed)
+
+
+class CompleteTasksTool(Tool):
+    name = "complete_tasks"
+    description = (
+        "Mark several tasks as completed in ONE call. Use this instead of repeated "
+        "complete_task calls whenever more than one task is done."
+    )
+    parameters_schema = BulkTaskIdsParams
+
+    async def run(self, db: Session, user: User, **kwargs: Any) -> ToolResult:
+        def complete(task_id: int) -> dict[str, Any]:
+            task = task_service.complete_task(db, user.id, task_id, None)
+            return {"task_id": task.id, "title": task.title}
+
+        done, failed = _bulk_apply(kwargs["task_ids"], complete)
+        return _bulk_result(self.name, "Completed", done, failed)

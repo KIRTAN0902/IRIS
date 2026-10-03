@@ -17,6 +17,9 @@ class AIConversation(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     title: Mapped[str] = mapped_column(String(255), default="New conversation")
+    # Rolling summary shared with every other conversation (episodic memory).
+    summary: Mapped[str | None] = mapped_column(Text, default=None, nullable=True)
+    topics: Mapped[list[str] | None] = mapped_column(JSON, default=None, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=func.now(), server_default=func.now()
     )
@@ -31,6 +34,8 @@ class AIConversation(Base):
         cascade="all, delete-orphan",
         order_by="AIMessage.created_at",
     )
+    memories = relationship("AIMemory", back_populates="conversation")
+
 
 
 class AIMessage(Base):

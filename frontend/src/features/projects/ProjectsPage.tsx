@@ -22,8 +22,8 @@ export function ProjectsPage() {
       {/* Sub-Navigation Header */}
       <header className="flex flex-wrap items-center justify-between gap-4 border-b border-ops-line pb-4">
         <div className="flex items-baseline gap-3">
-          <h1 className="font-[family-name:var(--font-display)] text-[22px] font-bold tracking-wide text-ink">
-            PROJECTS & CONTEXTS
+          <h1 className="text-[30px] font-bold leading-tight tracking-[-0.02em] text-ink">
+            Projects
           </h1>
         </div>
 
@@ -32,7 +32,7 @@ export function ProjectsPage() {
           <button
             onClick={() => setTab("projects")}
             className={cn(
-              "flex items-center gap-2 px-3 py-1.5 text-[12px] font-medium tracking-wide transition-colors",
+              "flex items-center gap-2 px-3 py-1.5 text-[12px] font-medium transition-colors",
               currentTab === "projects"
                 ? "bg-ops-raised text-ink font-semibold border-b-2 border-caution"
                 : "text-ink-dim hover:text-ink hover:bg-ops-panel",
@@ -44,7 +44,7 @@ export function ProjectsPage() {
           <button
             onClick={() => setTab("goals")}
             className={cn(
-              "flex items-center gap-2 px-3 py-1.5 text-[12px] font-medium tracking-wide transition-colors",
+              "flex items-center gap-2 px-3 py-1.5 text-[12px] font-medium transition-colors",
               currentTab === "goals"
                 ? "bg-ops-raised text-ink font-semibold border-b-2 border-caution"
                 : "text-ink-dim hover:text-ink hover:bg-ops-panel",
@@ -56,7 +56,7 @@ export function ProjectsPage() {
           <button
             onClick={() => setTab("startup")}
             className={cn(
-              "flex items-center gap-2 px-3 py-1.5 text-[12px] font-medium tracking-wide transition-colors",
+              "flex items-center gap-2 px-3 py-1.5 text-[12px] font-medium transition-colors",
               currentTab === "startup"
                 ? "bg-ops-raised text-ink font-semibold border-b-2 border-caution"
                 : "text-ink-dim hover:text-ink hover:bg-ops-panel",
@@ -84,7 +84,7 @@ function ProjectsListView() {
         title="Active Project Containers"
         lamp={<Lamp tone="dim" />}
         actions={
-          <span className="font-[family-name:var(--font-telemetry)] text-[12px] text-ink-faint">
+          <span className=" text-[12px] text-ink-faint">
             {projects.data?.length ?? 0} registered
           </span>
         }
@@ -112,7 +112,7 @@ function ProjectsListView() {
                 <div className="min-w-0 flex-1">
                   <div className="flex items-baseline gap-2">
                     <p className="truncate text-[14px] font-medium text-ink">{p.name}</p>
-                    <span className="font-[family-name:var(--font-telemetry)] text-[10px] uppercase tracking-wider text-ink-faint border border-ops-line px-1">
+                    <span className=" text-[10px] text-ink-faint border border-ops-line px-1">
                       {p.area}
                     </span>
                   </div>
@@ -121,12 +121,12 @@ function ProjectsListView() {
                   )}
                 </div>
                 {p.deadline && (
-                  <span className="font-[family-name:var(--font-telemetry)] tnum text-[12px] text-caution">
+                  <span className=" tnum text-[12px] text-caution">
                     due {fmtDay(p.deadline)}
                   </span>
                 )}
                 {p.task_count != null && (
-                  <span className="font-[family-name:var(--font-telemetry)] tnum text-[12px] text-ink-faint">
+                  <span className=" tnum text-[12px] text-ink-faint">
                     {p.task_count} tasks
                   </span>
                 )}

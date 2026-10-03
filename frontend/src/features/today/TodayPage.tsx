@@ -40,7 +40,7 @@ export function TodayPage() {
     <div className="space-y-6">
       <header className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
         <div>
-          <h1 className="font-[family-name:var(--font-display)] text-[22px] font-semibold tracking-wide">
+          <h1 className="text-[30px] font-bold leading-tight tracking-[-0.02em] text-ink">
             Today
           </h1>
           <p className="text-[13px] text-ink-faint">
@@ -112,7 +112,7 @@ export function TodayPage() {
                 <span className="min-w-0 flex-1 text-[13px] font-medium text-ink">{o.title}</span>
                 {o.deadline && <span className="tnum text-[11px] text-critical">{o.deadline}</span>}
                 {o.area && (
-                  <span className="border border-ops-line px-1 text-[10px] uppercase tracking-wider text-ink-faint">
+                  <span className="border border-ops-line px-1 text-[10px] text-ink-faint">
                     {o.area}
                   </span>
                 )}

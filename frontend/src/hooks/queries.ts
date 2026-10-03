@@ -7,10 +7,12 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   aiApi,
   analyticsApi,
+  assistantApi,
   chatApi,
   focusApi,
   goalsApi,
   intelligenceApi,
+  memoriesApi,
   projectsApi,
   reviewsApi,
   scheduleApi,
@@ -19,6 +21,8 @@ import {
   usersApi,
   type TaskFilters,
 } from "@/api/endpoints";
+import type { AIMemoryIn, AIMemoryUpdate } from "@/types/api";
+
 import { qk } from "@/api/queryKeys";
 import { useFocusStore } from "@/stores";
 
@@ -250,6 +254,14 @@ export const useAskIRIS = () =>
       aiApi.ask(vars.question, vars.conversation_id ?? undefined),
   });
 
+export const useAIStatus = () =>
+  useQuery({
+    queryKey: qk.aiStatus(),
+    queryFn: aiApi.status,
+    staleTime: 30_000,
+    refetchInterval: 30_000,
+  });
+
 // --- Intelligence Today & Attention ---
 
 export const useTodayState = () =>
@@ -368,6 +380,7 @@ export const useSendMessage = () => {
       qc.invalidateQueries({ queryKey: ["intelligence-signals"] });
       qc.invalidateQueries({ queryKey: qk.startup() });
       qc.invalidateQueries({ queryKey: qk.recurringSchedules() });
+      qc.invalidateQueries({ queryKey: ["memories"] });
     },
   });
 };
@@ -381,4 +394,54 @@ export const useDeleteConversation = () => {
     },
   });
 };
+
+// --- Assistant awareness -----------------------------------------------------
+
+export const useBriefing = () =>
+  useQuery({
+    queryKey: qk.briefing(),
+    queryFn: () => assistantApi.briefing(false),
+    staleTime: 60_000,
+    refetchInterval: 5 * 60_000,
+  });
+
+// --- Memories & Context Layer ------------------------------------------------
+
+export const useMemories = (params?: { category?: string; search?: string; limit?: number }) =>
+  useQuery({
+    queryKey: qk.memories(params),
+    queryFn: () => memoriesApi.list(params),
+  });
+
+export const useCreateMemory = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: AIMemoryIn) => memoriesApi.create(payload),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["memories"] });
+    },
+  });
+};
+
+export const useUpdateMemory = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, patch }: { id: number; patch: AIMemoryUpdate }) =>
+      memoriesApi.update(id, patch),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["memories"] });
+    },
+  });
+};
+
+export const useDeleteMemory = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => memoriesApi.delete(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["memories"] });
+    },
+  });
+};
+
 

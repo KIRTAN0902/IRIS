@@ -55,7 +55,12 @@ export function humanDuration(minutes: number | null | undefined): string {
 /** Relative urgency label on the single vertical axis: top = now. */
 export function urgencyLabel(iso: string): { text: string; tone: "critical" | "caution" | "dim" } {
   const mins = minutesUntil(iso);
-  if (mins < 0) return { text: `overdue ${humanDuration(-mins)}`, tone: "critical" };
+  if (mins < 0) {
+    const days = Math.floor(-mins / (24 * 60));
+    if (days >= 2) return { text: `overdue ${days} days`, tone: "critical" };
+    if (days === 1) return { text: "overdue 1 day", tone: "critical" };
+    return { text: `overdue ${humanDuration(-mins)}`, tone: "critical" };
+  }
   if (mins <= 90) return { text: `due in ${mins}m`, tone: "critical" };
   if (mins <= 24 * 60) return { text: `due in ${humanDuration(mins)}`, tone: mins <= 3 * 60 ? "critical" : "caution" };
   return { text: `due ${fmtDateTime(iso)}`, tone: "dim" };
