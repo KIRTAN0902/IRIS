@@ -695,6 +695,8 @@ export interface ActionExecuted {
 
 export interface ChatMessageIn {
   content: string;
+  /** Spoken by voice: IRIS keeps the reply short enough to read aloud. */
+  voice?: boolean;
 }
 
 export interface AIMemoryUpdated {

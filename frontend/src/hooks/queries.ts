@@ -362,8 +362,8 @@ export const useCreateConversation = () => {
 export const useSendMessage = () => {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ conversationId, content }: { conversationId: number; content: string }) =>
-      chatApi.sendMessage(conversationId, { content }),
+    mutationFn: ({ conversationId, content, voice }: { conversationId: number; content: string; voice?: boolean }) =>
+      chatApi.sendMessage(conversationId, { content, voice }),
     onSuccess: (_data, variables) => {
       qc.invalidateQueries({ queryKey: qk.chatConversation(variables.conversationId) });
       qc.invalidateQueries({ queryKey: qk.chatConversations() });

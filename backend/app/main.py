@@ -75,6 +75,7 @@ def create_app() -> FastAPI:
         startup,
         tasks,
         users,
+        voice,
     )
 
     api = settings.api_prefix
@@ -92,6 +93,7 @@ def create_app() -> FastAPI:
     app.include_router(intelligence.router, prefix=api)
     app.include_router(chat.router, prefix=api)
     app.include_router(assistant.router, prefix=api)
+    app.include_router(voice.router, prefix=api)
 
     return app
 

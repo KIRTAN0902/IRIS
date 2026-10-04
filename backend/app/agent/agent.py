@@ -28,6 +28,17 @@ from app.models.user import User
 from app.services import conversation_memory
 from app.services.memory_service import memory_service
 
+# Appended to the system prompt when the user is talking, not typing.
+_VOICE_MODE = """
+
+# VOICE CONVERSATION
+The user is speaking to you and will HEAR your reply through text-to-speech.
+- Answer in 1-3 short, natural spoken sentences. No markdown, lists, tables, emoji or links.
+- Reply in the language mix the user spoke (English, Hindi, Gujarati, or a mix such as Hinglish).
+- Say dates and times the way people say them aloud, e.g. "Monday at 6 pm".
+- Still use your tools to do the work; only the spoken summary is short.
+- The transcript may contain recognition mistakes. If a name, date or number looks wrong, ask briefly."""
+
 
 class IrisAgent:
     """Conversational personal assistant & action layer for IRIS."""
@@ -42,6 +53,7 @@ class IrisAgent:
         user: User,
         user_message: str,
         conversation_id: int | None = None,
+        voice: bool = False,
     ) -> tuple[ChatMessageOut, AIConversation]:
         """Execute a single conversational turn with IRIS."""
         # 1. Resolve or create conversation
@@ -98,7 +110,8 @@ class IrisAgent:
                         personal_model=render_personal_model(personal_model, detail),
                         situation=render_situation(situation, detail),
                         shared=conversation_memory.render_conversations(recent, related),
-                    ),
+                    )
+                    + (_VOICE_MODE if voice else ""),
                     history=history,
                     user_message=user_message,
                 )

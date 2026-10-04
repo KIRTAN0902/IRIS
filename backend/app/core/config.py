@@ -66,6 +66,19 @@ class Settings(BaseSettings):
     # JSON of extra HTTP headers, e.g. {"HTTP-Referer": "https://iris.local"}.
     ai_extra_headers: str | None = None
 
+    # --- Voice (speech-to-text and text-to-speech) ---
+    # gemini | openai_compatible (any /audio/transcriptions + /audio/speech API,
+    # e.g. Groq or OpenAI) | none. Gemini reuses GEMINI_API_KEY.
+    ai_stt_provider: str = "gemini"
+    ai_stt_model: str = "gemini-3.5-transcribe"
+    ai_tts_provider: str = "gemini"
+    ai_tts_model: str = "gemini-3.8-flash-lite-tts"
+    ai_tts_voice: str = "Kore"
+    # For openai_compatible voice providers (or to override the Gemini key).
+    ai_voice_base_url: str | None = None
+    ai_voice_api_key: str | None = None
+    ai_voice_timeout_seconds: float = 30.0
+
     # Legacy per-vendor settings (used when the AI_* equivalents are unset).
     # NVIDIA NIM (OpenAI-compatible API)
     nvidia_base_url: str = "https://integrate.api.nvidia.com/v1"

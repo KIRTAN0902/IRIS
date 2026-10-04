@@ -40,14 +40,26 @@ function buildUrl(path: string, query?: Record<string, QueryValue>): string {
 async function request<T>(
   method: "GET" | "POST" | "PATCH" | "PUT" | "DELETE",
   path: string,
-  opts: { query?: Record<string, QueryValue>; body?: unknown } = {},
+  opts: {
+    query?: Record<string, QueryValue>;
+    body?: unknown;
+    /** Send this Blob as-is (e.g. recorded audio) instead of a JSON body. */
+    blob?: Blob;
+    /** Return the response body as a Blob (e.g. audio) instead of JSON. */
+    asBlob?: boolean;
+  } = {},
 ): Promise<T> {
   let response: Response;
   try {
+    const json = opts.body !== undefined;
     response = await fetch(buildUrl(path, opts.query), {
       method,
-      headers: opts.body !== undefined ? { "Content-Type": "application/json" } : undefined,
-      body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
+      headers: opts.blob
+        ? { "Content-Type": opts.blob.type || "application/octet-stream" }
+        : json
+          ? { "Content-Type": "application/json" }
+          : undefined,
+      body: opts.blob ?? (json ? JSON.stringify(opts.body) : undefined),
     });
   } catch {
     // Network-level failure (backend down, DNS, CORS).
@@ -55,6 +67,7 @@ async function request<T>(
   }
 
   if (response.status === 204) return undefined as T;
+  if (opts.asBlob && response.ok) return (await response.blob()) as T;
 
   let data: unknown = null;
   try {
@@ -81,4 +94,8 @@ export const api = {
     request<T>("POST", path, { body, query }),
   patch: <T>(path: string, body?: unknown) => request<T>("PATCH", path, { body }),
   delete: <T>(path: string) => request<T>("DELETE", path),
+  /** POST a raw Blob (e.g. audio) and parse the JSON reply. */
+  postBlob: <T>(path: string, blob: Blob) => request<T>("POST", path, { blob }),
+  /** POST JSON and receive a Blob (e.g. audio). */
+  postForBlob: (path: string, body: unknown) => request<Blob>("POST", path, { body, asBlob: true }),
 };

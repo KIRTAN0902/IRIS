@@ -73,6 +73,7 @@ class ChatMessageIn(BaseModel):
     """User input payload for a chat message."""
 
     content: str = Field(..., min_length=1, max_length=4000, description="User's input")
+    voice: bool = Field(False, description="Spoken by voice; the reply will be read aloud")
 
 
 class ChatMessageOut(BaseModel):

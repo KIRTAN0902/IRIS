@@ -266,6 +266,19 @@ export const chatApi = {
     api.delete<void>(`/chat/conversations/${conversationId}`),
 };
 
+// --- Voice ---------------------------------------------------------------------
+
+export interface VoiceStatus {
+  stt: { enabled: boolean; provider: string | null; model: string | null };
+  tts: { enabled: boolean; provider: string | null; model: string | null };
+}
+
+export const voiceApi = {
+  status: () => api.get<VoiceStatus>("/voice/status"),
+  transcribe: (audio: Blob) => api.postBlob<{ text: string }>("/voice/transcribe", audio),
+  speak: (text: string) => api.postForBlob("/voice/speak", { text }),
+};
+
 // --- Memories & Context Layer ------------------------------------------------
 
 export const memoriesApi = {

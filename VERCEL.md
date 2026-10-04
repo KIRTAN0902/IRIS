@@ -42,7 +42,8 @@ In your **Vercel Project Settings → Environment Variables**, configure:
 | `AI_PROVIDER` | `nvidia` *(or any preset: `openai`, `openrouter`, `groq`, `gemini`, ...)* | Which backend serves the model |
 | `AI_MODEL` | `nvidia/nemotron-3-ultra-550b-a55b` | Any model id; switching models is config-only |
 | `AI_API_KEY` | `[YOUR_API_KEY]` | Key for that provider (NVIDIA: build.nvidia.com) |
-| `GEMINI_API_KEY` | `[OPTIONAL_GEMINI_KEY]` | Fallback Gemini API Key |
+| `GEMINI_API_KEY` | `[YOUR_GEMINI_KEY]` | Voice conversations: speech recognition and spoken replies (aistudio.google.com/apikey) |
+| `AI_STT_MODEL` / `AI_TTS_MODEL` / `AI_TTS_VOICE` | *(optional)* | Defaults: `gemini-3.5-transcribe`, `gemini-3.8-flash-lite-tts`, `Kore` |
 
 ---
 

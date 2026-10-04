@@ -108,6 +108,7 @@ async def send_message(
         user=user,
         user_message=payload.content,
         conversation_id=conversation_id,
+        voice=payload.voice,
     )
     return msg_out
 

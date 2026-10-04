@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { ArrowUp, Play } from "lucide-react";
+import { ArrowUp, Mic, Play, X } from "lucide-react";
 import {
   useCompleteTask,
   useConversation,
@@ -13,6 +13,7 @@ import { Skeleton } from "@/components/ui/Overlay";
 import { cn, fmtTime, humanDuration, urgencyLabel } from "@/lib/format";
 import type { RankedTasksResponse } from "@/api/endpoints";
 import type { ChatMessageOut, TaskOut } from "@/types/api";
+import { useVoiceConversation, type VoicePhase } from "@/features/home/voice";
 
 /**
  * HOME: a new chat by default, showing only "IRIS" and the composer (like
@@ -50,6 +51,11 @@ function Conversation({
   // The conversation this component just created from a new chat: switching to
   // it must not reset the in-flight reply.
   const createdRef = useRef<number | null>(null);
+  // The conversation to send to, kept current for the voice loop's async turns.
+  const idRef = useRef(conversationId);
+  useEffect(() => {
+    idRef.current = conversationId;
+  }, [conversationId]);
 
   const messages = conv.data?.messages ?? [];
 
@@ -65,26 +71,55 @@ function Conversation({
     if (messages.length || sendMsg.isPending) endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages.length, sendMsg.isPending]);
 
-  const send = async (text?: string) => {
+  /** Send a message (creating the conversation first if needed); resolves with IRIS's reply. */
+  const send = async (text?: string, voice = false): Promise<ChatMessageOut | null> => {
     const content = (text ?? input).trim();
-    if (!content || sendMsg.isPending) return;
-    let id = conversationId;
+    if (!content || sendMsg.isPending) return null;
+    let id = idRef.current;
     if (!id) {
       try {
         id = (await createConv.mutateAsync(content.slice(0, 60))).id;
         createdRef.current = id;
+        idRef.current = id;
         onCreated(id);
       } catch {
-        return;
+        return null;
       }
     }
     setLastSent(content);
     setInput("");
-    sendMsg.mutate({ conversationId: id, content });
+    try {
+      return await sendMsg.mutateAsync({ conversationId: id, content, voice });
+    } catch {
+      return null;
+    }
   };
+
+  const voice = useVoiceConversation(async (text) => (await send(text, true))?.content ?? null);
+  const talking = voice.phase !== "off";
 
   const busy = sendMsg.isPending || createConv.isPending;
   const isNewChat = !conversationId && !busy;
+
+  const composer = talking ? (
+    <VoicePanel phase={voice.phase} heard={voice.heard} notice={voice.notice} onTap={voice.tap} onEnd={voice.end} />
+  ) : (
+    <>
+      <Composer
+        value={input}
+        onChange={setInput}
+        onSend={() => send()}
+        onVoice={voice.start}
+        disabled={busy}
+        autoFocus={isNewChat}
+      />
+      {voice.notice && (
+        <p className="mt-2 px-4 text-center text-[13px] text-ink-faint" role="status">
+          {voice.notice}
+        </p>
+      )}
+    </>
+  );
 
   if (isNewChat) {
     return (
@@ -92,9 +127,7 @@ function Conversation({
         <h1 className="neon select-none text-[44px] font-semibold tracking-[0.22em] text-ink sm:text-[56px]">
           IRIS
         </h1>
-        <div className="mt-10 w-full">
-          <Composer value={input} onChange={setInput} onSend={() => send()} disabled={busy} autoFocus />
-        </div>
+        <div className="mt-10 w-full">{composer}</div>
       </div>
     );
   }
@@ -134,7 +167,7 @@ function Conversation({
       </div>
 
       <div className="sticky bottom-14 md:bottom-0 bg-gradient-to-t from-ops-ground from-75% to-transparent pb-4 pt-6">
-        <Composer value={input} onChange={setInput} onSend={() => send()} disabled={busy} />
+        {composer}
       </div>
     </div>
   );
@@ -144,12 +177,14 @@ function Composer({
   value,
   onChange,
   onSend,
+  onVoice,
   disabled,
   autoFocus,
 }: {
   value: string;
   onChange: (v: string) => void;
   onSend: () => void;
+  onVoice: () => void;
   disabled: boolean;
   autoFocus?: boolean;
 }) {
@@ -188,6 +223,16 @@ function Composer({
         className="min-h-[28px] max-h-52 flex-1 resize-none bg-transparent py-1 text-[15px] leading-relaxed text-ink placeholder:text-ink-faint focus:outline-none"
       />
       <button
+        type="button"
+        onClick={onVoice}
+        disabled={disabled}
+        aria-label="Talk to IRIS"
+        title="Talk to IRIS"
+        className="mb-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-ink-dim transition-colors hover:bg-ops-raised hover:text-ink disabled:opacity-40 cursor-pointer"
+      >
+        <Mic size={17} strokeWidth={2} />
+      </button>
+      <button
         type="submit"
         disabled={!ready}
         aria-label="Send"
@@ -199,6 +244,65 @@ function Composer({
         <ArrowUp size={16} strokeWidth={2.5} />
       </button>
     </form>
+  );
+}
+
+const PHASE_LABEL: Record<VoicePhase, string> = {
+  off: "",
+  starting: "Starting…",
+  listening: "Listening… tap when you're done",
+  transcribing: "Got it…",
+  thinking: "Thinking…",
+  speaking: "Speaking… tap to interrupt",
+};
+
+/** Shown in place of the composer during a voice conversation. */
+function VoicePanel({
+  phase,
+  heard,
+  notice,
+  onTap,
+  onEnd,
+}: {
+  phase: VoicePhase;
+  heard: string;
+  notice: string | null;
+  onTap: () => void;
+  onEnd: () => void;
+}) {
+  const live = phase === "listening" || phase === "speaking";
+  return (
+    <div className="relative flex flex-col items-center rounded-3xl border border-ops-line-bright bg-ops-void px-4 pb-4 pt-5">
+      <button
+        onClick={onEnd}
+        aria-label="End voice conversation"
+        title="End"
+        className="absolute right-3 top-3 rounded-full p-1.5 text-ink-faint hover:bg-ops-raised hover:text-ink cursor-pointer"
+      >
+        <X size={16} />
+      </button>
+      <button
+        onClick={onTap}
+        aria-label={phase === "speaking" ? "Interrupt IRIS" : "Done speaking"}
+        className="relative flex h-16 w-16 items-center justify-center rounded-full cursor-pointer"
+      >
+        {live && <span className="absolute inset-0 rounded-full bg-ink/20 animate-ping" aria-hidden />}
+        <span
+          className={cn(
+            "relative flex h-14 w-14 items-center justify-center rounded-full transition-colors",
+            phase === "speaking" ? "bg-ink text-ops-ground" : "bg-ops-raised text-ink",
+            (phase === "thinking" || phase === "transcribing" || phase === "starting") && "animate-pulse",
+          )}
+        >
+          <Mic size={22} strokeWidth={2} />
+        </span>
+      </button>
+      <p className="mt-3 text-[14px] text-ink" role="status">
+        {PHASE_LABEL[phase]}
+      </p>
+      {heard && <p className="mt-1 line-clamp-2 max-w-full text-center text-[13px] italic text-ink-faint">“{heard}”</p>}
+      {notice && <p className="mt-2 text-center text-[12px] text-caution">{notice}</p>}
+    </div>
   );
 }
 
