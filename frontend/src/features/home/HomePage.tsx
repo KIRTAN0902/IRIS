@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useSearchParams } from "react-router-dom";
 import { ArrowUp, Mic, Play, X } from "lucide-react";
 import {
@@ -14,6 +15,7 @@ import { cn, fmtTime, humanDuration, urgencyLabel } from "@/lib/format";
 import type { RankedTasksResponse } from "@/api/endpoints";
 import type { ChatMessageOut, TaskOut } from "@/types/api";
 import { useVoiceConversation, type VoicePhase } from "@/features/home/voice";
+import { IrisSphere } from "@/features/home/IrisSphere";
 
 /**
  * HOME: a new chat by default, showing only "IRIS" and the composer (like
@@ -101,9 +103,7 @@ function Conversation({
   const busy = sendMsg.isPending || createConv.isPending;
   const isNewChat = !conversationId && !busy;
 
-  const composer = talking ? (
-    <VoicePanel phase={voice.phase} heard={voice.heard} notice={voice.notice} onTap={voice.tap} onEnd={voice.end} />
-  ) : (
+  const composer = (
     <>
       <Composer
         value={input}
@@ -113,11 +113,12 @@ function Conversation({
         disabled={busy}
         autoFocus={isNewChat}
       />
-      {voice.notice && (
+      {voice.notice && !talking && (
         <p className="mt-2 px-4 text-center text-[13px] text-ink-faint" role="status">
           {voice.notice}
         </p>
       )}
+      {talking && <VoiceOverlay voice={voice} />}
     </>
   );
 
@@ -249,60 +250,87 @@ function Composer({
 
 const PHASE_LABEL: Record<VoicePhase, string> = {
   off: "",
-  starting: "Starting…",
-  listening: "Listening… tap when you're done",
-  transcribing: "Got it…",
-  thinking: "Thinking…",
-  speaking: "Speaking… tap to interrupt",
+  starting: "Starting",
+  listening: "Listening",
+  transcribing: "Got it",
+  thinking: "Thinking",
+  speaking: "Speaking",
 };
 
-/** Shown in place of the composer during a voice conversation. */
-function VoicePanel({
-  phase,
-  heard,
-  notice,
-  onTap,
-  onEnd,
-}: {
-  phase: VoicePhase;
-  heard: string;
-  notice: string | null;
-  onTap: () => void;
-  onEnd: () => void;
-}) {
-  const live = phase === "listening" || phase === "speaking";
-  return (
-    <div className="relative flex flex-col items-center rounded-3xl border border-ops-line-bright bg-ops-void px-4 pb-4 pt-5">
-      <button
-        onClick={onEnd}
-        aria-label="End voice conversation"
-        title="End"
-        className="absolute right-3 top-3 rounded-full p-1.5 text-ink-faint hover:bg-ops-raised hover:text-ink cursor-pointer"
-      >
-        <X size={16} />
-      </button>
-      <button
-        onClick={onTap}
-        aria-label={phase === "speaking" ? "Interrupt IRIS" : "Done speaking"}
-        className="relative flex h-16 w-16 items-center justify-center rounded-full cursor-pointer"
-      >
-        {live && <span className="absolute inset-0 rounded-full bg-ink/20 animate-ping" aria-hidden />}
-        <span
+const PHASE_HINT: Partial<Record<VoicePhase, string>> = {
+  listening: "Tap the sphere when you're done",
+  speaking: "Tap to interrupt",
+};
+
+/** Full-screen voice mode: the IRIS sphere, live captions and an end button. */
+function VoiceOverlay({ voice }: { voice: ReturnType<typeof useVoiceConversation> }) {
+  const sphereSize = () => Math.round(Math.min(window.innerWidth * 0.8, window.innerHeight * 0.45, 380));
+  const [size, setSize] = useState(sphereSize);
+
+  useEffect(() => {
+    const onResize = () => setSize(sphereSize());
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && voice.end();
+    window.addEventListener("resize", onResize);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("resize", onResize);
+      window.removeEventListener("keydown", onKey);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const caption = voice.phase === "speaking" ? voice.said : voice.heard;
+  // Portaled to <body>: the composer's sticky container would trap it under the app bars.
+  return createPortal(
+    <div
+      role="dialog"
+      aria-label="Voice conversation with IRIS"
+      className="fixed inset-0 z-50 flex flex-col items-center bg-black px-6"
+      style={{ paddingTop: "max(16px, env(safe-area-inset-top))", paddingBottom: "max(24px, env(safe-area-inset-bottom))" }}
+    >
+      <div className="flex w-full max-w-[720px] items-center justify-between">
+        <span className="neon select-none text-[14px] font-semibold tracking-[0.35em] text-ink">IRIS</span>
+        <button
+          onClick={voice.end}
+          aria-label="End voice conversation"
+          title="End"
+          className="rounded-full p-2 text-ink-faint hover:bg-ops-raised hover:text-ink cursor-pointer"
+        >
+          <X size={20} />
+        </button>
+      </div>
+
+      <div className="flex w-full flex-1 flex-col items-center justify-center">
+        <button
+          onClick={voice.tap}
+          aria-label={voice.phase === "speaking" ? "Interrupt IRIS" : "Done speaking"}
+          className="rounded-full cursor-pointer"
+        >
+          <IrisSphere phase={voice.phase} level={voice.level} size={size} />
+        </button>
+        <p className="mt-6 text-[12px] uppercase tracking-[0.3em] text-ink-dim" role="status">
+          {PHASE_LABEL[voice.phase]}
+        </p>
+        <p className="mt-1 h-4 text-[12px] text-ink-faint">{PHASE_HINT[voice.phase] ?? ""}</p>
+        <p
           className={cn(
-            "relative flex h-14 w-14 items-center justify-center rounded-full transition-colors",
-            phase === "speaking" ? "bg-ink text-ops-ground" : "bg-ops-raised text-ink",
-            (phase === "thinking" || phase === "transcribing" || phase === "starting") && "animate-pulse",
+            "mt-5 min-h-[3.5em] max-w-[560px] text-center text-[17px] leading-relaxed line-clamp-4",
+            voice.phase === "speaking" ? "text-ink" : "italic text-ink-dim",
           )}
         >
-          <Mic size={22} strokeWidth={2} />
-        </span>
+          {caption && (voice.phase === "speaking" ? caption : `“${caption}”`)}
+        </p>
+        {voice.notice && <p className="mt-3 max-w-[480px] text-center text-[13px] text-caution">{voice.notice}</p>}
+      </div>
+
+      <button
+        onClick={voice.end}
+        className="rounded-full border border-ops-line-bright px-6 py-2.5 text-[14px] text-ink hover:bg-ops-raised cursor-pointer"
+      >
+        End conversation
       </button>
-      <p className="mt-3 text-[14px] text-ink" role="status">
-        {PHASE_LABEL[phase]}
-      </p>
-      {heard && <p className="mt-1 line-clamp-2 max-w-full text-center text-[13px] italic text-ink-faint">“{heard}”</p>}
-      {notice && <p className="mt-2 text-center text-[12px] text-caution">{notice}</p>}
-    </div>
+    </div>,
+    document.body,
   );
 }
 

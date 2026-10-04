@@ -44,6 +44,8 @@ interface Session {
   ctx: AudioContext | null;
   analyser: AnalyserNode | null;
   stream: MediaStream | null;
+  /** Latest microphone loudness (RMS) while recording. */
+  level: number;
   /** Finish the current recording now (the user tapped "done"). */
   finish?: () => void;
   /** Cut off the reply being spoken. */
@@ -54,6 +56,8 @@ export function useVoiceConversation(onUtterance: (text: string) => Promise<stri
   const [phase, setPhase] = useState<VoicePhase>("off");
   const [heard, setHeard] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
+  /** What IRIS is saying right now (shown as a caption). */
+  const [said, setSaid] = useState("");
   const session = useRef<Session | null>(null);
   const onUtteranceRef = useRef(onUtterance);
   onUtteranceRef.current = onUtterance;
@@ -91,6 +95,7 @@ export function useVoiceConversation(onUtterance: (text: string) => Promise<stri
       rec.ondataavailable = (e) => e.data.size && chunks.push(e.data);
       rec.onstop = () => {
         clearInterval(timer);
+        s.level = 0;
         s.finish = undefined;
         resolve(spoke && chunks.length ? new Blob(chunks, { type: rec.mimeType || mimeType || "audio/webm" }) : null);
       };
@@ -108,6 +113,7 @@ export function useVoiceConversation(onUtterance: (text: string) => Promise<stri
         let sum = 0;
         for (const v of samples) sum += v * v;
         const rms = Math.sqrt(sum / samples.length);
+        s.level = rms;
         const now = performance.now();
         if (now - started < 250) {
           floor = Math.min(Math.max(floor, rms), 0.05); // first guess at the room
@@ -240,6 +246,7 @@ export function useVoiceConversation(onUtterance: (text: string) => Promise<stri
       while (s.active) {
         setPhase("listening");
         setHeard("");
+        setSaid("");
         const text = await listen(s);
         if (!s.active) break;
         if (text === null) {
@@ -264,8 +271,10 @@ export function useVoiceConversation(onUtterance: (text: string) => Promise<stri
           break;
         }
         setNotice(null);
+        const spoken = toSpeech(reply);
+        setSaid(spoken);
         setPhase("speaking");
-        await speak(s, toSpeech(reply));
+        await speak(s, spoken);
       }
     } catch {
       setNotice("Voice stopped working. Tap the mic to try again.");
@@ -292,6 +301,7 @@ export function useVoiceConversation(onUtterance: (text: string) => Promise<stri
       ctx,
       analyser: null,
       stream: null,
+      level: 0,
     };
     session.current = s;
     setNotice(null);
@@ -335,7 +345,10 @@ export function useVoiceConversation(onUtterance: (text: string) => Promise<stri
     else s.finish?.();
   }, []);
 
-  return { phase, heard, notice, start, end, tap, dismissNotice: () => setNotice(null) };
+  /** Mic loudness for visuals, 0..1. */
+  const level = useCallback(() => Math.min(1, Math.max(0, ((session.current?.level ?? 0) - 0.01) * 7)), []);
+
+  return { phase, heard, said, notice, level, start, end, tap, dismissNotice: () => setNotice(null) };
 }
 
 /** Plain, speakable text: no markdown, and short enough to read aloud. */
