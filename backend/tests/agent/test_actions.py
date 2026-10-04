@@ -207,3 +207,27 @@ async def test_update_profile_writes_canonical_validated_times(db, user):
 
     bad = await run(db, user, "update_profile", facts={"sleep_time": "late-ish"})
     assert not bad.success and "HH:MM" in bad.error
+
+
+@pytest.mark.asyncio
+async def test_model_times_are_local_and_stored_as_utc(db, user):
+    """The model speaks the user's local time; the database stores naive UTC."""
+    user.timezone = "Asia/Kolkata"
+    db.commit()
+
+    res = await run(db, user, "create_task", title="College meeting", area="COLLEGE", deadline="2026-10-05T10:00:00")
+    assert res.success, res.error
+    task = db.get(Task, res.data["task_id"])
+    assert task.deadline.isoformat() == "2026-10-05T04:30:00"  # 10:00 IST
+    assert res.data["deadline"] == "2026-10-05T10:00+05:30"  # shown back in local time
+    assert "Mon 05 Oct 10:00" in res.summary
+
+    # An explicit offset is honoured, and echoing back the local time is stable.
+    res = await run(db, user, "update_task", task_id=task.id, deadline="2026-10-05T18:00:00+05:30")
+    assert res.success, res.error
+    db.refresh(task)
+    assert task.deadline.isoformat() == "2026-10-05T12:30:00"
+
+    listed = await run(db, user, "get_tasks")
+    row = next(t for t in listed.data["tasks"] if t["id"] == task.id)
+    assert row["deadline"] == "2026-10-05T18:00+05:30"

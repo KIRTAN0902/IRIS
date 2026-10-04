@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import re
 from abc import ABC, abstractmethod
+from datetime import UTC, datetime
 from typing import Any, TypeVar
 
 from pydantic import BaseModel, ValidationError
@@ -12,8 +14,43 @@ from app.agent.schemas import ToolResult
 from app.ai.provider import ToolDefinition
 from app.ai.structured import compact_schema
 from app.models.user import User
+from app.utils.datetime import from_local, to_local
 
 TParams = TypeVar("TParams", bound=BaseModel)
+
+# The model works in the user's local time (that is the clock it is shown), while
+# the database stores naive UTC. Tools convert at this boundary in both directions.
+_NAIVE_ISO = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?$")
+
+
+def times_to_utc(value: Any, tz_name: str) -> Any:
+    """Model input -> storage: naive times are the user's local time; aware ones are exact."""
+    if isinstance(value, datetime):
+        if value.tzinfo is None:
+            return from_local(value, tz_name)
+        return value.astimezone(UTC).replace(tzinfo=None)
+    if isinstance(value, dict):
+        return {k: times_to_utc(v, tz_name) for k, v in value.items()}
+    if isinstance(value, list):
+        return [times_to_utc(v, tz_name) for v in value]
+    return value
+
+
+def times_to_local(value: Any, tz_name: str) -> Any:
+    """Storage -> model output: stored naive-UTC times become local times with an offset."""
+    if isinstance(value, datetime):
+        value = value if value.tzinfo is None else value.astimezone(UTC).replace(tzinfo=None)
+        return to_local(value, tz_name).isoformat(timespec="minutes")
+    if isinstance(value, str) and _NAIVE_ISO.match(value):
+        try:
+            return to_local(datetime.fromisoformat(value), tz_name).isoformat(timespec="minutes")
+        except ValueError:
+            return value
+    if isinstance(value, dict):
+        return {k: times_to_local(v, tz_name) for k, v in value.items()}
+    if isinstance(value, list):
+        return [times_to_local(v, tz_name) for v in value]
+    return value
 
 
 class Tool(ABC):
@@ -43,7 +80,7 @@ class Tool(ABC):
         if self.parameters_schema is not None:
             try:
                 model_instance = self.parameters_schema.model_validate(raw_params)
-                validated_params = model_instance.model_dump(exclude_unset=True)
+                validated_params = times_to_utc(model_instance.model_dump(exclude_unset=True), user.timezone)
             except ValidationError as err:
                 return ToolResult(
                     tool_name=self.name,
@@ -53,7 +90,7 @@ class Tool(ABC):
                 )
 
         try:
-            return await self.run(db, user, **validated_params)
+            result = await self.run(db, user, **validated_params)
         except Exception as exc:
             return ToolResult(
                 tool_name=self.name,
@@ -61,6 +98,8 @@ class Tool(ABC):
                 error=f"Tool execution failed: {type(exc).__name__}: {exc}",
                 summary=f"Encountered an error executing {self.name}.",
             )
+        result.data = times_to_local(result.data, user.timezone)
+        return result
 
     def to_spec(self) -> dict[str, Any]:
         """Export tool definition for LLM system prompt context."""

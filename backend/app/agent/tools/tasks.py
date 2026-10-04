@@ -8,6 +8,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
+from app.utils.datetime import to_local
 from app.agent.schemas import ToolResult
 from app.agent.tools.base import Tool
 from app.models.enums import EnergyLevel, LifeArea, TaskPriority, TaskStatus
@@ -151,7 +152,7 @@ class CreateTaskTool(Tool):
         task = task_service.create_task(db, user.id, task_in)
         summary = f"Created task #{task.id}: '{task.title}' ({task.area})"
         if task.deadline:
-            summary += f" due {task.deadline.strftime('%Y-%m-%d %H:%M')}"
+            summary += f" due {to_local(task.deadline, user.timezone).strftime('%a %d %b %H:%M')}"
         return ToolResult(
             tool_name=self.name,
             success=True,

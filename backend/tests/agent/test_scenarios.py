@@ -202,7 +202,10 @@ async def test_scenario_4_move_schedule_block(db: Session, scenario_user: User, 
 
     assert out.actions_taken[0]["success"] is True
     db.refresh(old_block)
-    assert old_block.start_time.hour == 18
+    # The model's 18:00 is the user's local time; storage is naive UTC.
+    from app.utils.datetime import to_local
+
+    assert to_local(old_block.start_time, scenario_user.timezone).hour == 18
 
 
 @pytest.mark.asyncio

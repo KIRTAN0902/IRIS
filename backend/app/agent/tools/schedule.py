@@ -8,6 +8,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
+from app.utils.datetime import to_local
 from app.agent.schemas import ToolResult
 from app.agent.tools.base import Tool
 from app.models.enums import TimeBlockStatus, TimeBlockType
@@ -100,8 +101,8 @@ class CreateTimeBlockTool(Tool):
     async def run(self, db: Session, user: User, **kwargs: Any) -> ToolResult:
         block_in = TimeBlockCreate(**kwargs)
         block = schedule_service.create_time_block(db, user.id, block_in)
-        st_str = block.start_time.strftime("%H:%M")
-        et_str = block.end_time.strftime("%H:%M")
+        st_str = to_local(block.start_time, user.timezone).strftime("%H:%M")
+        et_str = to_local(block.end_time, user.timezone).strftime("%H:%M")
         summary = f"Scheduled {block.duration_minutes}m {block.type} block ({st_str}–{et_str})"
         if block.task_id:
             summary += f" for task #{block.task_id}"
