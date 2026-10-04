@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError } from "@/api/client";
-import { voiceApi } from "@/api/endpoints";
+import { voiceApi, type VoiceStatus } from "@/api/endpoints";
 
 /**
  * Hands-free voice conversation: listen → transcribe → ask IRIS → speak → listen.
@@ -15,12 +15,14 @@ export type VoicePhase = "off" | "starting" | "listening" | "transcribing" | "th
 /** The phone's fallback recognizer: Hindi also picks up English words. */
 const FALLBACK_LANG = "hi-IN";
 /** A pause this long ends what the user is saying. */
-const SILENCE_MS = 1300;
+const SILENCE_MS = 1000;
 /** Stop listening if nothing is said for this long. */
 const NO_SPEECH_MS = 9000;
-const MAX_UTTERANCE_MS = 45_000;
+const MAX_UTTERANCE_MS = 30_000;
 /** After a provider rate limit, use the phone's voice for this long. */
 const TTS_COOLDOWN_MS = 60_000;
+/** Don't wait longer than this for the voice model; the phone's voice is instant. */
+const TTS_WAIT_MS = 7000;
 
 const RECORDING_TYPES = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg;codecs=opus"];
 
@@ -80,7 +82,8 @@ export function useVoiceConversation(onUtterance: (text: string) => Promise<stri
       const chunks: Blob[] = [];
       const samples = new Float32Array(s.analyser!.fftSize);
       const started = performance.now();
-      let floor = 0.01;
+      let floor = 0.01; // the room's background level, tracked continuously
+      let voiceLevel = 0; // how loud the user speaks
       let loudFrames = 0;
       let spoke = false;
       let lastVoice = started;
@@ -97,8 +100,9 @@ export function useVoiceConversation(onUtterance: (text: string) => Promise<stri
         stop();
       };
 
-      // Voice activity: louder than the room for a few frames = speech; a long
-      // enough quiet stretch after that = the end of what they said.
+      // Voice activity: clearly louder than the room for a few frames = speech.
+      // After that, quiet relative to the user's own voice (not an absolute level,
+      // which a fan or traffic can stay above) for SILENCE_MS = they're done.
       const timer = setInterval(() => {
         s.analyser!.getFloatTimeDomainData(samples);
         let sum = 0;
@@ -106,14 +110,18 @@ export function useVoiceConversation(onUtterance: (text: string) => Promise<stri
         const rms = Math.sqrt(sum / samples.length);
         const now = performance.now();
         if (now - started < 250) {
-          floor = Math.min(Math.max(floor, rms), 0.05); // calibrate to the room
+          floor = Math.min(Math.max(floor, rms), 0.05); // first guess at the room
           return;
         }
-        if (rms > Math.max(0.02, floor * 2.2)) {
+        const speechThreshold = Math.max(0.015, floor * 2.5);
+        const silenceThreshold = spoke ? Math.max(floor * 1.6, voiceLevel * 0.3) : speechThreshold;
+        if (rms > (spoke ? silenceThreshold : speechThreshold)) {
           lastVoice = now;
+          voiceLevel = voiceLevel ? voiceLevel * 0.9 + rms * 0.1 : rms;
           if (++loudFrames >= 3) spoke = true;
-        } else if (!spoke) {
-          loudFrames = 0;
+        } else {
+          if (!spoke) loudFrames = 0;
+          floor = floor * 0.97 + rms * 0.03; // follow the room when nobody is talking
         }
         if (spoke && now - lastVoice > SILENCE_MS) stop();
         else if (!spoke && now - started > NO_SPEECH_MS) stop();
@@ -210,7 +218,10 @@ export function useVoiceConversation(onUtterance: (text: string) => Promise<stri
   const speak = async (s: Session, text: string) => {
     if (s.ttsServer && Date.now() > s.ttsBlockedUntil) {
       try {
-        const audio = await voiceApi.speak(text);
+        const audio = await Promise.race([
+          voiceApi.speak(text),
+          new Promise<never>((_, reject) => setTimeout(() => reject(new Error("slow")), TTS_WAIT_MS)),
+        ]);
         if (s.active) await play(s, audio);
         return;
       } catch (err) {
@@ -287,7 +298,11 @@ export function useVoiceConversation(onUtterance: (text: string) => Promise<stri
     setHeard("");
     setPhase("starting");
 
-    const status = await voiceApi.status().catch(() => null);
+    statusRequest ??= voiceApi.status().catch(() => {
+      statusRequest = null;
+      return null;
+    });
+    const status = await statusRequest;
     s.ttsServer = !!status?.tts.enabled;
     s.stt = status?.stt.enabled && ctx ? "server" : "browser";
     if (s.stt === "browser" && !recognizerClass()) {
@@ -339,6 +354,8 @@ export function toSpeech(markdown: string, max = 600): string {
   const end = Math.max(cut.lastIndexOf(". "), cut.lastIndexOf("? "), cut.lastIndexOf("! "), cut.lastIndexOf("। "));
   return end > max / 3 ? cut.slice(0, end + 1) : `${cut}…`;
 }
+
+let statusRequest: Promise<VoiceStatus | null> | null = null;
 
 let silentUrl: string | null = null;
 /** A tiny silent clip, played on the first tap so later replies may autoplay. */

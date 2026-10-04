@@ -72,7 +72,8 @@ class Settings(BaseSettings):
     ai_stt_provider: str = "gemini"
     ai_stt_model: str = "gemini-3.5-transcribe"
     ai_tts_provider: str = "gemini"
-    ai_tts_model: str = "gemini-3.8-flash-lite-tts"
+    # Comma-separated: later models are tried when an earlier one is rate-limited.
+    ai_tts_model: str = "gemini-3.8-flash-lite-tts,gemini-3.8-flash-tts"
     ai_tts_voice: str = "Kore"
     # For openai_compatible voice providers (or to override the Gemini key).
     ai_voice_base_url: str | None = None

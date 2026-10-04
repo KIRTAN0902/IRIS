@@ -108,6 +108,7 @@ def test_factory_uses_gemini_key_and_config(monkeypatch):
     stt, tts = voice.get_speech_to_text(), voice.get_text_to_speech()
     assert isinstance(stt, voice.GeminiSpeechToText) and stt.model == settings.ai_stt_model
     assert isinstance(tts, voice.GeminiTextToSpeech) and (tts.model, tts.voice) == ("some-tts", "Puck")
+    assert tts.models == ["some-tts"]
 
     monkeypatch.setattr(settings, "ai_stt_provider", "openai_compatible")
     monkeypatch.setattr(settings, "ai_voice_base_url", "https://api.groq.com/openai/v1")
@@ -161,3 +162,34 @@ def test_chat_passes_voice_flag_to_agent(client, monkeypatch):
     with pytest.raises(RuntimeError, match="stop here"):
         client.post(f"/api/chat/conversations/{conv['id']}/messages", json={"content": "hi", "voice": True})
     assert seen["voice"] is True
+
+
+async def test_gemini_tts_falls_back_to_next_model_when_rate_limited(monkeypatch):
+    tried = []
+
+    async def post(what, url, **kwargs):
+        tried.append(url.rsplit("/", 1)[-1])
+        if "lite" in url:
+            raise voice.VoiceError("quota", rate_limited=True)
+        data = base64.b64encode(b"RIFFok").decode()
+        return httpx.Response(200, json={"candidates": [{"content": {"parts": [
+            {"inlineData": {"mimeType": "audio/wav", "data": data}}]}}]})
+
+    monkeypatch.setattr(voice, "_post", post)
+    tts = voice.GeminiTextToSpeech("tts-lite, tts-full", "Kore", "k")
+    audio = await tts.synthesize("hi")
+    assert audio.data == b"RIFFok"
+    assert tried == ["tts-lite:generateContent", "tts-full:generateContent"]
+
+
+async def test_gemini_tts_other_errors_do_not_fall_back(monkeypatch):
+    tried = []
+
+    async def post(what, url, **kwargs):
+        tried.append(url)
+        raise voice.VoiceError("bad request")
+
+    monkeypatch.setattr(voice, "_post", post)
+    with pytest.raises(voice.VoiceError):
+        await voice.GeminiTextToSpeech("a,b", "Kore", "k").synthesize("hi")
+    assert len(tried) == 1

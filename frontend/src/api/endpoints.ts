@@ -264,6 +264,9 @@ export const chatApi = {
     api.post<ChatMessageOut>(`/chat/conversations/${conversationId}/messages`, payload),
   deleteConversation: (conversationId: number) =>
     api.delete<void>(`/chat/conversations/${conversationId}`),
+  /** Update IRIS's memory from a reply sent with defer_memory. */
+  remember: (messageId: number) =>
+    api.post<{ memories_updated: ChatMessageOut["memories_updated"] }>(`/chat/messages/${messageId}/remember`),
 };
 
 // --- Voice ---------------------------------------------------------------------

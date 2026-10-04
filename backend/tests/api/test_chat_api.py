@@ -78,3 +78,52 @@ def test_chat_conversation_cross_user_isolation(client: TestClient, db: Session)
     resp_del = client.delete(f"/api/chat/conversations/{other_conv.id}")
     assert resp_del.status_code == 404
 
+
+
+def test_deferred_memory_replies_first_then_remembers(client: TestClient, db: Session, monkeypatch):
+    """defer_memory skips extraction in the reply; /remember runs it once."""
+    from app.services.memory_service import memory_service
+
+    calls = []
+
+    async def fake_extract(**kwargs):
+        calls.append(kwargs)
+        return []
+
+    monkeypatch.setattr(memory_service, "extract_and_store_from_conversation", fake_extract)
+    conv = client.post("/api/chat/conversations").json()
+
+    r = client.post(
+        f"/api/chat/conversations/{conv['id']}/messages",
+        json={"content": "I prefer deep work at night", "defer_memory": True},
+    )
+    assert r.status_code == 200
+    reply = r.json()
+    assert reply["memories_updated"] == [] and calls == []
+
+    r = client.post(f"/api/chat/messages/{reply['id']}/remember")
+    assert r.status_code == 200 and r.json() == {"memories_updated": []}
+    assert len(calls) == 1
+    assert calls[0]["user_message"] == "I prefer deep work at night"
+    assert calls[0]["assistant_message"] == reply["content"]
+
+    # Idempotent: a retry doesn't extract twice.
+    client.post(f"/api/chat/messages/{reply['id']}/remember")
+    assert len(calls) == 1
+
+    assert client.post("/api/chat/messages/999999/remember").status_code == 404
+
+
+def test_memory_extracted_inline_by_default(client: TestClient, db: Session, monkeypatch):
+    from app.services.memory_service import memory_service
+
+    calls = []
+
+    async def fake_extract(**kwargs):
+        calls.append(kwargs)
+        return []
+
+    monkeypatch.setattr(memory_service, "extract_and_store_from_conversation", fake_extract)
+    conv = client.post("/api/chat/conversations").json()
+    client.post(f"/api/chat/conversations/{conv['id']}/messages", json={"content": "hello"})
+    assert len(calls) == 1

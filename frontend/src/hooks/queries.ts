@@ -362,9 +362,18 @@ export const useCreateConversation = () => {
 export const useSendMessage = () => {
   const qc = useQueryClient();
   return useMutation({
+    // Reply first; memory is updated by a follow-up call so it never delays the answer.
     mutationFn: ({ conversationId, content, voice }: { conversationId: number; content: string; voice?: boolean }) =>
-      chatApi.sendMessage(conversationId, { content, voice }),
-    onSuccess: (_data, variables) => {
+      chatApi.sendMessage(conversationId, { content, voice, defer_memory: true }),
+    onSuccess: (data, variables) => {
+      chatApi
+        .remember(data.id)
+        .then(() => {
+          qc.invalidateQueries({ queryKey: qk.chatConversation(variables.conversationId) });
+          qc.invalidateQueries({ queryKey: qk.chatConversations() });
+          qc.invalidateQueries({ queryKey: ["memories"] });
+        })
+        .catch(() => {});
       qc.invalidateQueries({ queryKey: qk.chatConversation(variables.conversationId) });
       qc.invalidateQueries({ queryKey: qk.chatConversations() });
       // Invalidate live IRIS state as actions may have mutated tasks/schedule/goals

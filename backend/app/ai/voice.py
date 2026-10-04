@@ -131,14 +131,26 @@ class GeminiTextToSpeech(TextToSpeech):
     provider = "gemini"
 
     def __init__(self, model: str, voice: str, api_key: str) -> None:
-        self.model = model
+        # "a,b": try b when a is rate-limited (free tiers have small per-minute quotas).
+        self.models = [m.strip() for m in model.split(",") if m.strip()]
+        self.model = self.models[0]
         self.voice = voice
         self._key = api_key
 
     async def synthesize(self, text: str) -> SpeechAudio:
+        for i, model in enumerate(self.models):
+            try:
+                return await self._synthesize(model, text)
+            except VoiceError as exc:
+                if not exc.rate_limited or i == len(self.models) - 1:
+                    raise
+                logger.info("TTS model %s is rate-limited; trying %s", model, self.models[i + 1])
+        raise VoiceError("No TTS model configured.")
+
+    async def _synthesize(self, model: str, text: str) -> SpeechAudio:
         response = await _post(
             "Speech synthesis",
-            f"{GEMINI_API_URL}/models/{self.model}:generateContent",
+            f"{GEMINI_API_URL}/models/{model}:generateContent",
             headers={"x-goog-api-key": self._key},
             json={
                 "contents": [{"parts": [{"text": text}]}],

@@ -109,8 +109,19 @@ async def send_message(
         user_message=payload.content,
         conversation_id=conversation_id,
         voice=payload.voice,
+        defer_memory=payload.defer_memory,
     )
     return msg_out
+
+
+@router.post("/messages/{message_id}/remember")
+async def remember_message(
+    message_id: int,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+):
+    """Update IRIS's memory from a reply sent with ``defer_memory`` (idempotent)."""
+    return {"memories_updated": await default_agent.remember_turn(db, user, message_id)}
 
 
 @router.delete("/conversations/{conversation_id}", status_code=status.HTTP_204_NO_CONTENT)

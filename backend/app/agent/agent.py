@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.agent.harness import AgentHarness
 from app.agent.registry import ToolRegistry, default_registry
 from app.agent.schemas import AgentResponseSchema, ChatMessageOut
+from app.core.errors import NotFoundError
 from app.ai.factory import get_ai_provider
 from app.ai.provider import ChatMessage
 from app.intelligence.context import build_decision_context
@@ -54,8 +55,13 @@ class IrisAgent:
         user_message: str,
         conversation_id: int | None = None,
         voice: bool = False,
+        defer_memory: bool = False,
     ) -> tuple[ChatMessageOut, AIConversation]:
-        """Execute a single conversational turn with IRIS."""
+        """Execute a single conversational turn with IRIS.
+
+        ``defer_memory`` skips memory extraction (a slow, separate model call) so the
+        reply returns sooner; the client then calls :meth:`remember_turn`.
+        """
         # 1. Resolve or create conversation
         conversation = self._resolve_conversation(db, user, conversation_id, user_message)
 
@@ -169,23 +175,11 @@ class IrisAgent:
                 }
 
         # 7. Extract and persist contextual memory from this conversational turn
-        extracted_memories = await memory_service.extract_and_store_from_conversation(
-            db=db,
-            user=user,
-            user_message=user_message,
-            assistant_message=response_schema.message,
-            conversation_id=conversation.id,
-        )
-        memories_meta = [
-            {
-                "id": m.id,
-                "category": m.category,
-                "key": m.key,
-                "content": m.content,
-                "importance": m.importance,
-            }
-            for m in extracted_memories
-        ]
+        memories_meta: list[dict[str, Any]] = []
+        if not defer_memory:
+            memories_meta = await self._extract_memories(
+                db, user, user_message, response_schema.message, conversation.id
+            )
 
         # 8. Persist conversation turn
         user_msg_row = AIMessage(
@@ -205,6 +199,7 @@ class IrisAgent:
                 "recommended_action": recommended_action,
                 "source": source,
                 "memories_updated": memories_meta,
+                "memory_pending": defer_memory,
                 "harness": harness_meta,
             },
         )
@@ -228,6 +223,52 @@ class IrisAgent:
         )
         return out, conversation
 
+    async def remember_turn(self, db: Session, user: User, message_id: int) -> list[dict[str, Any]]:
+        """Run the deferred memory extraction for an assistant reply (idempotent)."""
+        reply = (
+            db.query(AIMessage)
+            .join(AIConversation, AIConversation.id == AIMessage.conversation_id)
+            .filter(AIMessage.id == message_id, AIConversation.user_id == user.id)
+            .filter(AIMessage.role == AIRole.ASSISTANT.value)
+            .first()
+        )
+        if reply is None:
+            raise NotFoundError("Message not found.")
+        meta = dict(reply.metadata_json or {})
+        if not meta.get("memory_pending"):
+            return meta.get("memories_updated") or []
+
+        asked = (
+            db.query(AIMessage)
+            .filter(
+                AIMessage.conversation_id == reply.conversation_id,
+                AIMessage.role == AIRole.USER.value,
+                AIMessage.id < reply.id,
+            )
+            .order_by(AIMessage.id.desc())
+            .first()
+        )
+        memories = await self._extract_memories(
+            db, user, asked.content if asked else "", reply.content, reply.conversation_id
+        )
+        reply.metadata_json = {**meta, "memories_updated": memories, "memory_pending": False}
+        db.commit()
+        return memories
+
+    async def _extract_memories(
+        self, db: Session, user: User, user_message: str, assistant_message: str, conversation_id: int
+    ) -> list[dict[str, Any]]:
+        extracted = await memory_service.extract_and_store_from_conversation(
+            db=db,
+            user=user,
+            user_message=user_message,
+            assistant_message=assistant_message,
+            conversation_id=conversation_id,
+        )
+        return [
+            {"id": m.id, "category": m.category, "key": m.key, "content": m.content, "importance": m.importance}
+            for m in extracted
+        ]
 
     def _resolve_conversation(
         self,

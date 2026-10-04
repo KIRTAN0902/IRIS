@@ -697,6 +697,8 @@ export interface ChatMessageIn {
   content: string;
   /** Spoken by voice: IRIS keeps the reply short enough to read aloud. */
   voice?: boolean;
+  /** Reply without waiting for memory extraction; then call chatApi.remember(). */
+  defer_memory?: boolean;
 }
 
 export interface AIMemoryUpdated {
