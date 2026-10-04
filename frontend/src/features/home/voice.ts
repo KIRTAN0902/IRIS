@@ -23,10 +23,6 @@ const MAX_UTTERANCE_MS = 30_000;
 const TTS_COOLDOWN_MS = 60_000;
 /** Don't wait longer than this for the voice model; the phone's voice is instant. */
 const TTS_WAIT_MS = 7000;
-/** If IRIS hasn't answered this soon after you stop, it says "one second…". */
-const FILLER_DELAY_MS = 700;
-/** Pre-recorded in IRIS's voice (Gemini "Kore"), so they cost no quota. */
-const FILLERS = ["/voice/filler-1.mp3", "/voice/filler-2.mp3", "/voice/filler-3.mp3"];
 /** Talking over IRIS for this long interrupts it. */
 const BARGE_IN_MS = 450;
 /** Ignore the start of IRIS's reply, when its own voice is loudest in the mic. */
@@ -58,9 +54,6 @@ interface Session {
   level: number;
   /** The room's background loudness, learned while listening. */
   floor: number;
-  fillerTimer?: number;
-  filler: Promise<void> | null;
-  fillerIndex: number;
   /** What IRIS last said, to tell its own echo apart from the user. */
   lastSaid: string;
   /** The user started talking over IRIS's reply. */
@@ -85,7 +78,6 @@ export function useVoiceConversation(onUtterance: (text: string) => Promise<stri
     const s = session.current;
     if (!s) return;
     s.active = false;
-    window.clearTimeout(s.fillerTimer);
     s.audio.pause();
     s.finish?.();
     s.interrupt?.();
@@ -188,7 +180,6 @@ export function useVoiceConversation(onUtterance: (text: string) => Promise<stri
     const clip = await record(s, talking);
     if (!clip || !s.active) return null;
     setPhase("transcribing");
-    scheduleFiller(s);
     try {
       return (await voiceApi.transcribe(clip)).text.trim();
     } catch (err) {
@@ -205,32 +196,6 @@ export function useVoiceConversation(onUtterance: (text: string) => Promise<stri
   };
 
   // --- speaking ----------------------------------------------------------------
-
-  /** Say "one second…" if IRIS takes a moment, so there's no dead air. */
-  const scheduleFiller = (s: Session) => {
-    window.clearTimeout(s.fillerTimer);
-    s.fillerTimer = window.setTimeout(() => {
-      if (!s.active) return;
-      const a = s.audio;
-      s.filler = new Promise<void>((resolve) => {
-        const done = () => {
-          a.onended = a.onerror = null;
-          resolve();
-        };
-        a.onended = a.onerror = done;
-        a.src = FILLERS[s.fillerIndex++ % FILLERS.length];
-        a.play().catch(done);
-        window.setTimeout(done, 2500);
-      });
-    }, FILLER_DELAY_MS);
-  };
-
-  /** Cancel a pending filler, or let one that's playing finish its word. */
-  const settleFiller = async (s: Session) => {
-    window.clearTimeout(s.fillerTimer);
-    if (s.filler) await s.filler;
-    s.filler = null;
-  };
 
   /** Play raw 16-bit mono PCM while it streams in, scheduled gap-free on the AudioContext. */
   const playPcm = (s: Session, response: Response, rate: number) =>
@@ -356,14 +321,12 @@ export function useVoiceConversation(onUtterance: (text: string) => Promise<stri
 
   const speak = async (s: Session, text: string) => {
     s.lastSaid = text;
-    const fillerDone = settleFiller(s);
     const rateLimited = (err: unknown) => err instanceof ApiError && err.status === 429;
 
     // 1. Streamed: starts playing while the rest of the audio is generated.
     if (s.ttsServer && s.ttsStream && s.ctx && Date.now() > s.ttsBlockedUntil) {
       try {
         const response = await withTimeout(voiceApi.speakStream(text), TTS_WAIT_MS);
-        await fillerDone;
         if (s.active) await playPcm(s, response, Number(response.headers.get("X-Sample-Rate")) || 24000);
         return;
       } catch (err) {
@@ -375,7 +338,6 @@ export function useVoiceConversation(onUtterance: (text: string) => Promise<stri
     if (s.ttsServer && !s.ttsStream && Date.now() > s.ttsBlockedUntil) {
       try {
         const audio = await withTimeout(voiceApi.speak(text), TTS_WAIT_MS);
-        await fillerDone;
         if (s.active) await play(s, audio);
         return;
       } catch (err) {
@@ -384,7 +346,6 @@ export function useVoiceConversation(onUtterance: (text: string) => Promise<stri
       }
     }
     // 3. The phone's own voice.
-    await fillerDone;
     if (s.active) await speakWithPhone(s, text);
   };
 
@@ -401,11 +362,7 @@ export function useVoiceConversation(onUtterance: (text: string) => Promise<stri
         s.bargedIn = false;
         const text = await listen(s, interrupted);
         if (!s.active) break;
-        if (interrupted && text && isEcho(text, s.lastSaid)) {
-          window.clearTimeout(s.fillerTimer);
-          continue; // the mic heard IRIS itself, not the user
-        }
-        if (!text) window.clearTimeout(s.fillerTimer);
+        if (interrupted && text && isEcho(text, s.lastSaid)) continue; // the mic heard IRIS itself
         if (text === null) {
           setNotice("I didn't hear anything, so I stopped listening.");
           break;
@@ -421,7 +378,6 @@ export function useVoiceConversation(onUtterance: (text: string) => Promise<stri
         misses = 0;
         setHeard(text);
         setPhase("thinking");
-        if (s.stt === "browser") scheduleFiller(s);
         const reply = await onUtteranceRef.current(text);
         if (!s.active) break;
         if (!reply) {
@@ -464,8 +420,6 @@ export function useVoiceConversation(onUtterance: (text: string) => Promise<stri
       stream: null,
       level: 0,
       floor: 0.01,
-      filler: null,
-      fillerIndex: Math.floor(Math.random() * FILLERS.length),
       lastSaid: "",
       bargedIn: false,
     };

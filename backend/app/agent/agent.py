@@ -35,7 +35,8 @@ _VOICE_MODE = """
 # VOICE CONVERSATION
 The user is speaking to you and will HEAR your reply through text-to-speech.
 - Answer in 1-3 short, natural spoken sentences. No markdown, lists, tables, emoji or links.
-- Reply in the language mix the user spoke (English, Hindi, Gujarati, or a mix such as Hinglish).
+- Reply in the language of the user's latest message: English gets plain English; switch to Hindi,
+  Gujarati or a mix such as Hinglish only when that message itself used it.
 - Say dates and times the way people say them aloud, e.g. "Monday at 6 pm".
 - Still use your tools to do the work; only the spoken summary is short.
 - The transcript may contain recognition mistakes. If a name, date or number looks wrong, ask briefly."""
