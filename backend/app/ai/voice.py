@@ -13,6 +13,8 @@ Failures raise :class:`VoiceError` so the API can tell the client to fall back.
 from __future__ import annotations
 
 import base64
+import json
+from collections.abc import AsyncIterator
 from dataclasses import dataclass
 
 import httpx
@@ -122,13 +124,20 @@ class OpenAICompatibleSpeechToText(SpeechToText):
 class TextToSpeech:
     provider: str
     model: str
+    #: Sample rate of :meth:`stream`'s raw 16-bit mono PCM, or None if unsupported.
+    stream_rate: int | None = None
 
     async def synthesize(self, text: str) -> SpeechAudio:
+        raise NotImplementedError
+
+    def stream(self, text: str) -> AsyncIterator[bytes]:
+        """Raw 16-bit little-endian mono PCM at ``stream_rate``, as it is generated."""
         raise NotImplementedError
 
 
 class GeminiTextToSpeech(TextToSpeech):
     provider = "gemini"
+    stream_rate = 24000
 
     def __init__(self, model: str, voice: str, api_key: str) -> None:
         # "a,b": try b when a is rate-limited (free tiers have small per-minute quotas).
@@ -147,18 +156,58 @@ class GeminiTextToSpeech(TextToSpeech):
                 logger.info("TTS model %s is rate-limited; trying %s", model, self.models[i + 1])
         raise VoiceError("No TTS model configured.")
 
+    async def stream(self, text: str) -> AsyncIterator[bytes]:
+        for i, model in enumerate(self.models):
+            started = False
+            try:
+                async for chunk in self._stream(model, text):
+                    started = True
+                    yield chunk
+                return
+            except VoiceError as exc:
+                # Once audio has gone out, switching voices mid-sentence is worse than stopping.
+                if started or not exc.rate_limited or i == len(self.models) - 1:
+                    raise
+                logger.info("TTS model %s is rate-limited; trying %s", model, self.models[i + 1])
+
+    async def _stream(self, model: str, text: str) -> AsyncIterator[bytes]:
+        try:
+            async with httpx.AsyncClient(timeout=settings.ai_voice_timeout_seconds) as client:
+                async with client.stream(
+                    "POST",
+                    f"{GEMINI_API_URL}/models/{model}:streamGenerateContent?alt=sse",
+                    headers={"x-goog-api-key": self._key},
+                    json=self._request(text),
+                ) as response:
+                    if response.status_code >= 400:
+                        await response.aread()
+                        _raise_for(response, "Speech synthesis")
+                    async for line in response.aiter_lines():
+                        if not line.startswith("data:"):
+                            continue
+                        event = json.loads(line[5:])
+                        for part in (event.get("candidates") or [{}])[0].get("content", {}).get("parts", []):
+                            inline = part.get("inlineData")
+                            if inline and inline.get("data"):
+                                yield base64.b64decode(inline["data"])
+        except httpx.HTTPError as exc:
+            raise VoiceError(f"Speech synthesis is unreachable: {type(exc).__name__}") from exc
+
+    def _request(self, text: str) -> dict:
+        return {
+            "contents": [{"parts": [{"text": text}]}],
+            "generationConfig": {
+                "responseModalities": ["AUDIO"],
+                "speechConfig": {"voiceConfig": {"prebuiltVoiceConfig": {"voiceName": self.voice}}},
+            },
+        }
+
     async def _synthesize(self, model: str, text: str) -> SpeechAudio:
         response = await _post(
             "Speech synthesis",
             f"{GEMINI_API_URL}/models/{model}:generateContent",
             headers={"x-goog-api-key": self._key},
-            json={
-                "contents": [{"parts": [{"text": text}]}],
-                "generationConfig": {
-                    "responseModalities": ["AUDIO"],
-                    "speechConfig": {"voiceConfig": {"prebuiltVoiceConfig": {"voiceName": self.voice}}},
-                },
-            },
+            json=self._request(text),
         )
         for part in (response.json().get("candidates") or [{}])[0].get("content", {}).get("parts", []):
             inline = part.get("inlineData")

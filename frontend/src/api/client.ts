@@ -47,6 +47,8 @@ async function request<T>(
     blob?: Blob;
     /** Return the response body as a Blob (e.g. audio) instead of JSON. */
     asBlob?: boolean;
+    /** Return the raw Response so its body can be read as a stream. */
+    asStream?: boolean;
   } = {},
 ): Promise<T> {
   let response: Response;
@@ -68,6 +70,7 @@ async function request<T>(
 
   if (response.status === 204) return undefined as T;
   if (opts.asBlob && response.ok) return (await response.blob()) as T;
+  if (opts.asStream && response.ok) return response as T;
 
   let data: unknown = null;
   try {
@@ -98,4 +101,6 @@ export const api = {
   postBlob: <T>(path: string, blob: Blob) => request<T>("POST", path, { blob }),
   /** POST JSON and receive a Blob (e.g. audio). */
   postForBlob: (path: string, body: unknown) => request<Blob>("POST", path, { body, asBlob: true }),
+  /** POST JSON and receive the raw Response, to read a streamed body as it arrives. */
+  postForStream: (path: string, body: unknown) => request<Response>("POST", path, { body, asStream: true }),
 };

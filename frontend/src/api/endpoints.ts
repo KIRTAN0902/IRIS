@@ -280,6 +280,8 @@ export const voiceApi = {
   status: () => api.get<VoiceStatus>("/voice/status"),
   transcribe: (audio: Blob) => api.postBlob<{ text: string }>("/voice/transcribe", audio),
   speak: (text: string) => api.postForBlob("/voice/speak", { text }),
+  /** Raw 16-bit mono PCM streamed as it is generated; rate in the X-Sample-Rate header. */
+  speakStream: (text: string) => api.postForStream("/voice/speak/stream", { text }),
 };
 
 // --- Memories & Context Layer ------------------------------------------------

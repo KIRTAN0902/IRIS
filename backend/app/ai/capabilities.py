@@ -17,7 +17,7 @@ without any code change.
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, fields, replace
+from dataclasses import asdict, dataclass, field, fields, replace
 from fnmatch import fnmatch
 from typing import Any, Literal
 
@@ -49,6 +49,9 @@ class ModelCapabilities:
     temperature: float = 0.3
     # Sampling temperature for schema-constrained extraction.
     structured_temperature: float = 0.1
+    # Request-body changes for latency-sensitive turns (voice), e.g. asking a
+    # reasoning model to answer without its thinking phase. Merged per request.
+    fast_body: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -95,6 +98,7 @@ MODEL_PROFILES: list[tuple[str, dict[str, Any]]] = [
             "json_mode": "none",
             "context_window": 131_072,
             "max_output_tokens": 8_192,
+            "fast_body": {"chat_template_kwargs": {"enable_thinking": False}},
         },
     ),
     (

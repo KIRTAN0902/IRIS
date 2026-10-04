@@ -7,6 +7,7 @@ A 429/503 here tells the client to fall back to the phone's own speech engines.
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Request, Response
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from app.ai import voice
@@ -81,3 +82,38 @@ async def speak(payload: SpeakIn, _: User = Depends(current_user)) -> Response:
     except voice.VoiceError as exc:
         raise _fail(exc) from exc
     return Response(content=audio.data, media_type=audio.mime_type, headers={"Cache-Control": "no-store"})
+
+
+@router.post("/speak/stream")
+async def speak_stream(payload: SpeakIn, _: User = Depends(current_user)) -> Response:
+    """Stream speech as raw 16-bit mono PCM (rate in ``X-Sample-Rate``) while it is generated.
+
+    The first chunk is fetched before responding, so rate limits and outages
+    still come back as 429/503 and the client can fall back.
+    """
+    tts = voice.get_text_to_speech()
+    if tts is None:
+        raise VoiceUnavailableError("Text-to-speech is not configured.")
+    if not tts.stream_rate:
+        raise VoiceUnavailableError("This text-to-speech provider does not stream.")
+    chunks = tts.stream(payload.text.strip())
+    try:
+        first = await anext(chunks)
+    except StopAsyncIteration as exc:
+        raise VoiceUnavailableError("Speech synthesis returned no audio.") from exc
+    except voice.VoiceError as exc:
+        raise _fail(exc) from exc
+
+    async def body():
+        yield first
+        try:
+            async for chunk in chunks:
+                yield chunk
+        except voice.VoiceError:
+            return  # the client plays what arrived
+
+    return StreamingResponse(
+        body(),
+        media_type="application/octet-stream",
+        headers={"X-Sample-Rate": str(tts.stream_rate), "Cache-Control": "no-store"},
+    )

@@ -20,6 +20,7 @@ A provider exposes two levels of capability:
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from typing import Any, TypeVar
 
@@ -113,6 +114,11 @@ class ChatResult:
 
 
 # --- AIProvider Interface -----------------------------------------------------
+
+
+# Set for latency-sensitive turns (voice): providers apply the model's
+# ``fast_body`` capability, e.g. skipping a reasoning model's thinking phase.
+fast_turn: ContextVar[bool] = ContextVar("fast_turn", default=False)
 
 
 class AIProvider(ABC):

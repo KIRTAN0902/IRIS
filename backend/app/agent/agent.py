@@ -12,7 +12,7 @@ from app.agent.registry import ToolRegistry, default_registry
 from app.agent.schemas import AgentResponseSchema, ChatMessageOut
 from app.core.errors import NotFoundError
 from app.ai.factory import get_ai_provider
-from app.ai.provider import ChatMessage
+from app.ai.provider import ChatMessage, fast_turn
 from app.intelligence.context import build_decision_context
 from app.intelligence.decision_engine import deterministic_decision
 from app.intelligence.personal_model import build_personal_model, render_personal_model
@@ -86,6 +86,8 @@ class IrisAgent:
         source = "DETERMINISTIC"
         harness_meta: dict[str, Any] = {}
 
+        # Voice turns trade the model's thinking phase for a faster answer.
+        fast_token = fast_turn.set(voice)
         if provider.enabled:
             try:
                 caps = provider.capabilities
@@ -135,6 +137,8 @@ class IrisAgent:
 
                 ai_health.record_failure(provider.name, provider.model, exc)
                 response_schema = None
+
+        fast_turn.reset(fast_token)
 
         # 5. Deterministic fallback if AI is unavailable or failed
         if response_schema is None:

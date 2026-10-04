@@ -262,3 +262,38 @@ def test_factory_capability_overrides_from_env(monkeypatch):
     caps = create_ai_provider("openai").capabilities
     assert caps.native_tools is False
     assert caps.history_messages == 6
+
+
+def test_fast_turn_applies_the_models_fast_body_only_when_set():
+    from app.ai.provider import ChatMessage, fast_turn
+
+    p = _provider("nvidia/nemotron-3-ultra-550b-a55b")
+    msgs = [ChatMessage(role="user", content="hi")]
+    assert "chat_template_kwargs" not in p._build_body(msgs, None, None, None, None)
+
+    token = fast_turn.set(True)
+    try:
+        body = p._build_body(msgs, None, None, None, None)
+    finally:
+        fast_turn.reset(token)
+    assert body["chat_template_kwargs"] == {"enable_thinking": False}
+
+    # Models without a fast_body are untouched.
+    token = fast_turn.set(True)
+    try:
+        assert "chat_template_kwargs" not in _provider("gpt-4o-mini")._build_body(msgs, None, None, None, None)
+    finally:
+        fast_turn.reset(token)
+
+
+def test_rejected_fast_body_is_dropped():
+    from app.ai.provider import ChatMessage, fast_turn
+
+    p = _provider("nvidia/nemotron-3-ultra-550b-a55b")
+    token = fast_turn.set(True)
+    try:
+        body = p._build_body([ChatMessage(role="user", content="hi")], None, None, None, None)
+        assert p._adapt_to_rejection(body, "Unknown field: chat_template_kwargs") is True
+        assert "chat_template_kwargs" not in p._build_body([ChatMessage(role="user", content="hi")], None, None, None, None)
+    finally:
+        fast_turn.reset(token)

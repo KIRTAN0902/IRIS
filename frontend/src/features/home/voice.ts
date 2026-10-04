@@ -23,6 +23,14 @@ const MAX_UTTERANCE_MS = 30_000;
 const TTS_COOLDOWN_MS = 60_000;
 /** Don't wait longer than this for the voice model; the phone's voice is instant. */
 const TTS_WAIT_MS = 7000;
+/** If IRIS hasn't answered this soon after you stop, it says "one second…". */
+const FILLER_DELAY_MS = 700;
+/** Pre-recorded in IRIS's voice (Gemini "Kore"), so they cost no quota. */
+const FILLERS = ["/voice/filler-1.mp3", "/voice/filler-2.mp3", "/voice/filler-3.mp3"];
+/** Talking over IRIS for this long interrupts it. */
+const BARGE_IN_MS = 450;
+/** Ignore the start of IRIS's reply, when its own voice is loudest in the mic. */
+const BARGE_IN_GRACE_MS = 700;
 
 const RECORDING_TYPES = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg;codecs=opus"];
 
@@ -39,6 +47,8 @@ interface Session {
   active: boolean;
   stt: "server" | "browser";
   ttsServer: boolean;
+  /** Stream replies as they're generated (falls back to whole clips). */
+  ttsStream: boolean;
   ttsBlockedUntil: number;
   audio: HTMLAudioElement;
   ctx: AudioContext | null;
@@ -46,6 +56,15 @@ interface Session {
   stream: MediaStream | null;
   /** Latest microphone loudness (RMS) while recording. */
   level: number;
+  /** The room's background loudness, learned while listening. */
+  floor: number;
+  fillerTimer?: number;
+  filler: Promise<void> | null;
+  fillerIndex: number;
+  /** What IRIS last said, to tell its own echo apart from the user. */
+  lastSaid: string;
+  /** The user started talking over IRIS's reply. */
+  bargedIn: boolean;
   /** Finish the current recording now (the user tapped "done"). */
   finish?: () => void;
   /** Cut off the reply being spoken. */
@@ -66,6 +85,8 @@ export function useVoiceConversation(onUtterance: (text: string) => Promise<stri
     const s = session.current;
     if (!s) return;
     s.active = false;
+    window.clearTimeout(s.fillerTimer);
+    s.audio.pause();
     s.finish?.();
     s.interrupt?.();
     s.stream?.getTracks().forEach((t) => t.stop());
@@ -78,24 +99,25 @@ export function useVoiceConversation(onUtterance: (text: string) => Promise<stri
 
   // --- listening ---------------------------------------------------------------
 
-  /** Record until the user pauses; null if they said nothing. */
-  const record = (s: Session) =>
+  /** Record until the user pauses; null if they said nothing. ``talking``: they already started. */
+  const record = (s: Session, talking = false) =>
     new Promise<Blob | null>((resolve) => {
       const mimeType = RECORDING_TYPES.find((t) => MediaRecorder.isTypeSupported?.(t));
       const rec = new MediaRecorder(s.stream!, mimeType ? { mimeType } : undefined);
       const chunks: Blob[] = [];
       const samples = new Float32Array(s.analyser!.fftSize);
       const started = performance.now();
-      let floor = 0.01; // the room's background level, tracked continuously
+      let floor = talking ? s.floor : 0.01; // the room's background level, tracked continuously
       let voiceLevel = 0; // how loud the user speaks
-      let loudFrames = 0;
-      let spoke = false;
+      let loudFrames = talking ? 3 : 0;
+      let spoke = talking;
       let lastVoice = started;
 
       rec.ondataavailable = (e) => e.data.size && chunks.push(e.data);
       rec.onstop = () => {
         clearInterval(timer);
         s.level = 0;
+        s.floor = floor;
         s.finish = undefined;
         resolve(spoke && chunks.length ? new Blob(chunks, { type: rec.mimeType || mimeType || "audio/webm" }) : null);
       };
@@ -115,7 +137,7 @@ export function useVoiceConversation(onUtterance: (text: string) => Promise<stri
         const rms = Math.sqrt(sum / samples.length);
         s.level = rms;
         const now = performance.now();
-        if (now - started < 250) {
+        if (!talking && now - started < 250) {
           floor = Math.min(Math.max(floor, rms), 0.05); // first guess at the room
           return;
         }
@@ -161,11 +183,12 @@ export function useVoiceConversation(onUtterance: (text: string) => Promise<stri
     });
 
   /** What the user said: "" = couldn't make it out, null = said nothing. */
-  const listen = async (s: Session): Promise<string | null> => {
+  const listen = async (s: Session, talking = false): Promise<string | null> => {
     if (s.stt === "browser") return recognize(s);
-    const clip = await record(s);
+    const clip = await record(s, talking);
     if (!clip || !s.active) return null;
     setPhase("transcribing");
+    scheduleFiller(s);
     try {
       return (await voiceApi.transcribe(clip)).text.trim();
     } catch (err) {
@@ -182,6 +205,116 @@ export function useVoiceConversation(onUtterance: (text: string) => Promise<stri
   };
 
   // --- speaking ----------------------------------------------------------------
+
+  /** Say "one second…" if IRIS takes a moment, so there's no dead air. */
+  const scheduleFiller = (s: Session) => {
+    window.clearTimeout(s.fillerTimer);
+    s.fillerTimer = window.setTimeout(() => {
+      if (!s.active) return;
+      const a = s.audio;
+      s.filler = new Promise<void>((resolve) => {
+        const done = () => {
+          a.onended = a.onerror = null;
+          resolve();
+        };
+        a.onended = a.onerror = done;
+        a.src = FILLERS[s.fillerIndex++ % FILLERS.length];
+        a.play().catch(done);
+        window.setTimeout(done, 2500);
+      });
+    }, FILLER_DELAY_MS);
+  };
+
+  /** Cancel a pending filler, or let one that's playing finish its word. */
+  const settleFiller = async (s: Session) => {
+    window.clearTimeout(s.fillerTimer);
+    if (s.filler) await s.filler;
+    s.filler = null;
+  };
+
+  /** Play raw 16-bit mono PCM while it streams in, scheduled gap-free on the AudioContext. */
+  const playPcm = (s: Session, response: Response, rate: number) =>
+    new Promise<void>((resolve) => {
+      const ctx = s.ctx!;
+      const reader = response.body!.getReader();
+      const sources: AudioBufferSourceNode[] = [];
+      let head = ctx.currentTime + 0.08;
+      let carry: Uint8Array | null = null;
+      let stopped = false;
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        s.interrupt = undefined;
+        resolve();
+      };
+      s.interrupt = () => {
+        stopped = true;
+        reader.cancel().catch(() => {});
+        sources.forEach((src) => {
+          try {
+            src.stop();
+          } catch {
+            /* not started yet */
+          }
+        });
+        finish();
+      };
+
+      void (async () => {
+        try {
+          for (;;) {
+            const { value, done } = await reader.read();
+            if (done || stopped) break;
+            let bytes = value;
+            if (carry) {
+              bytes = new Uint8Array(carry.length + value.length);
+              bytes.set(carry);
+              bytes.set(value, carry.length);
+            }
+            const even = bytes.length - (bytes.length % 2);
+            carry = even < bytes.length ? bytes.slice(even) : null;
+            if (!even) continue;
+            const pcm = new Int16Array(bytes.slice(0, even).buffer);
+            const buffer = ctx.createBuffer(1, pcm.length, rate);
+            const channel = buffer.getChannelData(0);
+            for (let i = 0; i < pcm.length; i++) channel[i] = pcm[i] / 32768;
+            const src = ctx.createBufferSource();
+            src.buffer = buffer;
+            src.connect(ctx.destination);
+            head = Math.max(head, ctx.currentTime + 0.02); // a late chunk starts now
+            src.start(head);
+            head += buffer.duration;
+            sources.push(src);
+          }
+        } catch {
+          /* network hiccup: play what arrived */
+        }
+        if (!stopped) window.setTimeout(finish, Math.max(0, (head - ctx.currentTime) * 1000) + 60);
+      })();
+    });
+
+  /** While IRIS talks, listen for the user talking over it. */
+  const watchForBargeIn = (s: Session) => {
+    if (!s.analyser) return () => {};
+    const samples = new Float32Array(s.analyser.fftSize);
+    const started = performance.now();
+    let loud = 0;
+    const timer = window.setInterval(() => {
+      if (performance.now() - started < BARGE_IN_GRACE_MS || !s.interrupt) return;
+      s.analyser!.getFloatTimeDomainData(samples);
+      let sum = 0;
+      for (const v of samples) sum += v * v;
+      const rms = Math.sqrt(sum / samples.length);
+      loud = rms > Math.max(0.08, s.floor * 4) ? loud + 1 : 0;
+      if (loud * 50 >= BARGE_IN_MS) {
+        window.clearInterval(timer);
+        s.bargedIn = true;
+        s.interrupt?.();
+      }
+    }, 50);
+    return () => window.clearInterval(timer);
+  };
 
   const play = (s: Session, blob: Blob) =>
     new Promise<void>((resolve) => {
@@ -222,19 +355,36 @@ export function useVoiceConversation(onUtterance: (text: string) => Promise<stri
     });
 
   const speak = async (s: Session, text: string) => {
-    if (s.ttsServer && Date.now() > s.ttsBlockedUntil) {
+    s.lastSaid = text;
+    const fillerDone = settleFiller(s);
+    const rateLimited = (err: unknown) => err instanceof ApiError && err.status === 429;
+
+    // 1. Streamed: starts playing while the rest of the audio is generated.
+    if (s.ttsServer && s.ttsStream && s.ctx && Date.now() > s.ttsBlockedUntil) {
       try {
-        const audio = await Promise.race([
-          voiceApi.speak(text),
-          new Promise<never>((_, reject) => setTimeout(() => reject(new Error("slow")), TTS_WAIT_MS)),
-        ]);
+        const response = await withTimeout(voiceApi.speakStream(text), TTS_WAIT_MS);
+        await fillerDone;
+        if (s.active) await playPcm(s, response, Number(response.headers.get("X-Sample-Rate")) || 24000);
+        return;
+      } catch (err) {
+        if (rateLimited(err)) s.ttsBlockedUntil = Date.now() + TTS_COOLDOWN_MS;
+        else if (err instanceof ApiError) s.ttsStream = false; // provider can't stream: use whole clips
+      }
+    }
+    // 2. Whole clip.
+    if (s.ttsServer && !s.ttsStream && Date.now() > s.ttsBlockedUntil) {
+      try {
+        const audio = await withTimeout(voiceApi.speak(text), TTS_WAIT_MS);
+        await fillerDone;
         if (s.active) await play(s, audio);
         return;
       } catch (err) {
-        if (err instanceof ApiError && err.status === 429) s.ttsBlockedUntil = Date.now() + TTS_COOLDOWN_MS;
+        if (rateLimited(err)) s.ttsBlockedUntil = Date.now() + TTS_COOLDOWN_MS;
         else if (err instanceof ApiError && err.code === "VOICE_UNAVAILABLE") s.ttsServer = false;
       }
     }
+    // 3. The phone's own voice.
+    await fillerDone;
     if (s.active) await speakWithPhone(s, text);
   };
 
@@ -247,8 +397,15 @@ export function useVoiceConversation(onUtterance: (text: string) => Promise<stri
         setPhase("listening");
         setHeard("");
         setSaid("");
-        const text = await listen(s);
+        const interrupted = s.bargedIn;
+        s.bargedIn = false;
+        const text = await listen(s, interrupted);
         if (!s.active) break;
+        if (interrupted && text && isEcho(text, s.lastSaid)) {
+          window.clearTimeout(s.fillerTimer);
+          continue; // the mic heard IRIS itself, not the user
+        }
+        if (!text) window.clearTimeout(s.fillerTimer);
         if (text === null) {
           setNotice("I didn't hear anything, so I stopped listening.");
           break;
@@ -264,6 +421,7 @@ export function useVoiceConversation(onUtterance: (text: string) => Promise<stri
         misses = 0;
         setHeard(text);
         setPhase("thinking");
+        if (s.stt === "browser") scheduleFiller(s);
         const reply = await onUtteranceRef.current(text);
         if (!s.active) break;
         if (!reply) {
@@ -274,7 +432,9 @@ export function useVoiceConversation(onUtterance: (text: string) => Promise<stri
         const spoken = toSpeech(reply);
         setSaid(spoken);
         setPhase("speaking");
+        const stopWatching = watchForBargeIn(s);
         await speak(s, spoken);
+        stopWatching();
       }
     } catch {
       setNotice("Voice stopped working. Tap the mic to try again.");
@@ -289,19 +449,25 @@ export function useVoiceConversation(onUtterance: (text: string) => Promise<stri
     const audio = new Audio(silentWavUrl());
     audio.play().catch(() => {});
     if ("speechSynthesis" in window) speechSynthesis.speak(new SpeechSynthesisUtterance(""));
-    const ctx = canRecord() ? new AudioContext() : null;
+    const ctx = typeof AudioContext !== "undefined" ? new AudioContext() : null;
     ctx?.resume().catch(() => {});
 
     const s: Session = {
       active: true,
       stt: "browser",
       ttsServer: false,
+      ttsStream: true,
       ttsBlockedUntil: 0,
       audio,
       ctx,
       analyser: null,
       stream: null,
       level: 0,
+      floor: 0.01,
+      filler: null,
+      fillerIndex: Math.floor(Math.random() * FILLERS.length),
+      lastSaid: "",
+      bargedIn: false,
     };
     session.current = s;
     setNotice(null);
@@ -314,7 +480,7 @@ export function useVoiceConversation(onUtterance: (text: string) => Promise<stri
     });
     const status = await statusRequest;
     s.ttsServer = !!status?.tts.enabled;
-    s.stt = status?.stt.enabled && ctx ? "server" : "browser";
+    s.stt = status?.stt.enabled && ctx && canRecord() ? "server" : "browser";
     if (s.stt === "browser" && !recognizerClass()) {
       setNotice("Voice input isn't supported in this browser.");
       return end();
@@ -366,6 +532,28 @@ export function toSpeech(markdown: string, max = 600): string {
   const cut = text.slice(0, max);
   const end = Math.max(cut.lastIndexOf(". "), cut.lastIndexOf("? "), cut.lastIndexOf("! "), cut.lastIndexOf("। "));
   return end > max / 3 ? cut.slice(0, end + 1) : `${cut}…`;
+}
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) => window.setTimeout(() => reject(new Error("timeout")), ms)),
+  ]);
+}
+
+const words = (text: string) =>
+  text
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s]/gu, " ")
+    .split(/\s+/)
+    .filter(Boolean);
+
+/** True when what the mic heard is mostly IRIS's own reply (speaker echo). */
+export function isEcho(heard: string, said: string): boolean {
+  const h = words(heard);
+  if (h.length < 2) return false;
+  const spoken = new Set(words(said));
+  return h.filter((w) => spoken.has(w)).length / h.length >= 0.6;
 }
 
 let statusRequest: Promise<VoiceStatus | null> | null = null;

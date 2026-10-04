@@ -31,6 +31,7 @@ from app.ai.provider import (
     ChatResult,
     ToolCallRequest,
     ToolDefinition,
+    fast_turn,
 )
 from app.ai.structured import split_reasoning
 from app.core.logging import get_logger
@@ -186,6 +187,8 @@ class OpenAICompatibleProvider(AIProvider):
                 "json_object",
             }:
                 body["response_format"] = {"type": "json_object"}
+        if fast_turn.get() and caps.fast_body:
+            body.update(caps.fast_body)
         body.update(self._extra_body)
         return body
 
@@ -195,7 +198,11 @@ class OpenAICompatibleProvider(AIProvider):
         caps = self._caps
         change: str | None = None
 
-        if "response_format" in body and any(
+        fast_keys = [k for k in caps.fast_body if k in body]
+        if fast_keys and any(k.lower() in text for k in fast_keys):
+            caps.fast_body = {}
+            change = "fast_body -> {}"
+        elif "response_format" in body and any(
             k in text for k in ("response_format", "json_schema", "json_object", "json mode")
         ):
             caps.json_mode = "json_object" if caps.json_mode == "json_schema" else "none"

@@ -193,3 +193,52 @@ async def test_gemini_tts_other_errors_do_not_fall_back(monkeypatch):
     with pytest.raises(voice.VoiceError):
         await voice.GeminiTextToSpeech("a,b", "Kore", "k").synthesize("hi")
     assert len(tried) == 1
+
+
+class StreamingTTS(FakeTTS):
+    stream_rate = 24000
+
+    def __init__(self, chunks=(b"\x01\x00", b"\x02\x00"), error=None):
+        super().__init__(error)
+        self.chunks = chunks
+
+    async def stream(self, text):
+        if self.error:
+            raise self.error
+        for c in self.chunks:
+            yield c
+
+
+def test_speak_stream_returns_pcm_with_rate(client, monkeypatch):
+    monkeypatch.setattr(voice, "get_text_to_speech", lambda: StreamingTTS())
+    r = client.post("/api/voice/speak/stream", json={"text": "hi"})
+    assert r.status_code == 200
+    assert r.headers["x-sample-rate"] == "24000"
+    assert r.content == b"\x01\x00\x02\x00"
+
+
+def test_speak_stream_rate_limit_before_audio_is_429(client, monkeypatch):
+    monkeypatch.setattr(
+        voice, "get_text_to_speech", lambda: StreamingTTS(error=voice.VoiceError("quota", rate_limited=True))
+    )
+    assert client.post("/api/voice/speak/stream", json={"text": "hi"}).status_code == 429
+
+
+def test_speak_stream_unsupported_provider_is_503(client, monkeypatch):
+    monkeypatch.setattr(voice, "get_text_to_speech", lambda: FakeTTS())
+    assert client.post("/api/voice/speak/stream", json={"text": "hi"}).status_code == 503
+
+
+async def test_gemini_stream_falls_back_before_first_chunk(monkeypatch):
+    tts = voice.GeminiTextToSpeech("lite,full", "Kore", "k")
+    tried = []
+
+    async def fake_stream(model, text):
+        tried.append(model)
+        if model == "lite":
+            raise voice.VoiceError("quota", rate_limited=True)
+        yield b"ab"
+
+    monkeypatch.setattr(tts, "_stream", fake_stream)
+    assert [c async for c in tts.stream("hi")] == [b"ab"]
+    assert tried == ["lite", "full"]
