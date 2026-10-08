@@ -52,7 +52,7 @@ class Settings(BaseSettings):
     ai_temperature: float | None = None
     ai_max_tokens: int | None = None
     # Transport retries on 429/5xx-style transient errors.
-    ai_max_retries: int = 2
+    ai_max_retries: int = 3
     # Extra attempts to repair invalid structured (JSON) output.
     ai_structured_retries: int = 1
     # Model calls per agent turn. Past the soft limit the loop continues only while

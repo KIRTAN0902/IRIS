@@ -190,6 +190,23 @@ async def test_transient_errors_are_retried():
 
 
 @pytest.mark.asyncio
+async def test_intermittent_server_errors_are_retried():
+    provider = _provider()
+    with (
+        patch.object(httpx.AsyncClient, "post", new_callable=AsyncMock) as post,
+        patch("app.ai.providers.openai_compatible.asyncio.sleep", new_callable=AsyncMock),
+    ):
+        post.side_effect = [
+            _resp(500, text='{"error":{"message":"Internal server error"}}'),
+            _resp(500, text='{"error":{"message":"Internal server error"}}'),
+            _resp(200, _content("ok")),
+        ]
+        result = await provider.chat([ChatMessage(role="user", content="x")])
+    assert result.content == "ok"
+    assert post.call_count == 3
+
+
+@pytest.mark.asyncio
 async def test_structured_output_is_repaired_by_the_model():
     provider = _provider("nvidia/nemotron-x")
     with patch.object(httpx.AsyncClient, "post", new_callable=AsyncMock) as post:

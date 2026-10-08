@@ -38,7 +38,9 @@ from app.core.logging import get_logger
 
 logger = get_logger("iris.ai.providers.openai_compatible")
 
-_RETRYABLE_STATUS = {408, 409, 429, 502, 503, 504}
+# 500 included: hosted endpoints (e.g. NVIDIA NIM) intermittently fail requests
+# that succeed unchanged a moment later.
+_RETRYABLE_STATUS = {408, 409, 429, 500, 502, 503, 504}
 _MAX_ADAPTATIONS = 4
 
 
