@@ -9,6 +9,7 @@ import {
   analyticsApi,
   assistantApi,
   chatApi,
+  financeApi,
   focusApi,
   goalsApi,
   intelligenceApi,
@@ -21,7 +22,14 @@ import {
   usersApi,
   type TaskFilters,
 } from "@/api/endpoints";
-import type { AIMemoryIn, AIMemoryUpdate } from "@/types/api";
+import type {
+  AIMemoryIn,
+  AIMemoryUpdate,
+  BillIn,
+  SavingsGoalIn,
+  TransactionIn,
+  TransactionKind,
+} from "@/types/api";
 
 import { qk } from "@/api/queryKeys";
 import { useFocusStore } from "@/stores";
@@ -390,6 +398,7 @@ export const useSendMessage = () => {
       qc.invalidateQueries({ queryKey: qk.startup() });
       qc.invalidateQueries({ queryKey: qk.recurringSchedules() });
       qc.invalidateQueries({ queryKey: ["memories"] });
+      qc.invalidateQueries({ queryKey: ["finance"] });
     },
   });
 };
@@ -453,4 +462,50 @@ export const useDeleteMemory = () => {
   });
 };
 
+// --- Personal finance ------------------------------------------------------------
 
+const financeKey = ["finance"] as const;
+
+export const useFinanceSummary = (month?: string) =>
+  useQuery({ queryKey: [...financeKey, "summary", month ?? "current"], queryFn: () => financeApi.summary(month) });
+
+export const useFinanceCategories = () =>
+  useQuery({ queryKey: [...financeKey, "categories"], queryFn: financeApi.categories, staleTime: 5 * 60_000 });
+
+export const useTransactions = (filters: { month?: string; kind?: TransactionKind; q?: string }) =>
+  useQuery({ queryKey: [...financeKey, "transactions", filters], queryFn: () => financeApi.transactions(filters) });
+
+export const useBills = () => useQuery({ queryKey: [...financeKey, "bills"], queryFn: financeApi.bills });
+
+export const useSavingsGoals = () => useQuery({ queryKey: [...financeKey, "savings"], queryFn: financeApi.savings });
+
+/** Any money change refreshes every finance view. */
+function useFinanceMutation<V, R>(fn: (vars: V) => Promise<R>) {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: fn, onSuccess: () => qc.invalidateQueries({ queryKey: financeKey }) });
+}
+
+export const useSaveTransaction = () =>
+  useFinanceMutation(({ id, body }: { id?: number; body: TransactionIn }) =>
+    id ? financeApi.updateTransaction(id, body) : financeApi.createTransaction(body),
+  );
+export const useDeleteTransaction = () => useFinanceMutation((id: number) => financeApi.deleteTransaction(id));
+export const useSetBudget = () =>
+  useFinanceMutation(({ category, limit }: { category: string; limit: number }) => financeApi.setBudget(category, limit));
+export const useDeleteBudget = () => useFinanceMutation((id: number) => financeApi.deleteBudget(id));
+export const useSaveBill = () =>
+  useFinanceMutation(({ id, body }: { id?: number; body: BillIn }) =>
+    id ? financeApi.updateBill(id, body) : financeApi.createBill(body),
+  );
+export const usePayBill = () =>
+  useFinanceMutation(({ id, amount }: { id: number; amount?: number }) =>
+    financeApi.payBill(id, amount ? { amount } : {}),
+  );
+export const useDeleteBill = () => useFinanceMutation((id: number) => financeApi.deleteBill(id));
+export const useSaveSavingsGoal = () =>
+  useFinanceMutation(({ id, body }: { id?: number; body: SavingsGoalIn }) =>
+    id ? financeApi.updateSavings(id, body) : financeApi.createSavings(body),
+  );
+export const useAddToSavings = () =>
+  useFinanceMutation(({ id, amount }: { id: number; amount: number }) => financeApi.addToSavings(id, amount));
+export const useDeleteSavingsGoal = () => useFinanceMutation((id: number) => financeApi.deleteSavings(id));

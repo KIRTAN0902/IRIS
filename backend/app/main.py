@@ -65,6 +65,7 @@ def create_app() -> FastAPI:
         analytics,
         assistant,
         chat,
+        finance,
         focus,
         goals,
         health,
@@ -94,6 +95,7 @@ def create_app() -> FastAPI:
     app.include_router(chat.router, prefix=api)
     app.include_router(assistant.router, prefix=api)
     app.include_router(voice.router, prefix=api)
+    app.include_router(finance.router, prefix=api)
 
     return app
 

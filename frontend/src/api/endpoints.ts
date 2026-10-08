@@ -56,6 +56,17 @@ import type {
   TimeBlockOut,
   TodayStateOut,
   UserOut,
+  BillIn,
+  BillOut,
+  BudgetStatus,
+  FinanceCategories,
+  FinanceSummary,
+  IsoDate,
+  SavingsGoalIn,
+  SavingsGoalOut,
+  TransactionIn,
+  TransactionKind,
+  TransactionOut,
 } from "@/types/api";
 
 // --- Users ---------------------------------------------------------------------
@@ -305,4 +316,33 @@ export const assistantApi = {
   briefing: (narrate = false) => api.get<BriefingOut>("/assistant/briefing", { narrate }),
   situation: () => api.get<Record<string, unknown>>("/assistant/situation"),
   profile: () => api.get<Record<string, unknown>>("/assistant/profile"),
+};
+
+// --- Personal finance ------------------------------------------------------------
+
+export const financeApi = {
+  summary: (month?: string) => api.get<FinanceSummary>("/finance/summary", { month }),
+  categories: () => api.get<FinanceCategories>("/finance/categories"),
+  transactions: (filters: { month?: string; kind?: TransactionKind; q?: string } = {}) =>
+    api.get<TransactionOut[]>("/finance/transactions", filters),
+  createTransaction: (body: TransactionIn) => api.post<TransactionOut>("/finance/transactions", body),
+  updateTransaction: (id: number, body: TransactionIn) =>
+    api.patch<TransactionOut>(`/finance/transactions/${id}`, body),
+  deleteTransaction: (id: number) => api.delete<void>(`/finance/transactions/${id}`),
+  setBudget: (category: string, monthly_limit: number) =>
+    api.put<BudgetStatus>("/finance/budgets", { category, monthly_limit }),
+  deleteBudget: (id: number) => api.delete<void>(`/finance/budgets/${id}`),
+  bills: () => api.get<BillOut[]>("/finance/bills"),
+  createBill: (body: BillIn) => api.post<BillOut>("/finance/bills", body),
+  updateBill: (id: number, body: BillIn) => api.patch<BillOut>(`/finance/bills/${id}`, body),
+  payBill: (id: number, body: { paid_on?: IsoDate; amount?: number } = {}) =>
+    api.post<BillOut>(`/finance/bills/${id}/pay`, body),
+  deleteBill: (id: number) => api.delete<void>(`/finance/bills/${id}`),
+  savings: () => api.get<SavingsGoalOut[]>("/finance/savings"),
+  createSavings: (body: SavingsGoalIn) => api.post<SavingsGoalOut>("/finance/savings", body),
+  updateSavings: (id: number, body: SavingsGoalIn) =>
+    api.patch<SavingsGoalOut>(`/finance/savings/${id}`, body),
+  addToSavings: (id: number, amount: number) =>
+    api.post<SavingsGoalOut>(`/finance/savings/${id}/add`, { amount }),
+  deleteSavings: (id: number) => api.delete<void>(`/finance/savings/${id}`),
 };

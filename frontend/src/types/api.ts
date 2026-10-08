@@ -808,3 +808,112 @@ export interface BriefingOut {
   text: string;
   source: "AI" | "DETERMINISTIC";
 }
+
+// --- Personal finance ------------------------------------------------------------
+
+export type TransactionKind = "EXPENSE" | "INCOME";
+export type PaymentAccount = "UPI" | "CASH" | "CARD" | "BANK" | "WALLET" | "OTHER";
+export type BillFrequency = "WEEKLY" | "MONTHLY" | "QUARTERLY" | "YEARLY" | "ONCE";
+export type SavingsGoalStatus = "ACTIVE" | "ACHIEVED" | "ARCHIVED";
+
+export const PAYMENT_ACCOUNTS: PaymentAccount[] = ["UPI", "CASH", "CARD", "BANK", "WALLET", "OTHER"];
+export const BILL_FREQUENCIES: BillFrequency[] = ["MONTHLY", "WEEKLY", "QUARTERLY", "YEARLY", "ONCE"];
+
+/** Calendar dates (no time) from the API: "2026-10-08". */
+export type IsoDate = string;
+
+export interface TransactionOut {
+  id: number;
+  kind: TransactionKind;
+  amount: number;
+  category: string;
+  account: PaymentAccount;
+  occurred_on: IsoDate;
+  note: string | null;
+  bill_id: number | null;
+  created_at: Iso;
+}
+
+export interface TransactionIn {
+  kind?: TransactionKind;
+  amount?: number;
+  category?: string;
+  account?: PaymentAccount;
+  occurred_on?: IsoDate | null;
+  note?: string | null;
+}
+
+export interface BudgetStatus {
+  id: number;
+  category: string;
+  monthly_limit: number;
+  spent: number;
+  remaining: number;
+  percent: number;
+}
+
+export interface BillOut {
+  id: number;
+  name: string;
+  amount: number;
+  category: string;
+  account: PaymentAccount;
+  frequency: BillFrequency;
+  next_due: IsoDate;
+  last_paid_on: IsoDate | null;
+  active: boolean;
+  note: string | null;
+  days_until_due: number;
+}
+
+export interface BillIn {
+  name?: string;
+  amount?: number;
+  category?: string;
+  account?: PaymentAccount;
+  frequency?: BillFrequency;
+  next_due?: IsoDate;
+  active?: boolean;
+  note?: string | null;
+}
+
+export interface SavingsGoalOut {
+  id: number;
+  name: string;
+  target_amount: number;
+  saved_amount: number;
+  deadline: IsoDate | null;
+  status: SavingsGoalStatus;
+  note: string | null;
+  percent: number;
+}
+
+export interface SavingsGoalIn {
+  name?: string;
+  target_amount?: number;
+  saved_amount?: number;
+  deadline?: IsoDate | null;
+  status?: SavingsGoalStatus;
+  note?: string | null;
+}
+
+export interface FinanceSummary {
+  month: string;
+  today: IsoDate;
+  income: number;
+  expense: number;
+  net: number;
+  previous_month_expense: number;
+  by_category: { category: string; amount: number; budget: number | null }[];
+  income_by_category: { category: string; amount: number }[];
+  daily: { day: IsoDate; expense: number; income: number }[];
+  budgets: BudgetStatus[];
+  bills_due: BillOut[];
+  savings: SavingsGoalOut[];
+  recent: TransactionOut[];
+}
+
+export interface FinanceCategories {
+  expense: string[];
+  income: string[];
+}

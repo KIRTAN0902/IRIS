@@ -6,6 +6,7 @@ from app.models.ai_recommendation import AIRecommendation
 from app.models.calendar_event import CalendarEvent
 from app.models.daily_review import DailyReview
 from app.models.experiment import Experiment
+from app.models.finance import FinanceBill, FinanceBudget, FinanceTransaction, SavingsGoal
 from app.models.focus_session import FocusSession
 from app.models.goal import Goal
 from app.models.lead import Lead
@@ -27,12 +28,16 @@ __all__ = [
     "CalendarEvent",
     "DailyReview",
     "Experiment",
+    "FinanceBill",
+    "FinanceBudget",
+    "FinanceTransaction",
     "FocusSession",
     "Goal",
     "Lead",
     "Metric",
     "OutreachActivity",
     "Project",
+    "SavingsGoal",
     "RecurringSchedule",
     "Signal",
     "Startup",

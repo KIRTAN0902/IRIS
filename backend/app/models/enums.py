@@ -213,3 +213,34 @@ AREA_STRATEGIC_WEIGHT: dict[str, float] = {
     LifeArea.INTERNSHIP: 1.0,
     LifeArea.PERSONAL: 0.7,
 }
+
+
+# --- Personal finance ----------------------------------------------------------
+
+
+class TransactionKind(StrEnum):
+    EXPENSE = "EXPENSE"
+    INCOME = "INCOME"
+
+
+class PaymentAccount(StrEnum):
+    UPI = "UPI"
+    CASH = "CASH"
+    CARD = "CARD"
+    BANK = "BANK"
+    WALLET = "WALLET"
+    OTHER = "OTHER"
+
+
+class BillFrequency(StrEnum):
+    WEEKLY = "WEEKLY"
+    MONTHLY = "MONTHLY"
+    QUARTERLY = "QUARTERLY"
+    YEARLY = "YEARLY"
+    ONCE = "ONCE"
+
+
+class SavingsGoalStatus(StrEnum):
+    ACTIVE = "ACTIVE"
+    ACHIEVED = "ACHIEVED"
+    ARCHIVED = "ARCHIVED"

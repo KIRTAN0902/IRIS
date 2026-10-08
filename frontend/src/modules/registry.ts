@@ -22,6 +22,7 @@ import {
   Mail,
   Rocket,
   Target,
+  Wallet,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -76,6 +77,13 @@ export const PRIMARY_NAV_ITEMS: NavItem[] = [
     route: "/tasks",
     glyph: "☷",
     icon: ListChecks,
+  },
+  {
+    id: "finance",
+    name: "Finance",
+    route: "/finance",
+    glyph: "₹",
+    icon: Wallet,
   },
   {
     id: "projects",

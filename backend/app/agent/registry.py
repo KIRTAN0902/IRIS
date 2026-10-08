@@ -16,6 +16,7 @@ from app.agent.tools.awareness import (
 )
 from app.agent.tools.actions import action_tools
 from app.agent.tools.base import Tool
+from app.agent.tools.finance import finance_tools
 from app.agent.tools.goals import CreateGoalTool, GetGoalsTool, UpdateGoalTool
 from app.agent.tools.intelligence import (
     GetAttentionItemsTool,
@@ -153,6 +154,10 @@ def create_default_registry() -> ToolRegistry:
 
     # Everything else the app can change (projects, CRM, focus, profile, ...)
     for tool in action_tools():
+        registry.register(tool)
+
+    # Money: transactions, budgets, bills, savings goals
+    for tool in finance_tools():
         registry.register(tool)
 
     return registry

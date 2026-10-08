@@ -96,6 +96,7 @@ export const api = {
   post: <T>(path: string, body?: unknown, query?: Record<string, QueryValue>) =>
     request<T>("POST", path, { body, query }),
   patch: <T>(path: string, body?: unknown) => request<T>("PATCH", path, { body }),
+  put: <T>(path: string, body?: unknown) => request<T>("PUT", path, { body }),
   delete: <T>(path: string) => request<T>("DELETE", path),
   /** POST a raw Blob (e.g. audio) and parse the JSON reply. */
   postBlob: <T>(path: string, blob: Blob) => request<T>("POST", path, { blob }),
