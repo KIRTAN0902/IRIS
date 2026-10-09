@@ -333,6 +333,7 @@ function Routines({ habits, loading, workouts, now }: { habits: HabitOut[]; load
               mode={focus.mode}
               startsIn={focus.startsIn}
               workout={WORKOUT_ROUTINE.test(focus.habit.name) ? workouts.find((w) => w.is_today) : undefined}
+              isWorkoutRoutine={WORKOUT_ROUTINE.test(focus.habit.name)}
               onToggle={() => check.mutate({ id: focus.habit.id, done: !focus.habit.done_today })}
               onEdit={() => setEditing({ habit: focus.habit })}
             />
@@ -389,6 +390,7 @@ function RoutineSpotlight({
   mode,
   startsIn,
   workout,
+  isWorkoutRoutine,
   onToggle,
   onEdit,
 }: {
@@ -396,6 +398,7 @@ function RoutineSpotlight({
   mode: "now" | "next";
   startsIn: number;
   workout?: WorkoutOut;
+  isWorkoutRoutine?: boolean;
   onToggle: () => void;
   onEdit: () => void;
 }) {
@@ -454,7 +457,16 @@ function RoutineSpotlight({
         </div>
       )}
 
-      {!h.description && !workout && (
+      {isWorkoutRoutine && !workout && (
+        <p className="mt-1.5 text-[13px] text-ink-faint">
+          No workout planned for {new Date().toLocaleDateString("en-IN", { weekday: "long" })}.{" "}
+          <Link to="/gym" className="text-ink hover:underline">
+            Plan one
+          </Link>
+        </p>
+      )}
+
+      {!h.description && !workout && !isWorkoutRoutine && (
         <button onClick={onEdit} className="mt-1 text-[12px] text-ink-faint hover:text-ink cursor-pointer">
           + Add what to do in this routine
         </button>
