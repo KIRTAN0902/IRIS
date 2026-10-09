@@ -17,6 +17,7 @@ from app.agent.tools.awareness import (
 from app.agent.tools.actions import action_tools
 from app.agent.tools.base import Tool
 from app.agent.tools.finance import finance_tools
+from app.agent.tools.habits import habit_tools
 from app.agent.tools.goals import CreateGoalTool, GetGoalsTool, UpdateGoalTool
 from app.agent.tools.intelligence import (
     GetAttentionItemsTool,
@@ -158,6 +159,10 @@ def create_default_registry() -> ToolRegistry:
 
     # Money: transactions, budgets, bills, savings goals
     for tool in finance_tools():
+        registry.register(tool)
+
+    # Daily routines (gym, yoga...) with tick-offs and streaks
+    for tool in habit_tools():
         registry.register(tool)
 
     return registry

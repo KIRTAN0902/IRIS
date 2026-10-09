@@ -9,6 +9,7 @@ from app.models.experiment import Experiment
 from app.models.finance import FinanceBill, FinanceBudget, FinanceTransaction, SavingsGoal
 from app.models.focus_session import FocusSession
 from app.models.goal import Goal
+from app.models.habit import Habit, HabitLog
 from app.models.lead import Lead
 from app.models.metric import Metric
 from app.models.outreach import OutreachActivity
@@ -33,6 +34,8 @@ __all__ = [
     "FinanceTransaction",
     "FocusSession",
     "Goal",
+    "Habit",
+    "HabitLog",
     "Lead",
     "Metric",
     "OutreachActivity",

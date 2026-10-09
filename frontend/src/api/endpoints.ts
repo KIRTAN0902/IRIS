@@ -67,6 +67,9 @@ import type {
   TransactionIn,
   TransactionKind,
   TransactionOut,
+  HabitIn,
+  HabitOut,
+  Situation,
 } from "@/types/api";
 
 // --- Users ---------------------------------------------------------------------
@@ -314,7 +317,7 @@ export const memoriesApi = {
 
 export const assistantApi = {
   briefing: (narrate = false) => api.get<BriefingOut>("/assistant/briefing", { narrate }),
-  situation: () => api.get<Record<string, unknown>>("/assistant/situation"),
+  situation: () => api.get<Situation>("/assistant/situation"),
   profile: () => api.get<Record<string, unknown>>("/assistant/profile"),
 };
 
@@ -345,4 +348,14 @@ export const financeApi = {
   addToSavings: (id: number, amount: number) =>
     api.post<SavingsGoalOut>(`/finance/savings/${id}/add`, { amount }),
   deleteSavings: (id: number) => api.delete<void>(`/finance/savings/${id}`),
+};
+
+// --- Routines ----------------------------------------------------------------------
+
+export const habitsApi = {
+  list: () => api.get<HabitOut[]>("/habits"),
+  create: (body: HabitIn) => api.post<HabitOut>("/habits", body),
+  update: (id: number, body: HabitIn) => api.patch<HabitOut>(`/habits/${id}`, body),
+  check: (id: number, done: boolean) => api.post<HabitOut>(`/habits/${id}/check`, { done }),
+  remove: (id: number) => api.delete<void>(`/habits/${id}`),
 };

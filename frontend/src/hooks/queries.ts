@@ -10,6 +10,7 @@ import {
   assistantApi,
   chatApi,
   financeApi,
+  habitsApi,
   focusApi,
   goalsApi,
   intelligenceApi,
@@ -26,6 +27,8 @@ import type {
   AIMemoryIn,
   AIMemoryUpdate,
   BillIn,
+  HabitIn,
+  HabitOut,
   SavingsGoalIn,
   TransactionIn,
   TransactionKind,
@@ -399,6 +402,8 @@ export const useSendMessage = () => {
       qc.invalidateQueries({ queryKey: qk.recurringSchedules() });
       qc.invalidateQueries({ queryKey: ["memories"] });
       qc.invalidateQueries({ queryKey: ["finance"] });
+      qc.invalidateQueries({ queryKey: ["habits"] });
+      qc.invalidateQueries({ queryKey: ["assistant"] });
     },
   });
 };
@@ -509,3 +514,56 @@ export const useSaveSavingsGoal = () =>
 export const useAddToSavings = () =>
   useFinanceMutation(({ id, amount }: { id: number; amount: number }) => financeApi.addToSavings(id, amount));
 export const useDeleteSavingsGoal = () => useFinanceMutation((id: number) => financeApi.deleteSavings(id));
+
+// --- Today & routines ------------------------------------------------------------
+
+/** The live situation (now/next, today's schedule, tasks); refreshed every minute. */
+export const useSituation = () =>
+  useQuery({ queryKey: ["assistant", "situation"], queryFn: assistantApi.situation, refetchInterval: 60_000 });
+
+export const useHabits = () => useQuery({ queryKey: ["habits"], queryFn: habitsApi.list });
+
+function useHabitMutation<V, R>(fn: (vars: V) => Promise<R>) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: fn,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["habits"] });
+      qc.invalidateQueries({ queryKey: ["assistant"] });
+    },
+  });
+}
+
+export const useSaveHabit = () =>
+  useHabitMutation(({ id, body }: { id?: number; body: HabitIn }) => (id ? habitsApi.update(id, body) : habitsApi.create(body)));
+export const useDeleteHabit = () => useHabitMutation((id: number) => habitsApi.remove(id));
+
+/** Tick a routine; the list updates instantly and rolls back if the request fails. */
+export const useCheckHabit = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, done }: { id: number; done: boolean }) => habitsApi.check(id, done),
+    onMutate: async ({ id, done }) => {
+      await qc.cancelQueries({ queryKey: ["habits"] });
+      const before = qc.getQueryData<HabitOut[]>(["habits"]);
+      qc.setQueryData<HabitOut[]>(["habits"], (list) =>
+        list?.map((h) =>
+          h.id === id
+            ? {
+                ...h,
+                done_today: done,
+                streak: Math.max(0, h.streak + (done && !h.done_today ? 1 : !done && h.done_today ? -1 : 0)),
+                last_7: h.last_7.map((d, i) => (i === h.last_7.length - 1 ? { ...d, done } : d)),
+              }
+            : h,
+        ),
+      );
+      return { before };
+    },
+    onError: (_err, _vars, ctx) => ctx?.before && qc.setQueryData(["habits"], ctx.before),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ["habits"] });
+      qc.invalidateQueries({ queryKey: ["assistant"] });
+    },
+  });
+};

@@ -917,3 +917,69 @@ export interface FinanceCategories {
   expense: string[];
   income: string[];
 }
+
+// --- Routines & today ------------------------------------------------------------
+
+export interface HabitDay {
+  day: IsoDate;
+  scheduled: boolean;
+  done: boolean;
+}
+
+export interface HabitOut {
+  id: number;
+  name: string;
+  days_of_week: string;
+  time: string | null;
+  active: boolean;
+  position: number;
+  scheduled_today: boolean;
+  done_today: boolean;
+  streak: number;
+  best_streak: number;
+  last_7: HabitDay[];
+}
+
+export interface HabitIn {
+  name?: string;
+  days_of_week?: string;
+  time?: string | null;
+  active?: boolean;
+}
+
+export interface SituationTask {
+  id: number;
+  title: string;
+  area: LifeArea;
+  priority: TaskPriority;
+  status: TaskStatus;
+  due: string | null;
+  estimated_minutes: number | null;
+}
+
+/** The live snapshot IRIS reasons over (GET /assistant/situation). */
+export interface Situation {
+  now: {
+    local_time: string;
+    timezone: string;
+    part_of_day: string;
+    current_block: string | null;
+    in_hard_commitment: boolean;
+    minutes_left_in_block: number | null;
+    next_flexible_window: string | null;
+    next_commitment: string | null;
+    minutes_until_next_commitment: number | null;
+    free_minutes: number | null;
+    sleep_time: string | null;
+  };
+  today_schedule: { start: string; end: string; title: string; kind: string; hard: boolean; status: "done" | "now" | "upcoming" }[];
+  tasks: {
+    open_count: number;
+    in_progress: SituationTask[];
+    overdue: SituationTask[];
+    due_today: SituationTask[];
+    due_this_week: SituationTask[];
+    blocked: SituationTask[];
+  };
+  done: { today: { title: string; area: LifeArea; at: string }[]; last_7_days_count: number };
+}

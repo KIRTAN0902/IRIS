@@ -16,6 +16,7 @@ import type { RankedTasksResponse } from "@/api/endpoints";
 import type { ChatMessageOut, TaskOut } from "@/types/api";
 import { useVoiceConversation, type VoicePhase } from "@/features/home/voice";
 import { IrisSphere } from "@/features/home/IrisSphere";
+import { TodayDashboard } from "@/features/home/TodayDashboard";
 
 /**
  * HOME: a new chat by default, showing only "IRIS" and the composer (like
@@ -111,7 +112,6 @@ function Conversation({
         onSend={() => send()}
         onVoice={voice.start}
         disabled={busy}
-        autoFocus={isNewChat}
       />
       {voice.notice && !talking && (
         <p className="mt-2 px-4 text-center text-[13px] text-ink-faint" role="status">
@@ -123,12 +123,15 @@ function Conversation({
   );
 
   if (isNewChat) {
+    // Home: the day at a glance, with IRIS one message away.
     return (
-      <div className="flex flex-1 flex-col items-center justify-center pb-[12vh]">
-        <h1 className="neon select-none text-[44px] font-semibold tracking-[0.22em] text-ink sm:text-[56px]">
-          IRIS
-        </h1>
-        <div className="mt-10 w-full">{composer}</div>
+      <div className="flex flex-1 flex-col">
+        <div className="flex-1">
+          <TodayDashboard />
+        </div>
+        <div className="sticky bottom-14 md:bottom-0 bg-gradient-to-t from-ops-ground from-75% to-transparent pb-4 pt-6">
+          {composer}
+        </div>
       </div>
     );
   }
