@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, String, UniqueConstraint, func
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
@@ -22,6 +22,10 @@ class Habit(Base):
     days_of_week: Mapped[str] = mapped_column(String(64), default=ALL_DAYS)
     # Optional usual time, "HH:MM" local.
     time: Mapped[str | None] = mapped_column(String(5), default=None)
+    # How long it usually takes; with ``time`` this tells when it is "now".
+    duration_min: Mapped[int | None] = mapped_column(Integer, default=None)
+    # What to do, e.g. "Surya namaskar x12, pranayama 10 min".
+    description: Mapped[str | None] = mapped_column(Text, default=None)
     position: Mapped[int] = mapped_column(Integer, default=0)
     active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=func.now(), server_default=func.now())

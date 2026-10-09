@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useDeleteHabit, useSaveHabit } from "@/hooks/queries";
 import { Button } from "@/components/ui/Button";
 import { Dialog, DialogContent } from "@/components/ui/Overlay";
-import { Field, Input } from "@/components/ui/Field";
+import { Field, Input, Textarea } from "@/components/ui/Field";
 import { cn } from "@/lib/format";
 import type { HabitOut } from "@/types/api";
 
@@ -26,6 +26,8 @@ export function RoutineDialog({
   const [time, setTime] = useState("");
   const [days, setDays] = useState<string[]>(DAYS);
   const [active, setActive] = useState(true);
+  const [duration, setDuration] = useState("");
+  const [description, setDescription] = useState("");
 
   useEffect(() => {
     if (!open) return;
@@ -33,6 +35,8 @@ export function RoutineDialog({
     setTime(habit?.time ?? suggestion?.time ?? "");
     setDays(habit ? habit.days_of_week.split(",") : DAYS);
     setActive(habit?.active ?? true);
+    setDuration(habit?.duration_min ? String(habit.duration_min) : "");
+    setDescription(habit?.description ?? "");
   }, [open, habit, suggestion]);
 
   const toggle = (d: string) => setDays((cur) => (cur.includes(d) ? cur.filter((x) => x !== d) : DAYS.filter((x) => cur.includes(x) || x === d)));
@@ -47,7 +51,17 @@ export function RoutineDialog({
             e.preventDefault();
             if (!canSave) return;
             save.mutate(
-              { id: habit?.id, body: { name: name.trim(), time: time || null, days_of_week: days.join(","), active } },
+              {
+                id: habit?.id,
+                body: {
+                  name: name.trim(),
+                  time: time || null,
+                  duration_min: Number(duration) > 0 ? Math.round(Number(duration)) : null,
+                  description: description.trim() || null,
+                  days_of_week: days.join(","),
+                  active,
+                },
+              },
               { onSuccess: close },
             );
           }}
@@ -56,8 +70,27 @@ export function RoutineDialog({
           <Field label="Routine">
             <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Gym, Yoga, Reading…" maxLength={80} autoFocus={!habit} />
           </Field>
-          <Field label="Usual time (optional)">
-            <Input type="time" value={time} onChange={(e) => setTime(e.target.value)} />
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Usual time">
+              <Input type="time" value={time} onChange={(e) => setTime(e.target.value)} />
+            </Field>
+            <Field label="Takes (minutes)">
+              <Input
+                value={duration}
+                onChange={(e) => setDuration(e.target.value.replace(/\D/g, ""))}
+                inputMode="numeric"
+                placeholder="60"
+              />
+            </Field>
+          </div>
+          <Field label="What to do">
+            <Textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              rows={3}
+              maxLength={2000}
+              placeholder={"Surya namaskar ×12\nPranayama 10 min\nMeditation 10 min"}
+            />
           </Field>
           <div>
             <p className="mb-1.5 text-[12px] text-ink-faint">Days</p>

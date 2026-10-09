@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Check, ChevronRight, Dumbbell, Flame, Plus } from "lucide-react";
 import {
@@ -12,7 +12,7 @@ import {
 } from "@/hooks/queries";
 import { Skeleton } from "@/components/ui/Overlay";
 import { cn } from "@/lib/format";
-import type { HabitOut, Situation, SituationTask } from "@/types/api";
+import type { HabitOut, Situation, SituationTask, WorkoutOut } from "@/types/api";
 import { inr } from "@/features/finance/money";
 import { RoutineDialog } from "@/features/home/RoutineDialog";
 
@@ -58,6 +58,8 @@ export function TodayDashboard() {
   const situation = useSituation();
   const habits = useHabits();
   const me = useMe();
+  const workouts = useWorkouts();
+  const now = useClock();
   const s = situation.data;
 
   if (situation.isLoading || !s) {
@@ -78,6 +80,8 @@ export function TodayDashboard() {
   const total = today.length + tasks.length + tasksDone;
   const done = routinesDone + tasksDone;
   const firstName = me.data?.name?.split(" ")[0];
+  const focus = spotlight(today, now);
+  const workoutInSpotlight = !!focus && WORKOUT_ROUTINE.test(focus.habit.name) && (workouts.data ?? []).some((w) => w.is_today);
 
   return (
     <div className="pb-6">
@@ -93,9 +97,9 @@ export function TodayDashboard() {
 
       <NowNext s={s} />
 
-      <Routines habits={habits.data ?? []} loading={habits.isLoading} />
+      <Routines habits={habits.data ?? []} loading={habits.isLoading} workouts={workouts.data ?? []} now={now} />
 
-      <TodaysWorkout />
+      {!workoutInSpotlight && <TodaysWorkout />}
 
       <Tasks tasks={tasks} doneToday={s.done.today} />
 
@@ -235,12 +239,64 @@ function CheckCircle({ done, onClick, label }: { done: boolean; onClick: () => v
 
 // --- Routines ----------------------------------------------------------------------------
 
-function Routines({ habits, loading }: { habits: HabitOut[]; loading: boolean }) {
+/** Minutes since midnight, re-read every 30s so "now" moves with the clock. */
+function useClock() {
+  const read = () => {
+    const d = new Date();
+    return d.getHours() * 60 + d.getMinutes();
+  };
+  const [now, setNow] = useState(read);
+  useEffect(() => {
+    const t = setInterval(() => setNow(read()), 30_000);
+    return () => clearInterval(t);
+  }, []);
+  return now;
+}
+
+/** Routines without a set duration count as "now" for this long. */
+const DEFAULT_ROUTINE_MIN = 30;
+const WORKOUT_ROUTINE = /gym|workout|lift|training|exercise/i;
+
+function routineWindow(h: HabitOut): [number, number] | null {
+  if (!h.time) return null;
+  const start = minutes(h.time);
+  return [start, start + (h.duration_min ?? DEFAULT_ROUTINE_MIN)];
+}
+
+const hhmm = (m: number) => `${String(Math.floor(m / 60) % 24).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+
+function timeRange(h: HabitOut) {
+  const w = routineWindow(h);
+  if (!w) return null;
+  return h.duration_min ? `${hhmm(w[0])}–${hhmm(w[1])}` : hhmm(w[0]);
+}
+
+function inHowLong(mins: number) {
+  if (mins < 60) return `in ${mins} min`;
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return `in ${h}h${m ? ` ${m}m` : ""}`;
+}
+
+/** The routine happening now (by its time and duration), else the next one still to do. */
+function spotlight(today: HabitOut[], now: number): { habit: HabitOut; mode: "now" | "next"; startsIn: number } | null {
+  const timed = today.filter((h) => h.time).sort((x, y) => minutes(x.time!) - minutes(y.time!));
+  const current = timed.find((h) => {
+    const [start, end] = routineWindow(h)!;
+    return now >= start && now < end;
+  });
+  if (current) return { habit: current, mode: "now", startsIn: 0 };
+  const next = timed.find((h) => !h.done_today && minutes(h.time!) > now);
+  return next ? { habit: next, mode: "next", startsIn: minutes(next.time!) - now } : null;
+}
+
+function Routines({ habits, loading, workouts, now }: { habits: HabitOut[]; loading: boolean; workouts: WorkoutOut[]; now: number }) {
   const check = useCheckHabit();
   const [editing, setEditing] = useState<{ habit: HabitOut | null; suggestion?: { name: string; time?: string } } | null>(null);
   const today = habits.filter((h) => h.active && h.scheduled_today);
   const rest = habits.filter((h) => h.active && !h.scheduled_today);
   const done = today.filter((h) => h.done_today).length;
+  const focus = spotlight(today, now);
 
   return (
     <Section
@@ -270,34 +326,52 @@ function Routines({ habits, loading }: { habits: HabitOut[]; loading: boolean })
           </div>
         </div>
       ) : (
-        <ul>
-          {today.map((h) => (
-            <li key={h.id} className="flex items-center gap-3 py-2.5">
-              <CheckCircle
-                done={h.done_today}
-                onClick={() => check.mutate({ id: h.id, done: !h.done_today })}
-                label={h.done_today ? `Mark ${h.name} not done` : `Mark ${h.name} done`}
-              />
-              <button onClick={() => setEditing({ habit: h })} className="min-w-0 flex-1 text-left cursor-pointer">
-                <p className={cn("truncate text-[15px]", h.done_today ? "text-ink-dim" : "text-ink")}>{h.name}</p>
-                <WeekDots days={h.last_7} />
-              </button>
-              {h.time && <span className="tnum text-[13px] text-ink-faint">{h.time}</span>}
-              <span
-                className={cn("tnum flex w-10 items-center justify-end gap-0.5 text-[13px]", h.streak ? "text-ink" : "text-ink-faint")}
-                title={`Best streak: ${h.best_streak} days`}
-              >
-                <Flame size={13} className={h.streak && h.done_today ? "text-caution" : "text-ink-faint"} />
-                {h.streak}
-              </span>
-            </li>
-          ))}
-          {rest.length > 0 && (
-            <li className="pt-1 text-[12px] text-ink-faint">
-              Not today: {rest.map((h) => h.name).join(", ")}
-            </li>
+        <>
+          {focus && (
+            <RoutineSpotlight
+              habit={focus.habit}
+              mode={focus.mode}
+              startsIn={focus.startsIn}
+              workout={WORKOUT_ROUTINE.test(focus.habit.name) ? workouts.find((w) => w.is_today) : undefined}
+              onToggle={() => check.mutate({ id: focus.habit.id, done: !focus.habit.done_today })}
+              onEdit={() => setEditing({ habit: focus.habit })}
+            />
           )}
-        </ul>
+          <ul>
+            {today.map((h) => {
+              const isNow = focus?.mode === "now" && focus.habit.id === h.id;
+              return (
+                <li key={h.id} className="flex items-center gap-3 py-2.5">
+                  <CheckCircle
+                    done={h.done_today}
+                    onClick={() => check.mutate({ id: h.id, done: !h.done_today })}
+                    label={h.done_today ? `Mark ${h.name} not done` : `Mark ${h.name} done`}
+                  />
+                  <button onClick={() => setEditing({ habit: h })} className="min-w-0 flex-1 text-left cursor-pointer">
+                    <p className={cn("truncate text-[15px]", h.done_today ? "text-ink-dim" : "text-ink", isNow && "font-semibold")}>
+                      {h.name}
+                      {isNow && <span className="ml-2 text-[11px] font-normal uppercase tracking-[0.15em] text-ink-faint">now</span>}
+                    </p>
+                    <WeekDots days={h.last_7} />
+                  </button>
+                  {timeRange(h) && <span className="tnum text-[13px] text-ink-faint">{timeRange(h)}</span>}
+                  <span
+                    className={cn("tnum flex w-10 items-center justify-end gap-0.5 text-[13px]", h.streak ? "text-ink" : "text-ink-faint")}
+                    title={`Best streak: ${h.best_streak} days`}
+                  >
+                    <Flame size={13} className={h.streak && h.done_today ? "text-caution" : "text-ink-faint"} />
+                    {h.streak}
+                  </span>
+                </li>
+              );
+            })}
+            {rest.length > 0 && (
+              <li className="pt-1 text-[12px] text-ink-faint">
+                Not today: {rest.map((h) => h.name).join(", ")}
+              </li>
+            )}
+          </ul>
+        </>
       )}
       <RoutineDialog
         open={editing !== null}
@@ -306,6 +380,86 @@ function Routines({ habits, loading }: { habits: HabitOut[]; loading: boolean })
         suggestion={editing?.suggestion}
       />
     </Section>
+  );
+}
+
+/** The routine for this moment: what to do, from its description or today's workout plan. */
+function RoutineSpotlight({
+  habit: h,
+  mode,
+  startsIn,
+  workout,
+  onToggle,
+  onEdit,
+}: {
+  habit: HabitOut;
+  mode: "now" | "next";
+  startsIn: number;
+  workout?: WorkoutOut;
+  onToggle: () => void;
+  onEdit: () => void;
+}) {
+  const live = mode === "now";
+  const preview = workout?.exercises.slice(0, 4) ?? [];
+  return (
+    <div
+      className={cn(
+        "mb-2 mt-1 rounded-2xl border px-4 py-3",
+        live ? "border-ink/50 bg-ops-panel shadow-[0_0_24px_rgba(255,255,255,0.07)]" : "border-ops-line bg-ops-panel/60",
+      )}
+    >
+      <div className="flex items-start gap-3">
+        <div className="min-w-0 flex-1">
+          <p className="text-[11px] uppercase tracking-[0.18em] text-ink-faint">
+            {live ? "Now" : "Up next"} · {timeRange(h)}
+            {!live && ` · ${inHowLong(startsIn)}`}
+          </p>
+          <button onClick={onEdit} className="mt-0.5 text-left text-[18px] font-semibold text-ink cursor-pointer">
+            {h.name}
+          </button>
+        </div>
+        {live && (
+          <CheckCircle done={h.done_today} onClick={onToggle} label={h.done_today ? `Mark ${h.name} not done` : `Mark ${h.name} done`} />
+        )}
+      </div>
+
+      {h.description && <p className="mt-1.5 whitespace-pre-line text-[14px] leading-relaxed text-ink-dim">{h.description}</p>}
+
+      {workout && (
+        <div className="mt-2.5 border-t border-ops-line pt-2.5">
+          <p className="text-[13px] text-ink">
+            {workout.name}
+            {workout.focus && <span className="text-ink-faint"> · {workout.focus}</span>}
+            {workout.exercises.length > 0 && (
+              <span className="tnum text-ink-faint">
+                {" "}
+                · {workout.done_count}/{workout.exercises.length}
+              </span>
+            )}
+          </p>
+          <ol className="mt-1.5 space-y-1">
+            {preview.map((e, i) => (
+              <li key={e.id} className={cn("flex items-baseline gap-2 text-[13px]", e.done_today ? "text-ink-faint line-through" : "text-ink-dim")}>
+                <span className="tnum w-4 shrink-0 text-ink-faint">{i + 1}</span>
+                <span className="min-w-0 flex-1 truncate">{e.name}</span>
+                {e.sets_reps && <span className="tnum shrink-0">{e.sets_reps}</span>}
+                {e.weight && <span className="tnum shrink-0 text-ink-faint">{e.weight}</span>}
+              </li>
+            ))}
+          </ol>
+          <Link to="/gym" className="mt-2 inline-flex items-center text-[13px] font-medium text-ink hover:underline">
+            {workout.exercises.length > preview.length ? `+${workout.exercises.length - preview.length} more · ` : ""}
+            {live ? "Start workout" : "Open workout"} <ChevronRight size={14} />
+          </Link>
+        </div>
+      )}
+
+      {!h.description && !workout && (
+        <button onClick={onEdit} className="mt-1 text-[12px] text-ink-faint hover:text-ink cursor-pointer">
+          + Add what to do in this routine
+        </button>
+      )}
+    </div>
   );
 }
 

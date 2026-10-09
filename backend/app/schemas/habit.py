@@ -39,6 +39,8 @@ class HabitCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=80)
     days_of_week: str = Field("Mon,Tue,Wed,Thu,Fri,Sat,Sun", description='Days it applies, e.g. "Mon,Wed,Fri"')
     time: str | None = Field(None, description='Usual time, "HH:MM" (optional)')
+    duration_min: int | None = Field(None, ge=1, le=24 * 60, description="Usual length in minutes")
+    description: str | None = Field(None, max_length=2000, description="What to do in this routine")
 
     _days = field_validator("days_of_week", mode="before")(_clean_days)
     _time = field_validator("time", mode="before")(_clean_time)
@@ -50,6 +52,8 @@ class HabitUpdate(BaseModel):
     time: str | None = None
     active: bool | None = None
     position: int | None = None
+    duration_min: int | None = Field(None, ge=1, le=24 * 60)
+    description: str | None = Field(None, max_length=2000)
 
     _days = field_validator("days_of_week", mode="before")(_clean_days)
     _time = field_validator("time", mode="before")(_clean_time)
@@ -66,6 +70,8 @@ class HabitOut(BaseModel):
     name: str
     days_of_week: str
     time: str | None
+    duration_min: int | None
+    description: str | None
     active: bool
     position: int
     scheduled_today: bool

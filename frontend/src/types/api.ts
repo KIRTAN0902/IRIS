@@ -931,6 +931,8 @@ export interface HabitOut {
   name: string;
   days_of_week: string;
   time: string | null;
+  duration_min: number | null;
+  description: string | null;
   active: boolean;
   position: number;
   scheduled_today: boolean;
@@ -944,6 +946,8 @@ export interface HabitIn {
   name?: string;
   days_of_week?: string;
   time?: string | null;
+  duration_min?: number | null;
+  description?: string | null;
   active?: boolean;
 }
 

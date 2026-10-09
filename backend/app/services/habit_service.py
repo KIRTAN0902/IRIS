@@ -79,6 +79,8 @@ def to_out(db: Session, habit: Habit, today: date) -> HabitOut:
         name=habit.name,
         days_of_week=habit.days_of_week,
         time=habit.time,
+        duration_min=habit.duration_min,
+        description=habit.description,
         active=habit.active,
         position=habit.position,
         scheduled_today=habit.scheduled_on(today),
@@ -149,7 +151,11 @@ def situation_brief(db: Session, user: User) -> list[dict] | None:
     habits = [h for h in list_habits(db, user, include_inactive=False) if h.scheduled_today]
     if not habits:
         return None
-    return [{"id": h.id, "name": h.name, "time": h.time, "done": h.done_today, "streak": h.streak} for h in habits]
+    return [
+        {"id": h.id, "name": h.name, "time": h.time, "duration": h.duration_min, "done": h.done_today,
+         "streak": h.streak, "description": h.description}
+        for h in habits
+    ]
 
 
 def render_brief(brief: list[dict] | None) -> list[str]:
@@ -160,6 +166,9 @@ def render_brief(brief: list[dict] | None) -> list[str]:
     for h in brief:
         mark = "done" if h["done"] else "not yet"
         when = f" {h['time']}" if h["time"] else ""
+        if h["time"] and h.get("duration"):
+            when += f" ({h['duration']}m)"
         streak = f", {h['streak']}-day streak" if h["streak"] else ""
-        lines.append(f"- #{h['id']} {h['name']}{when}: {mark}{streak}")
+        what = f" - {h['description'][:160]}" if h.get("description") else ""
+        lines.append(f"- #{h['id']} {h['name']}{when}: {mark}{streak}{what}")
     return lines

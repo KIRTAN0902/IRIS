@@ -98,3 +98,20 @@ def test_situation_lists_todays_routines(db, user):
     text = render_situation(build_situation(db, user))
     assert "ROUTINES TODAY (1/2 done)" in text
     assert f"#{yoga.id} Yoga 06:00: done" in text and "Gym 18:30: not yet" in text
+
+
+def test_routine_duration_and_description(client, db, user):
+    from app.intelligence.situation import build_situation, render_situation
+
+    r = client.post(
+        "/api/habits",
+        json={"name": "Yoga", "time": "06:00", "duration_min": 90, "description": "Surya namaskar x12, pranayama 10 min"},
+    )
+    assert r.status_code == 201, r.text
+    yoga = r.json()
+    assert yoga["duration_min"] == 90 and yoga["description"].startswith("Surya")
+    yoga = client.patch(f"/api/habits/{yoga['id']}", json={"description": None}).json()
+    assert yoga["description"] is None and yoga["duration_min"] == 90
+    client.patch(f"/api/habits/{yoga['id']}", json={"description": "Sun salutations"})
+    assert "Yoga 06:00 (90m): not yet - Sun salutations" in render_situation(build_situation(db, user))
+    assert client.post("/api/habits", json={"name": "Nap", "duration_min": 0}).status_code == 422
