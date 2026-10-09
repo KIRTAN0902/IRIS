@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { Check, ChevronRight, Flame, Plus } from "lucide-react";
+import { Check, ChevronRight, Dumbbell, Flame, Plus } from "lucide-react";
 import {
   useCheckHabit,
   useCompleteTask,
@@ -8,6 +8,7 @@ import {
   useHabits,
   useMe,
   useSituation,
+  useWorkouts,
 } from "@/hooks/queries";
 import { Skeleton } from "@/components/ui/Overlay";
 import { cn } from "@/lib/format";
@@ -93,6 +94,8 @@ export function TodayDashboard() {
       <NowNext s={s} />
 
       <Routines habits={habits.data ?? []} loading={habits.isLoading} />
+
+      <TodaysWorkout />
 
       <Tasks tasks={tasks} doneToday={s.done.today} />
 
@@ -320,6 +323,48 @@ function WeekDots({ days }: { days: HabitOut["last_7"] }) {
         />
       ))}
     </span>
+  );
+}
+
+// --- Workout ------------------------------------------------------------------------------
+
+function TodaysWorkout() {
+  const workouts = useWorkouts();
+  const today = (workouts.data ?? []).filter((w) => w.is_today);
+  if (!today.length) return null;
+  return (
+    <>
+      {today.map((w) => {
+        const total = w.exercises.length;
+        return (
+          <Link
+            key={w.id}
+            to="/gym"
+            className="mt-4 flex items-center gap-3 rounded-2xl border border-ops-line-bright bg-ops-panel px-4 py-3 hover:border-ink-faint"
+          >
+            <Dumbbell size={20} className="shrink-0 text-ink-dim" />
+            <div className="min-w-0 flex-1">
+              <p className="text-[11px] uppercase tracking-[0.18em] text-ink-faint">Today's workout</p>
+              <p className="truncate text-[15px] font-medium text-ink">
+                {w.name}
+                {w.focus && <span className="font-normal text-ink-faint"> · {w.focus}</span>}
+              </p>
+              {total > 0 && (
+                <div className="mt-1.5 flex items-center gap-2">
+                  <div className="h-1 flex-1 overflow-hidden rounded-full bg-ops-raised">
+                    <div className="h-full rounded-full bg-ink" style={{ width: `${(w.done_count / total) * 100}%` }} />
+                  </div>
+                  <span className="tnum text-[12px] text-ink-faint">
+                    {w.done_count}/{total}
+                  </span>
+                </div>
+              )}
+            </div>
+            <ChevronRight size={16} className="shrink-0 text-ink-faint" />
+          </Link>
+        );
+      })}
+    </>
   );
 }
 

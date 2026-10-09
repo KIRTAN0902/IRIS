@@ -14,6 +14,7 @@ import {
   CalendarDays,
   Compass,
   CreditCard,
+  Dumbbell,
   FolderTree,
   GraduationCap,
   HeartPulse,
@@ -77,6 +78,13 @@ export const PRIMARY_NAV_ITEMS: NavItem[] = [
     route: "/tasks",
     glyph: "☷",
     icon: ListChecks,
+  },
+  {
+    id: "gym",
+    name: "Gym",
+    route: "/gym",
+    glyph: "◆",
+    icon: Dumbbell,
   },
   {
     id: "finance",

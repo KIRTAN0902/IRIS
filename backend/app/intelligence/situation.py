@@ -24,7 +24,7 @@ from app.models.recurring_schedule import RecurringSchedule
 from app.models.task import Task
 from app.models.time_block import TimeBlock
 from app.models.user import User
-from app.services import finance_service, habit_service
+from app.services import finance_service, habit_service, workout_service
 from app.utils.datetime import localize_date_boundaries, to_local, utcnow
 
 Detail = Literal["compact", "standard", "full"]
@@ -334,6 +334,7 @@ def build_situation(
         "goals": goals,
         "money": finance_service.situation_brief(db, user),
         "routines": habit_service.situation_brief(db, user),
+        "workout": workout_service.situation_brief(db, user),
         "since_last_conversation": since_section,
     }
 
@@ -439,6 +440,7 @@ def render_situation(s: dict[str, Any], detail: Detail = "standard") -> str:
             lines.append(f"- {g['name']} [{g['area']}] {g['progress_pct']}% ({g['status']})")
 
     lines.extend(habit_service.render_brief(s.get("routines")))
+    lines.extend(workout_service.render_brief(s.get("workout")))
     lines.extend(finance_service.render_brief(s.get("money")))
 
     return "\n".join(lines)

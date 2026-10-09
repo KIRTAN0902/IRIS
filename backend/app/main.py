@@ -78,6 +78,7 @@ def create_app() -> FastAPI:
         tasks,
         users,
         voice,
+        workouts,
     )
 
     api = settings.api_prefix
@@ -98,6 +99,7 @@ def create_app() -> FastAPI:
     app.include_router(voice.router, prefix=api)
     app.include_router(finance.router, prefix=api)
     app.include_router(habits.router, prefix=api)
+    app.include_router(workouts.router, prefix=api)
 
     return app
 

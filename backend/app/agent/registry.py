@@ -18,6 +18,7 @@ from app.agent.tools.actions import action_tools
 from app.agent.tools.base import Tool
 from app.agent.tools.finance import finance_tools
 from app.agent.tools.habits import habit_tools
+from app.agent.tools.workouts import workout_tools
 from app.agent.tools.goals import CreateGoalTool, GetGoalsTool, UpdateGoalTool
 from app.agent.tools.intelligence import (
     GetAttentionItemsTool,
@@ -163,6 +164,10 @@ def create_default_registry() -> ToolRegistry:
 
     # Daily routines (gym, yoga...) with tick-offs and streaks
     for tool in habit_tools():
+        registry.register(tool)
+
+    # Gym workout plans
+    for tool in workout_tools():
         registry.register(tool)
 
     return registry

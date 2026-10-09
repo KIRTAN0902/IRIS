@@ -20,6 +20,7 @@ from app.models.startup import Startup
 from app.models.task import Task
 from app.models.time_block import TimeBlock
 from app.models.user import User
+from app.models.workout import Workout, WorkoutExercise, WorkoutLog
 
 __all__ = [
     "AIConversation",
@@ -47,5 +48,8 @@ __all__ = [
     "Task",
     "TimeBlock",
     "User",
+    "Workout",
+    "WorkoutExercise",
+    "WorkoutLog",
 ]
 

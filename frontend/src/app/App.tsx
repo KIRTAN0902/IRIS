@@ -8,6 +8,7 @@ import { GoalsPage } from "@/features/goals/GoalsPage";
 import { SchedulePage } from "@/features/schedule/SchedulePage";
 import { ProjectsPage } from "@/features/projects/ProjectsPage";
 import { FinancePage } from "@/features/finance/FinancePage";
+import { WorkoutsPage } from "@/features/gym/WorkoutsPage";
 import { StartupPage } from "@/features/startup/StartupPage";
 import { AreaLensPage } from "@/features/areas/AreaLensPage";
 import { InsightsPage } from "@/features/insights/InsightsPage";
@@ -37,6 +38,7 @@ export function App() {
             <Route path="schedule" element={<SchedulePage />} />
             <Route path="projects" element={<ProjectsPage />} />
             <Route path="finance" element={<FinancePage />} />
+            <Route path="gym" element={<WorkoutsPage />} />
             <Route path="focus" element={<FocusPage />} />
             <Route path="startup" element={<StartupPage />} />
             <Route path="college" element={<AreaLensPage area="COLLEGE" title="College" />} />

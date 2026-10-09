@@ -983,3 +983,47 @@ export interface Situation {
   };
   done: { today: { title: string; area: LifeArea; at: string }[]; last_7_days_count: number };
 }
+
+// --- Workouts ----------------------------------------------------------------------
+
+export interface ExerciseIn {
+  name: string;
+  sets_reps?: string | null;
+  time?: string | null;
+  muscles?: string | null;
+  weight?: string | null;
+  notes?: string | null;
+}
+
+export interface ExerciseOut extends ExerciseIn {
+  id: number;
+  position: number;
+  sets_reps: string | null;
+  time: string | null;
+  muscles: string | null;
+  weight: string | null;
+  notes: string | null;
+  done_today: boolean;
+}
+
+export interface WorkoutIn {
+  name?: string;
+  focus?: string | null;
+  days_of_week?: string;
+  duration?: string | null;
+  notes?: string | null;
+  exercises?: ExerciseIn[];
+}
+
+export interface WorkoutOut {
+  id: number;
+  name: string;
+  focus: string | null;
+  days_of_week: string;
+  duration: string | null;
+  notes: string | null;
+  is_today: boolean;
+  exercises: ExerciseOut[];
+  done_count: number;
+  last_done_on: IsoDate | null;
+}

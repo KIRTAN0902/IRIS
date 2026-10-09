@@ -70,6 +70,9 @@ import type {
   HabitIn,
   HabitOut,
   Situation,
+  ExerciseIn,
+  WorkoutIn,
+  WorkoutOut,
 } from "@/types/api";
 
 // --- Users ---------------------------------------------------------------------
@@ -358,4 +361,17 @@ export const habitsApi = {
   update: (id: number, body: HabitIn) => api.patch<HabitOut>(`/habits/${id}`, body),
   check: (id: number, done: boolean) => api.post<HabitOut>(`/habits/${id}/check`, { done }),
   remove: (id: number) => api.delete<void>(`/habits/${id}`),
+};
+
+// --- Workouts ----------------------------------------------------------------------
+
+export const workoutsApi = {
+  list: () => api.get<WorkoutOut[]>("/workouts"),
+  create: (body: WorkoutIn) => api.post<WorkoutOut>("/workouts", body),
+  update: (id: number, body: WorkoutIn) => api.patch<WorkoutOut>(`/workouts/${id}`, body),
+  remove: (id: number) => api.delete<void>(`/workouts/${id}`),
+  updateExercise: (id: number, exerciseId: number, body: Partial<ExerciseIn>) =>
+    api.patch<WorkoutOut>(`/workouts/${id}/exercises/${exerciseId}`, body),
+  check: (id: number, exerciseId: number, done: boolean) =>
+    api.post<WorkoutOut>(`/workouts/${id}/exercises/${exerciseId}/check`, { done }),
 };

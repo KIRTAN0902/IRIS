@@ -11,6 +11,7 @@ import {
   chatApi,
   financeApi,
   habitsApi,
+  workoutsApi,
   focusApi,
   goalsApi,
   intelligenceApi,
@@ -29,6 +30,9 @@ import type {
   BillIn,
   HabitIn,
   HabitOut,
+  ExerciseIn,
+  WorkoutIn,
+  WorkoutOut,
   SavingsGoalIn,
   TransactionIn,
   TransactionKind,
@@ -403,6 +407,7 @@ export const useSendMessage = () => {
       qc.invalidateQueries({ queryKey: ["memories"] });
       qc.invalidateQueries({ queryKey: ["finance"] });
       qc.invalidateQueries({ queryKey: ["habits"] });
+      qc.invalidateQueries({ queryKey: ["workouts"] });
       qc.invalidateQueries({ queryKey: ["assistant"] });
     },
   });
@@ -563,6 +568,57 @@ export const useCheckHabit = () => {
     onError: (_err, _vars, ctx) => ctx?.before && qc.setQueryData(["habits"], ctx.before),
     onSettled: () => {
       qc.invalidateQueries({ queryKey: ["habits"] });
+      qc.invalidateQueries({ queryKey: ["assistant"] });
+    },
+  });
+};
+
+// --- Workouts ----------------------------------------------------------------------
+
+export const useWorkouts = () => useQuery({ queryKey: ["workouts"], queryFn: workoutsApi.list });
+
+function useWorkoutMutation<V, R>(fn: (vars: V) => Promise<R>) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: fn,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["workouts"] });
+      qc.invalidateQueries({ queryKey: ["assistant"] });
+    },
+  });
+}
+
+export const useSaveWorkout = () =>
+  useWorkoutMutation(({ id, body }: { id?: number; body: WorkoutIn }) =>
+    id ? workoutsApi.update(id, body) : workoutsApi.create(body),
+  );
+export const useDeleteWorkout = () => useWorkoutMutation((id: number) => workoutsApi.remove(id));
+export const useUpdateExercise = () =>
+  useWorkoutMutation(({ id, exerciseId, body }: { id: number; exerciseId: number; body: Partial<ExerciseIn> }) =>
+    workoutsApi.updateExercise(id, exerciseId, body),
+  );
+
+/** Tick an exercise mid-workout: instant, rolled back if the request fails. */
+export const useCheckExercise = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, exerciseId, done }: { id: number; exerciseId: number; done: boolean }) =>
+      workoutsApi.check(id, exerciseId, done),
+    onMutate: async ({ id, exerciseId, done }) => {
+      await qc.cancelQueries({ queryKey: ["workouts"] });
+      const before = qc.getQueryData<WorkoutOut[]>(["workouts"]);
+      qc.setQueryData<WorkoutOut[]>(["workouts"], (list) =>
+        list?.map((w) => {
+          if (w.id !== id) return w;
+          const exercises = w.exercises.map((e) => (e.id === exerciseId ? { ...e, done_today: done } : e));
+          return { ...w, exercises, done_count: exercises.filter((e) => e.done_today).length };
+        }),
+      );
+      return { before };
+    },
+    onError: (_e, _v, ctx) => ctx?.before && qc.setQueryData(["workouts"], ctx.before),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ["workouts"] });
       qc.invalidateQueries({ queryKey: ["assistant"] });
     },
   });
