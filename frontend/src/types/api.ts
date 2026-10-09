@@ -1031,3 +1031,51 @@ export interface WorkoutOut {
   done_count: number;
   last_done_on: IsoDate | null;
 }
+
+// --- Behaviour patterns ----------------------------------------------------------------
+
+export interface BehaviorTrend {
+  recent_pct: number;
+  prior_pct: number;
+  direction: "improving" | "slipping" | "steady";
+}
+
+export interface Behavior {
+  window_days: number;
+  consistency_score: number | null;
+  confidence: "early" | "growing" | "solid";
+  evidence: number;
+  deadlines: {
+    samples: number;
+    enough: boolean;
+    on_time?: number;
+    late?: number;
+    missed?: number;
+    dropped?: number;
+    on_time_pct?: number;
+    typical_delay?: string | null;
+    slipping_area?: string | null;
+    trend?: BehaviorTrend | null;
+  } | null;
+  routines: {
+    samples: number;
+    enough: boolean;
+    pct?: number;
+    routines: { name: string; done: number; scheduled: number; pct: number }[];
+    weakest_day?: { day: string; pct: number } | null;
+    strongest_day?: { day: string; pct: number } | null;
+    trend?: BehaviorTrend | null;
+  } | null;
+  workouts: { samples: number; enough: boolean; full?: number; partial?: number; skipped?: number; pct?: number } | null;
+  money: {
+    samples: number;
+    enough: boolean;
+    month_so_far?: number;
+    last_month_same_point?: number;
+    change_pct?: number | null;
+    top_category?: string | null;
+    weekend_heavier?: boolean;
+  } | null;
+  engagement: { active_days: number; of_days: number };
+  adapt: { iris: string; you: string }[];
+}

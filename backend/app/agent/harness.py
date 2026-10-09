@@ -140,6 +140,8 @@ class _RunState:
     progress: int = 0
     reasoning: list[str] = field(default_factory=list)
     steps: int = 0
+    # The native loop's conversation so far, kept to recover a reply if the model stalls.
+    messages: list[ChatMessage] = field(default_factory=list)
 
 
 class AgentHarness:
@@ -187,12 +189,12 @@ class AgentHarness:
                 )
             except (AIConnectionError, AIConfigurationError):
                 if state.actions_executed:
-                    return self._salvage(state, "native_tools")
+                    return await self._recover(provider, state) or self._salvage(state, "native_tools")
                 raise
             except Exception as exc:
                 if state.actions_executed:
                     logger.warning("Native tool loop failed after actions ran: %s", exc)
-                    return self._salvage(state, "native_tools")
+                    return await self._recover(provider, state) or self._salvage(state, "native_tools")
                 logger.warning(
                     "Native tool loop failed (provider=%s model=%s): %s; retrying with structured JSON",
                     provider.name,
@@ -230,6 +232,7 @@ class AgentHarness:
             *history,
             ChatMessage(role="user", content=user_message),
         ]
+        state.messages = messages
 
         last_content = ""
         progressed = True
@@ -474,15 +477,34 @@ class AgentHarness:
             steps=state.steps,
         )
 
+    async def _recover(self, provider: AIProvider, state: _RunState) -> HarnessResult | None:
+        """The model stalled after tools ran: one lighter call (no tool list) to write the reply."""
+        if not state.messages:
+            return None
+        try:
+            result = await provider.chat(
+                [*state.messages, ChatMessage(role="user", content=_LAST_STEP_NUDGE)], tools=None
+            )
+        except Exception as exc:  # noqa: BLE001 -- fall back to the salvage summary
+            logger.warning("Recovery reply failed too: %s", exc)
+            return None
+        state.steps += 1
+        if not (result.content or "").strip():
+            return None
+        return self._finish(state, "native_tools", message=result.content)
+
     def _salvage(self, state: _RunState, strategy: str) -> HarnessResult:
         """Build a truthful reply when the model stopped before answering."""
         done = [a for a in state.actions_executed if a["success"]]
         failed = [a for a in state.actions_executed if not a["success"]]
         if not state.actions_executed:
             raise AIProviderError("Model produced no usable reply")
+        changes = [a for a in done if self.registry.is_mutating(a["tool_name"])]
         parts = []
-        if done:
-            parts.append("Done: " + "; ".join(a["summary"] or a["tool_name"] for a in done) + ".")
+        if changes:
+            parts.append("Done: " + "; ".join(a["summary"] or a["tool_name"] for a in changes) + ".")
+        elif done:
+            parts.append("I gathered what I needed, but the AI model stopped before it could answer. Please ask again.")
         if failed:
             parts.append(
                 "Could not complete: "

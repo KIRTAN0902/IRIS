@@ -33,6 +33,16 @@ def get_profile(
     return build_personal_model(db, user)
 
 
+@router.get("/behavior", summary="Follow-through patterns IRIS has learned (deadlines, routines, workouts, money)")
+def get_behavior(
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    from app.intelligence.behavior import observe_behavior
+
+    return observe_behavior(db, user)
+
+
 @router.get("/briefing", summary="Proactive briefing for right now")
 async def get_briefing(
     narrate: bool = Query(False, description="Have the active AI model narrate the briefing"),

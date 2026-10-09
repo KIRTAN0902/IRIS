@@ -73,6 +73,7 @@ import type {
   ExerciseIn,
   WorkoutIn,
   WorkoutOut,
+  Behavior,
 } from "@/types/api";
 
 // --- Users ---------------------------------------------------------------------
@@ -322,6 +323,7 @@ export const assistantApi = {
   briefing: (narrate = false) => api.get<BriefingOut>("/assistant/briefing", { narrate }),
   situation: () => api.get<Situation>("/assistant/situation"),
   profile: () => api.get<Record<string, unknown>>("/assistant/profile"),
+  behavior: () => api.get<Behavior>("/assistant/behavior"),
 };
 
 // --- Personal finance ------------------------------------------------------------

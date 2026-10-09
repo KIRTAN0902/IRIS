@@ -4,6 +4,7 @@ import { useCreateMemory, useDeleteMemory, useMemories } from "@/hooks/queries";
 import { Button } from "@/components/ui/Button";
 import { cn, fmtTime } from "@/lib/format";
 import type { MemoryCategory } from "@/types/api";
+import { PatternsView } from "@/features/home/PatternsView";
 
 interface MemoryModalProps {
   open: boolean;
@@ -40,6 +41,7 @@ export function MemoryModal({ open, onClose }: MemoryModalProps) {
   const [newContent, setNewContent] = useState("");
   const [newCat, setNewCat] = useState<MemoryCategory>("PREFERENCE");
   const [showAddForm, setShowAddForm] = useState(false);
+  const [view, setView] = useState<"memories" | "patterns">("memories");
 
   const memoriesQuery = useMemories({
     category: selectedCat === "ALL" ? undefined : selectedCat,
@@ -79,10 +81,23 @@ export function MemoryModal({ open, onClose }: MemoryModalProps) {
         {/* Header */}
         <div className="flex items-start justify-between px-5 pt-5 pb-2">
           <div>
-            <h2 className="text-[20px] font-bold text-ink">What IRIS remembers</h2>
-            <p className="mt-0.5 text-[13px] text-ink-faint">
-              {memories.length} {memories.length === 1 ? "thing" : "things"} learned from your conversations.
-            </p>
+            <h2 className="text-[20px] font-bold text-ink">What IRIS knows about you</h2>
+            <div className="mt-2 flex gap-4 text-[14px]" role="tablist">
+              {(["memories", "patterns"] as const).map((v) => (
+                <button
+                  key={v}
+                  role="tab"
+                  aria-selected={view === v}
+                  onClick={() => setView(v)}
+                  className={cn(
+                    "border-b-2 pb-1 capitalize transition-colors cursor-pointer",
+                    view === v ? "border-ink font-medium text-ink" : "border-transparent text-ink-faint hover:text-ink-dim",
+                  )}
+                >
+                  {v === "memories" ? `Memories (${memories.length})` : "Patterns"}
+                </button>
+              ))}
+            </div>
           </div>
           <button
             onClick={onClose}
@@ -93,6 +108,12 @@ export function MemoryModal({ open, onClose }: MemoryModalProps) {
           </button>
         </div>
 
+        {view === "patterns" ? (
+          <div className="flex-1 overflow-y-auto p-4">
+            <PatternsView />
+          </div>
+        ) : (
+        <>
         {/* Search & Actions Bar */}
         <div className="flex flex-col gap-3 border-b border-ops-line bg-ops-base/40 px-5 py-3">
           <div className="flex items-center gap-2">
@@ -225,6 +246,8 @@ export function MemoryModal({ open, onClose }: MemoryModalProps) {
             ))
           )}
         </div>
+        </>
+        )}
       </div>
     </div>
   );

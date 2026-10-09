@@ -312,3 +312,63 @@ def test_prompt_tells_models_to_batch():
     from app.agent.harness import NATIVE_GUIDE
 
     assert "delete_tasks" in NATIVE_GUIDE and "Never handle one item per reply" in NATIVE_GUIDE
+
+
+def _scripted_or_raise(results: list, seen: list | None = None):
+    """Like _scripted, but an Exception in the list is raised (e.g. a timeout)."""
+    queue = list(results)
+
+    def gen(*, messages, tools):
+        if seen is not None:
+            seen.append({"messages": list(messages), "tools": tools})
+        item = queue.pop(0)
+        if isinstance(item, Exception):
+            raise item
+        return item
+
+    return gen
+
+
+@pytest.mark.asyncio
+async def test_stalled_model_recovers_a_reply_without_tools(db, harness_user, monkeypatch):
+    from app.ai.provider import AIConnectionError
+
+    seen: list = []
+    provider = MockProvider(
+        chat_generator=_scripted_or_raise(
+            [
+                ChatResult(tool_calls=[_call("get_tasks", {"limit": 5}, "c1")]),
+                AIConnectionError("NVIDIA NIM request timed out after 45.0s"),
+                ChatResult(content="Start Monday's assignment on Saturday: outline first, draft Sunday."),
+            ],
+            seen,
+        )
+    )
+    _use(monkeypatch, provider)
+
+    out, _ = await IrisAgent(default_registry).run_turn(db, harness_user, "Plan my assignment")
+
+    assert out.content.startswith("Start Monday's assignment")
+    assert seen[-1]["tools"] is None  # the recovery call is the lighter, tool-free one
+    assert [m.role for m in seen[-1]["messages"]][-3:] == ["assistant", "tool", "user"]
+
+
+@pytest.mark.asyncio
+async def test_failed_recovery_after_lookups_says_so_honestly(db, harness_user, monkeypatch):
+    from app.ai.provider import AIConnectionError
+
+    provider = MockProvider(
+        chat_generator=_scripted_or_raise(
+            [
+                ChatResult(tool_calls=[_call("get_tasks", {"limit": 5}, "c1")]),
+                AIConnectionError("timed out"),
+                AIConnectionError("timed out again"),
+            ]
+        )
+    )
+    _use(monkeypatch, provider)
+
+    out, _ = await IrisAgent(default_registry).run_turn(db, harness_user, "Plan my assignment")
+
+    assert "Done:" not in out.content  # a lookup isn't something IRIS "did"
+    assert "stopped before it could answer" in out.content

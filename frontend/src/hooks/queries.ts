@@ -623,3 +623,7 @@ export const useCheckExercise = () => {
     },
   });
 };
+
+/** Follow-through patterns IRIS has learned. */
+export const useBehavior = () =>
+  useQuery({ queryKey: ["assistant", "behavior"], queryFn: assistantApi.behavior, staleTime: 5 * 60_000 });

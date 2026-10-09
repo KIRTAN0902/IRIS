@@ -22,6 +22,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
+from app.intelligence.behavior import observe_behavior, render_behavior
 from app.models.daily_review import DailyReview
 from app.models.enums import FocusStatus, TaskStatus
 from app.models.focus_session import FocusSession
@@ -235,6 +236,7 @@ def build_personal_model(
         "weekly_routine": weekly_routine(db, user.id),
         "stated": _stated_memories(db, user.id, memory_limit),
         "observed": observe_work_patterns(db, user, lookback_days),
+        "behavior": observe_behavior(db, user),
     }
 
 
@@ -329,4 +331,5 @@ def render_personal_model(pm: dict[str, Any], detail: str = "standard") -> str:
     else:
         lines.append("Observed patterns: not enough history yet (they appear as work gets logged).")
 
+    lines.extend(render_behavior(pm.get("behavior")))
     return "\n".join(lines)
