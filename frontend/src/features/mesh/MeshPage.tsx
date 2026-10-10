@@ -8,6 +8,7 @@ import {
   HardDrive,
   Laptop,
   Lock,
+  QrCode,
   Smartphone,
   Upload,
 } from "lucide-react";
@@ -172,29 +173,49 @@ export function MeshPage() {
                   {devices.find((d) => d.device_type === "phone_mobile")?.name || "Mobile Device"}
                 </p>
                 <p className="text-[12px] text-ink-faint">
-                  {devices.length > 0 ? "Connected via WebSocket" : "Waiting for companion connect..."}
+                  {devices.length > 0 ? "Connected via WebSocket" : "Scan QR below to pair"}
                 </p>
               </div>
             </div>
-            <div className="rounded-md bg-ops-raised/40 p-2.5 text-[12px] space-y-1">
-              <div className="flex justify-between">
-                <span className="text-ink-dim">Phone Battery</span>
-                <span className="text-ink font-mono">
-                  {devices.find((d) => d.battery_level != null)?.battery_level ?? "--"}%
-                </span>
+
+            {devices.length === 0 ? (
+              <div className="flex flex-col items-center justify-center p-3 text-center border border-dashed border-ops-line-bright rounded-lg bg-ops-ground/40 space-y-2">
+                <img
+                  src="https://api.qrserver.com/v1/create-qr-code/?size=130x130&margin=3&data=http://192.168.1.5:8000/companion"
+                  alt="Scan to pair mobile"
+                  className="rounded bg-white p-1 shadow-sm"
+                  width={130}
+                  height={130}
+                />
+                <div className="text-[12px] font-medium text-ink flex items-center gap-1">
+                  <QrCode size={13} className="text-ai" /> Scan with Phone Camera
+                </div>
+                <p className="text-[11px] text-ink-faint font-mono selection:bg-ai">
+                  http://192.168.1.5:8000/companion
+                </p>
               </div>
-              <div className="flex justify-between">
-                <span className="text-ink-dim">Companion URL</span>
-                <a
-                  href="/companion"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-ai hover:underline flex items-center gap-1"
-                >
-                  /companion <ExternalLink size={10} />
-                </a>
+            ) : (
+              <div className="rounded-md bg-ops-raised/40 p-2.5 text-[12px] space-y-1">
+                <div className="flex justify-between">
+                  <span className="text-ink-dim">Phone Battery</span>
+                  <span className="text-ink font-mono">
+                    {devices.find((d) => d.battery_level != null)?.battery_level ?? "--"}%
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-ink-dim">Companion URL</span>
+                  <a
+                    href="/companion"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-ai hover:underline flex items-center gap-1"
+                  >
+                    /companion <ExternalLink size={10} />
+                  </a>
+                </div>
               </div>
-            </div>
+            )}
+
             <Button variant="outline" size="sm" onClick={handleRingPhone} className="w-full">
               <Bell size={13} /> Ring Phone (Find My Phone)
             </Button>
