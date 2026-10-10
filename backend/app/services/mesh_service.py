@@ -23,9 +23,16 @@ from app.core.logging import get_logger
 
 logger = get_logger(__name__)
 
-# File Drop Storage Directory
-STORAGE_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "mesh_vault"
-STORAGE_DIR.mkdir(parents=True, exist_ok=True)
+# File Drop Storage Directory (uses /tmp on serverless Vercel)
+if os.environ.get("VERCEL") or os.environ.get("AWS_LAMBDA_FUNCTION_NAME"):
+    STORAGE_DIR = Path("/tmp/mesh_vault")
+else:
+    STORAGE_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "mesh_vault"
+
+try:
+    STORAGE_DIR.mkdir(parents=True, exist_ok=True)
+except OSError:
+    pass
 
 
 class DeviceInfo(BaseModel):

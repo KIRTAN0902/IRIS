@@ -23,6 +23,10 @@
       "destination": "/api/index.py"
     },
     {
+      "source": "/companion",
+      "destination": "/api/index.py"
+    },
+    {
       "source": "/openapi.json",
       "destination": "/api/index.py"
     },
