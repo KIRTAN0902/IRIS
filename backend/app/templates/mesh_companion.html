@@ -1,0 +1,740 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>IRIS Mesh · Mobile Companion</title>
+  <meta name="theme-color" content="#090D16">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <style>
+    :root {
+      --bg: #090D16;
+      --card-bg: rgba(22, 27, 46, 0.7);
+      --card-border: rgba(255, 255, 255, 0.08);
+      --text: #F1F5F9;
+      --text-dim: #94A3B8;
+      --accent: #38BDF8;
+      --accent-glow: rgba(56, 189, 248, 0.2);
+      --emerald: #10B981;
+      --emerald-glow: rgba(16, 185, 129, 0.2);
+      --rose: #F43F5E;
+      --amber: #F59E0B;
+    }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-tap-highlight-color: transparent;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      padding: env(safe-area-inset-top, 16px) 16px env(safe-area-inset-bottom, 24px) 16px;
+      overflow-x: hidden;
+    }
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 0 16px;
+      border-bottom: 1px solid var(--card-border);
+      margin-bottom: 16px;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .iris-logo {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      border: 2px solid var(--accent);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 0 12px var(--accent-glow);
+    }
+    .iris-logo-dot {
+      width: 8px;
+      height: 8px;
+      background: var(--accent);
+      border-radius: 50%;
+    }
+    h1 {
+      font-size: 1.15rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 9999px;
+      font-size: 0.75rem;
+      font-weight: 500;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--card-border);
+    }
+    .badge-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--amber);
+    }
+    .badge-dot.connected {
+      background: var(--emerald);
+      box-shadow: 0 0 8px var(--emerald);
+    }
+    .grid {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      flex: 1;
+    }
+    .card {
+      background: var(--card-bg);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid var(--card-border);
+      border-radius: 16px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .card-title {
+      font-size: 0.85rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-dim);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .status-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 0.9rem;
+      padding: 6px 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+    }
+    .status-row:last-child {
+      border-bottom: none;
+    }
+    textarea, input[type="text"] {
+      width: 100%;
+      background: rgba(0, 0, 0, 0.3);
+      border: 1px solid var(--card-border);
+      border-radius: 10px;
+      padding: 12px;
+      color: var(--text);
+      font-size: 0.9rem;
+      resize: vertical;
+      min-height: 80px;
+    }
+    textarea:focus, input[type="text"]:focus, select:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 10px var(--accent-glow);
+    }
+    select {
+      width: 100%;
+      background: rgba(0, 0, 0, 0.4);
+      border: 1px solid var(--card-border);
+      border-radius: 10px;
+      padding: 10px;
+      color: var(--text);
+      font-size: 0.9rem;
+    }
+    .btn-group {
+      display: flex;
+      gap: 8px;
+    }
+    button {
+      flex: 1;
+      padding: 10px 14px;
+      border-radius: 10px;
+      border: 1px solid transparent;
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      transition: all 0.15s ease;
+    }
+    button:active {
+      transform: scale(0.97);
+    }
+    .btn-primary {
+      background: var(--accent);
+      color: #041226;
+      box-shadow: 0 2px 10px var(--accent-glow);
+    }
+    .btn-secondary {
+      background: rgba(255, 255, 255, 0.06);
+      border-color: var(--card-border);
+      color: var(--text);
+    }
+    .btn-danger {
+      background: rgba(244, 63, 94, 0.15);
+      border-color: rgba(244, 63, 94, 0.3);
+      color: #FDA4AF;
+    }
+    .file-drop-area {
+      border: 2px dashed rgba(255, 255, 255, 0.15);
+      border-radius: 12px;
+      padding: 20px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.2s;
+    }
+    .file-drop-area:hover {
+      border-color: var(--accent);
+    }
+    .file-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 10px;
+      background: rgba(0, 0, 0, 0.2);
+      border-radius: 8px;
+      font-size: 0.82rem;
+    }
+    .modal-alarm {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(244, 63, 94, 0.95);
+      z-index: 9999;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 20px;
+      padding: 24px;
+      text-align: center;
+      animation: pulseAlert 0.8s infinite alternate;
+    }
+    @keyframes pulseAlert {
+      from { background: rgba(244, 63, 94, 0.92); }
+      to { background: rgba(190, 18, 60, 0.98); }
+    }
+    .task-status-box {
+      font-family: monospace;
+      font-size: 0.78rem;
+      background: #040810;
+      border: 1px solid var(--card-border);
+      padding: 10px;
+      border-radius: 8px;
+      max-height: 120px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      color: #A7F3D0;
+    }
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%) translateY(100px);
+      background: #1E293B;
+      color: #F8FAFC;
+      border: 1px solid var(--card-border);
+      padding: 10px 18px;
+      border-radius: 9999px;
+      font-size: 0.85rem;
+      font-weight: 500;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.4);
+      transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+      z-index: 1000;
+      pointer-events: none;
+    }
+    .toast.show {
+      transform: translateX(-50%) translateY(0);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Fullscreen Remote Alarm Modal -->
+  <div id="alarmModal" class="modal-alarm">
+    <div style="font-size: 4rem;">🚨</div>
+    <h2 style="font-size: 1.8rem; font-weight: 800; color: white;">FIND MY PHONE</h2>
+    <p style="color: rgba(255,255,255,0.9); font-size: 1rem;">IRIS Laptop sent remote ring alert!</p>
+    <button onclick="stopAlarm()" style="background: white; color: #BE123C; padding: 16px 32px; font-size: 1.1rem; border-radius: 9999px; margin-top: 20px;">
+      Silence Ring Alert
+    </button>
+  </div>
+
+  <header>
+    <div class="brand">
+      <div class="iris-logo"><div class="iris-logo-dot"></div></div>
+      <div>
+        <h1>IRIS Mesh</h1>
+        <div style="font-size: 0.7rem; color: var(--text-dim);">Apple-Like Continuity</div>
+      </div>
+    </div>
+    <div id="connBadge" class="badge">
+      <div id="connDot" class="badge-dot"></div>
+      <span id="connText">Connecting...</span>
+    </div>
+  </header>
+
+  <div class="grid">
+
+    <!-- Card 1: System Status & Hardware Control -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">💻 Laptop & Hardware</span>
+        <button onclick="testAudio()" class="btn-secondary" style="flex:0; padding:4px 8px; font-size:0.75rem;">
+          🔊 Test Siren
+        </button>
+      </div>
+      <div class="status-row">
+        <span style="color: var(--text-dim);">Laptop Battery</span>
+        <span id="laptopBattery">--% (Checking...)</span>
+      </div>
+      <div class="status-row">
+        <span style="color: var(--text-dim);">Lid Status</span>
+        <span style="color: var(--emerald);">Active (Headless)</span>
+      </div>
+      <div class="status-row">
+        <span style="color: var(--text-dim);">Phone Battery</span>
+        <span id="phoneBattery">Reporting...</span>
+      </div>
+      <div class="btn-group" style="margin-top: 4px;">
+        <button onclick="lockWorkstation()" class="btn-danger">
+          🔒 Lock Windows Laptop
+        </button>
+      </div>
+    </div>
+
+    <!-- Card 2: Universal Clipboard -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">📋 Universal Clipboard</span>
+        <span id="clipTime" style="font-size: 0.7rem; color: var(--text-dim);">Live Sync</span>
+      </div>
+      <textarea id="clipText" placeholder="Text synced from Laptop will appear here..."></textarea>
+      <div class="btn-group">
+        <button onclick="copyToPhone()" class="btn-secondary">
+          📲 Copy to Phone
+        </button>
+        <button onclick="pushToLaptop()" class="btn-primary">
+          🚀 Push to Laptop
+        </button>
+      </div>
+    </div>
+
+    <!-- Card 3: AirDrop File Drop -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">📦 AirDrop File Vault</span>
+        <button onclick="loadVaultFiles()" class="btn-secondary" style="flex:0; padding:4px 8px; font-size:0.75rem;">
+          🔄 Refresh
+        </button>
+      </div>
+      <div class="file-drop-area" onclick="document.getElementById('fileInput').click()">
+        <input type="file" id="fileInput" style="display: none;" onchange="uploadFile(this.files[0])">
+        <div style="font-size: 1.5rem; margin-bottom: 4px;">📁</div>
+        <div style="font-size: 0.85rem; font-weight: 500;">Tap to Drop File to Laptop</div>
+        <div style="font-size: 0.72rem; color: var(--text-dim);">Direct transfer over Mesh Vault</div>
+      </div>
+      <div id="vaultList" style="display: flex; flex-direction: column; gap: 6px;">
+        <!-- Dropped files list -->
+      </div>
+    </div>
+
+    <!-- Card 4: Autonomous Coding Trigger -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">⚡ Autonomous Antigravity</span>
+        <span id="taskBadge" class="badge" style="font-size: 0.7rem;">Ready</span>
+      </div>
+      <div style="display: flex; gap: 8px;">
+        <select id="codeWorkspace">
+          <option value="iris">Workspace: IRIS (FastAPI + React)</option>
+          <option value="outreach">Workspace: Outreach Agent</option>
+        </select>
+      </div>
+      <input type="text" id="codePrompt" placeholder="Instruction: e.g. Run pytest and fix bugs">
+      <button onclick="launchCodingTask()" class="btn-primary">
+        ▶ Run Autonomous Coding Task
+      </button>
+      <div id="taskLog" class="task-status-box" style="display: none;"></div>
+    </div>
+
+  </div>
+
+  <div id="toast" class="toast">Action completed</div>
+
+  <script>
+    // Configuration
+    const DEVICE_ID = "phone_mobile_" + (localStorage.getItem("mesh_phone_id") || Math.random().toString(36).substring(2, 7));
+    localStorage.setItem("mesh_phone_id", DEVICE_ID);
+
+    const loc = window.location;
+    const wsProto = loc.protocol === "https:" ? "wss:" : "ws:";
+    const wsUrl = `${wsProto}//${loc.host}/api/mesh/ws?device_id=${DEVICE_ID}&device_type=phone_mobile&name=Kirtan's%20Phone`;
+
+    let ws = null;
+    let alarmOscillator = null;
+    let alarmGain = null;
+    let audioCtx = null;
+    let isAlarmPlaying = false;
+
+    // Toast helper
+    function showToast(text) {
+      const toast = document.getElementById("toast");
+      toast.textContent = text;
+      toast.classList.add("show");
+      setTimeout(() => toast.classList.remove("show"), 2600);
+    }
+
+    // Audio Siren Synthesizer using Web Audio API
+    function getAudioContext() {
+      if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      }
+      if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+      return audioCtx;
+    }
+
+    function playSiren() {
+      if (isAlarmPlaying) return;
+      isAlarmPlaying = true;
+      document.getElementById("alarmModal").style.display = "flex";
+
+      const ctx = getAudioContext();
+      alarmGain = ctx.createGain();
+      alarmGain.gain.setValueAtTime(0.8, ctx.currentTime);
+      alarmGain.connect(ctx.destination);
+
+      alarmOscillator = ctx.createOscillator();
+      alarmOscillator.type = "sawtooth";
+      alarmOscillator.frequency.setValueAtTime(800, ctx.currentTime);
+
+      // Oscillate frequency like police/find-my-phone siren
+      let up = true;
+      const interval = setInterval(() => {
+        if (!isAlarmPlaying) {
+          clearInterval(interval);
+          return;
+        }
+        const targetFreq = up ? 1500 : 800;
+        alarmOscillator.frequency.linearRampToValueAtTime(targetFreq, ctx.currentTime + 0.35);
+        up = !up;
+      }, 400);
+
+      alarmOscillator.connect(alarmGain);
+      alarmOscillator.start();
+    }
+
+    function stopAlarm() {
+      isAlarmPlaying = false;
+      document.getElementById("alarmModal").style.display = "none";
+      if (alarmOscillator) {
+        try { alarmOscillator.stop(); } catch(e) {}
+        alarmOscillator = null;
+      }
+      showToast("Alarm silenced");
+    }
+
+    function testAudio() {
+      playSiren();
+      setTimeout(stopAlarm, 1800);
+    }
+
+    // WebSocket Connection
+    function connectMesh() {
+      const badge = document.getElementById("connBadge");
+      const dot = document.getElementById("connDot");
+      const text = document.getElementById("connText");
+
+      text.textContent = "Connecting...";
+      dot.className = "badge-dot";
+
+      ws = new WebSocket(wsUrl);
+
+      ws.onopen = () => {
+        text.textContent = "Connected";
+        dot.className = "badge-dot connected";
+        showToast("Connected to IRIS Mesh");
+        fetchDevices();
+        fetchClipboard();
+        loadVaultFiles();
+        reportPhoneBattery();
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data);
+          handleMeshMessage(msg);
+        } catch(e) {
+          console.error("WS Parse error", e);
+        }
+      };
+
+      ws.onclose = () => {
+        text.textContent = "Disconnected";
+        dot.className = "badge-dot";
+        setTimeout(connectMesh, 3000);
+      };
+
+      ws.onerror = () => ws.close();
+    }
+
+    function handleMeshMessage(msg) {
+      if (msg.type === "CLIPBOARD_SYNC") {
+        const text = msg.payload?.text || "";
+        document.getElementById("clipText").value = text;
+        document.getElementById("clipTime").textContent = "Updated " + new Date().toLocaleTimeString();
+        showToast("Clipboard updated from Laptop");
+      } else if (msg.type === "REMOTE_COMMAND") {
+        if (msg.payload?.command === "RING_PHONE") {
+          playSiren();
+        }
+      } else if (msg.type === "FILE_DROP") {
+        showToast("File dropped: " + (msg.payload?.filename || "file"));
+        loadVaultFiles();
+      } else if (msg.type === "DEVICE_STATE") {
+        fetchDevices();
+      }
+    }
+
+    // Fetch Device & Host Power Status
+    async function fetchDevices() {
+      try {
+        const res = await fetch("/api/mesh/devices");
+        if (res.ok) {
+          const data = await res.json();
+          if (data.host_power) {
+            const p = data.host_power.percent;
+            const ch = data.host_power.is_charging ? "⚡ Charging" : "🔋 Battery";
+            document.getElementById("laptopBattery").textContent = `${p !== null ? p + "%" : "AC"} (${ch})`;
+          }
+        }
+      } catch(e) {}
+    }
+
+    // Universal Clipboard Actions
+    async function fetchClipboard() {
+      try {
+        const res = await fetch("/api/mesh/clipboard");
+        if (res.ok) {
+          const data = await res.json();
+          if (data.text) {
+            document.getElementById("clipText").value = data.text;
+          }
+        }
+      } catch(e) {}
+    }
+
+    async function copyToPhone() {
+      const text = document.getElementById("clipText").value;
+      if (!text) return;
+      try {
+        await navigator.clipboard.writeText(text);
+        showToast("Copied to phone clipboard!");
+      } catch(e) {
+        showToast("Failed to copy (permission required)");
+      }
+    }
+
+    async function pushToLaptop() {
+      const text = document.getElementById("clipText").value;
+      if (!text) return;
+      try {
+        const res = await fetch("/api/mesh/clipboard", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text: text, sender_device: DEVICE_ID }),
+        });
+        if (res.ok) {
+          showToast("Pushed to Laptop Clipboard!");
+        }
+      } catch(e) {
+        showToast("Failed to push clipboard");
+      }
+    }
+
+    // Hardware Control
+    async function lockWorkstation() {
+      if (!confirm("Are you sure you want to lock the Windows laptop workstation?")) return;
+      try {
+        const res = await fetch("/api/mesh/command", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ command: "LOCK_PC" }),
+        });
+        if (res.ok) {
+          showToast("🔒 Laptop workstation locked!");
+        }
+      } catch(e) {
+        showToast("Error locking workstation");
+      }
+    }
+
+    // Phone Battery Sync
+    async function reportPhoneBattery() {
+      if ('getBattery' in navigator) {
+        try {
+          const b = await navigator.getBattery();
+          const update = () => {
+            const level = Math.round(b.level * 100);
+            const charging = b.charging;
+            document.getElementById("phoneBattery").textContent = `${level}% (${charging ? "⚡ Charging" : "🔋 Discharging"})`;
+            if (ws && ws.readyState === WebSocket.OPEN) {
+              ws.send(JSON.stringify({
+                type: "REMOTE_COMMAND",
+                payload: {
+                  command: "DEVICE_BATTERY",
+                  battery_level: level,
+                  is_charging: charging
+                }
+              }));
+            }
+          };
+          update();
+          b.addEventListener('levelchange', update);
+          b.addEventListener('chargingchange', update);
+        } catch(e) {}
+      } else {
+        document.getElementById("phoneBattery").textContent = "Available via mobile browser";
+      }
+    }
+
+    // AirDrop File Vault
+    async function uploadFile(file) {
+      if (!file) return;
+      showToast("Uploading " + file.name + "...");
+      const form = new FormData();
+      form.append("file", file);
+      form.append("sender_device", DEVICE_ID);
+
+      try {
+        const res = await fetch("/api/mesh/files/upload", {
+          method: "POST",
+          body: form,
+        });
+        if (res.ok) {
+          showToast("Dropped " + file.name + " to Laptop!");
+          loadVaultFiles();
+        } else {
+          showToast("Upload failed");
+        }
+      } catch(e) {
+        showToast("Upload error");
+      }
+    }
+
+    async function loadVaultFiles() {
+      try {
+        const res = await fetch("/api/mesh/files");
+        if (res.ok) {
+          const data = await res.json();
+          const list = document.getElementById("vaultList");
+          list.innerHTML = "";
+          if (data.files && data.files.length > 0) {
+            data.files.slice(0, 5).forEach(f => {
+              const div = document.createElement("div");
+              div.className = "file-item";
+              div.innerHTML = `
+                <span style="truncate; max-width: 180px;">📄 ${f.name}</span>
+                <a href="${f.url}" download="${f.name}" style="color: var(--accent); text-decoration: none; font-weight: 600;">⬇ Download</a>
+              `;
+              list.appendChild(div);
+            });
+          } else {
+            list.innerHTML = `<div style="font-size:0.75rem; color: var(--text-dim); text-align:center;">Vault empty</div>`;
+          }
+        }
+      } catch(e) {}
+    }
+
+    // Autonomous Coding Trigger
+    async function launchCodingTask() {
+      const prompt = document.getElementById("codePrompt").value.trim();
+      const workspace = document.getElementById("codeWorkspace").value;
+      if (!prompt) {
+        showToast("Please enter an instruction");
+        return;
+      }
+
+      const logBox = document.getElementById("taskLog");
+      const badge = document.getElementById("taskBadge");
+      logBox.style.display = "block";
+      logBox.textContent = "Dispatching Antigravity task to laptop...\n";
+      badge.textContent = "RUNNING";
+
+      try {
+        const res = await fetch("/api/coding/tasks", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ instruction: prompt, workspace: workspace }),
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          const taskId = data.task_id;
+          logBox.textContent += `Task launched [${taskId}]. Polling live output...\n`;
+          pollTask(taskId);
+        } else {
+          logBox.textContent += "Failed to launch task.\n";
+          badge.textContent = "ERROR";
+        }
+      } catch(e) {
+        logBox.textContent += "Error: " + e.message + "\n";
+        badge.textContent = "ERROR";
+      }
+    }
+
+    function pollTask(taskId) {
+      const logBox = document.getElementById("taskLog");
+      const badge = document.getElementById("taskBadge");
+      const interval = setInterval(async () => {
+        try {
+          const res = await fetch(`/api/coding/tasks/${taskId}`);
+          if (res.ok) {
+            const data = await res.json();
+            badge.textContent = data.status;
+            if (data.logs && data.logs.length > 0) {
+              logBox.textContent = `[${data.status}] Workspace: ${data.workspace}\n` + data.logs.join("\n");
+              logBox.scrollTop = logBox.scrollHeight;
+            }
+            if (data.status === "COMPLETED" || data.status === "FAILED") {
+              clearInterval(interval);
+              showToast(`Task ${data.status}!`);
+            }
+          }
+        } catch(e) {}
+      }, 1500);
+    }
+
+    // Start everything on boot
+    window.addEventListener("DOMContentLoaded", () => {
+      connectMesh();
+      // Keep awake & audio unlock on first user tap
+      document.body.addEventListener("click", () => {
+        getAudioContext();
+      }, { once: true });
+    });
+  </script>
+</body>
+</html>

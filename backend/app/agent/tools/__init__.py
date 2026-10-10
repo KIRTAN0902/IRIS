@@ -8,6 +8,28 @@ from app.agent.tools.awareness import (
     SearchConversationsTool,
 )
 from app.agent.tools.base import Tool
+from app.agent.tools.coding import (
+    GetCodingTaskStatusTool,
+    ListCodingTasksTool,
+    StartAutonomousCodingTool,
+    coding_tools,
+)
+from app.agent.tools.email import (
+    CreateEmailDraftTool,
+    GetEmailAccountsTool,
+    GetEmailDetailsTool,
+    ListUnreadEmailsTool,
+    SearchEmailsTool,
+    SendEmailTool,
+    email_tools,
+)
+from app.agent.tools.mesh import (
+    GetDeviceMeshStatusTool,
+    LockWorkstationTool,
+    RingMyPhoneTool,
+    SyncClipboardTool,
+    mesh_tools,
+)
 from app.agent.tools.goals import CreateGoalTool, GetGoalsTool, UpdateGoalTool
 from app.agent.tools.intelligence import (
     GetAttentionItemsTool,
@@ -91,6 +113,25 @@ __all__ = [
     "SearchMemoryTool",
     "ForgetMemoryTool",
     "ListMemoriesTool",
+    # Email
+    "email_tools",
+    "GetEmailAccountsTool",
+    "ListUnreadEmailsTool",
+    "SearchEmailsTool",
+    "GetEmailDetailsTool",
+    "CreateEmailDraftTool",
+    "SendEmailTool",
+    # Coding
+    "coding_tools",
+    "StartAutonomousCodingTool",
+    "GetCodingTaskStatusTool",
+    "ListCodingTasksTool",
+    # Mesh
+    "mesh_tools",
+    "RingMyPhoneTool",
+    "LockWorkstationTool",
+    "SyncClipboardTool",
+    "GetDeviceMeshStatusTool",
 ]
 
 

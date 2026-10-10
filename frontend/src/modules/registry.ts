@@ -21,6 +21,7 @@ import {
   LayoutGrid,
   ListChecks,
   Mail,
+  Radio,
   Rocket,
   Target,
   Wallet,
@@ -100,6 +101,13 @@ export const PRIMARY_NAV_ITEMS: NavItem[] = [
     glyph: "⌁",
     icon: FolderTree,
   },
+  {
+    id: "mesh",
+    name: "Mesh",
+    route: "/mesh",
+    glyph: "◎",
+    icon: Radio,
+  },
 ];
 
 export const MODULES: ModuleDefinition[] = [
@@ -112,6 +120,15 @@ export const MODULES: ModuleDefinition[] = [
     category: "command",
     enabled: true,
     glyph: "⌾",
+  },
+  {
+    id: "mesh",
+    name: "Mesh Continuity",
+    icon: Radio,
+    route: "/mesh",
+    category: "command",
+    enabled: true,
+    glyph: "◎",
   },
   {
     id: "schedule",

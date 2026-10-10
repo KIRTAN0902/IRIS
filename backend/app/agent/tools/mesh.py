@@ -1,0 +1,103 @@
+"""IRIS Mesh Agent Tools: Enables the AI Assistant to control connected devices.
+
+Tools:
+- ring_my_phone: Trigger sound alert on phone (Find My Phone)
+- lock_workstation: Remotely lock Windows workstation
+- sync_clipboard: Push text to Universal Clipboard across all devices
+- get_device_mesh_status: View connected devices and battery levels
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session
+
+from app.agent.schemas import ToolResult
+from app.agent.tools.base import Tool
+from app.models.user import User
+from app.services import mesh_service as ms
+
+
+class SyncClipboardParams(BaseModel):
+    text: str = Field(..., description="Text, link, or code snippet to push to Universal Clipboard")
+
+
+class RingMyPhoneTool(Tool):
+    name = "ring_my_phone"
+    description = (
+        "Find My Phone: Sends a high-priority remote sound alert to ring your phone at maximum volume "
+        "across the IRIS Mesh."
+    )
+    read_only = False
+
+    async def run(self, db: Session, user: User, **kwargs: Any) -> ToolResult:
+        msg = ms.MeshMessage(
+            type="REMOTE_COMMAND",
+            sender_device="iris_agent",
+            payload={"command": "RING_PHONE"},
+        )
+        await ms.hub.broadcast(msg, exclude_sender=False)
+        phones = [d for d in ms.hub.devices.values() if "phone" in d.device_type]
+        count = len(phones)
+        summary = f"Triggered ring alert to {count} connected phone(s)." if count else "Triggered ring alert across all mesh listeners."
+        return ToolResult(tool_name=self.name, success=True, data={"alert": "RING_PHONE", "devices_notified": count}, summary=summary)
+
+
+class LockWorkstationTool(Tool):
+    name = "lock_workstation"
+    description = "Remotely lock the Windows laptop immediately for privacy."
+    read_only = False
+    is_destructive = True
+
+    async def run(self, db: Session, user: User, **kwargs: Any) -> ToolResult:
+        success = ms.lock_windows_pc()
+        summary = "Locked Windows laptop workstation." if success else "Failed to lock workstation."
+        return ToolResult(tool_name=self.name, success=success, data={"locked": success}, summary=summary)
+
+
+class SyncClipboardTool(Tool):
+    name = "sync_clipboard"
+    description = "Push text, links, or code snippets to the Universal Clipboard so it is ready to paste on your phone."
+    parameters_schema = SyncClipboardParams
+    read_only = False
+
+    async def run(self, db: Session, user: User, **kwargs: Any) -> ToolResult:
+        text = kwargs["text"]
+        ms.hub.set_clipboard(text, sender_id="iris_agent")
+        msg = ms.MeshMessage(
+            type="CLIPBOARD_SYNC",
+            sender_device="iris_agent",
+            payload={"text": text},
+        )
+        await ms.hub.broadcast(msg, exclude_sender=False)
+        summary = f"Copied {len(text)} characters to Universal Clipboard."
+        return ToolResult(tool_name=self.name, success=True, data={"length": len(text), "preview": text[:60]}, summary=summary)
+
+
+class GetDeviceMeshStatusTool(Tool):
+    name = "get_device_mesh_status"
+    description = "Check which devices (laptop, mobile phone) are connected to the IRIS Mesh and inspect battery levels."
+    read_only = True
+
+    async def run(self, db: Session, user: User, **kwargs: Any) -> ToolResult:
+        devices = [d.model_dump(mode="json") for d in ms.hub.devices.values()]
+        battery = ms.get_windows_battery()
+        summary = f"{len(devices)} device(s) connected to IRIS Mesh."
+        return ToolResult(
+            tool_name=self.name,
+            success=True,
+            data={"devices": devices, "host_battery": battery},
+            summary=summary,
+        )
+
+
+def mesh_tools() -> list[Tool]:
+    """Factory returning all IRIS Mesh continuity tools."""
+    return [
+        RingMyPhoneTool(),
+        LockWorkstationTool(),
+        SyncClipboardTool(),
+        GetDeviceMeshStatusTool(),
+    ]

@@ -92,6 +92,11 @@ class Settings(BaseSettings):
     gemini_model: str = "gemini-2.5-flash"
     gemini_timeout_seconds: float = 45.0
 
+    # --- Gmail Integration ---
+    gmail_client_id: str | None = None
+    gmail_client_secret: str | None = None
+    gmail_redirect_uri: str = "http://localhost:8000/api/email/auth/callback"
+
     @property
     def is_development(self) -> bool:
         return self.environment.lower() == "development"

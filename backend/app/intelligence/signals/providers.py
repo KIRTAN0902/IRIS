@@ -302,7 +302,7 @@ class StartupSignalProvider(SignalProvider):
 
 
 class EmailSignalProvider(SignalProvider):
-    """Stub provider for future Gmail / Email integrations."""
+    """Derives signals from connected email accounts."""
 
     domain: str = SignalDomain.EMAIL.value
 
@@ -312,8 +312,41 @@ class EmailSignalProvider(SignalProvider):
         user: User,
         query: SignalQuery,
     ) -> list[SignalData]:
-        # Return empty until OAuth is connected; never fabricate inbox data.
-        return []
+        if db is None or user is None:
+            return []
+
+        from app.models.email_account import EmailAccount
+
+        now = query.now_utc
+        accounts = (
+            db.query(EmailAccount)
+            .filter(EmailAccount.user_id == user.id, EmailAccount.is_active.is_(True))
+            .all()
+        )
+        if not accounts:
+            return []
+
+        signals: list[SignalData] = []
+        for acct in accounts:
+            signals.append(
+                SignalData(
+                    domain=SignalDomain.EMAIL.value,
+                    signal_type=SignalType.STATUS_UPDATE.value,
+                    source=SignalSource.EXTERNAL_EMAIL.value,
+                    provenance=InformationProvenance.SYSTEM_DERIVED.value,
+                    importance=0.6,
+                    urgency=0.4,
+                    title=f"Connected inbox: {acct.alias}",
+                    summary=f"Active monitoring for {acct.email_address}.",
+                    timestamp=now,
+                    payload={
+                        "account_id": acct.id,
+                        "alias": acct.alias,
+                        "email_address": acct.email_address,
+                    },
+                )
+            )
+        return signals
 
 
 class FinanceSignalProvider(SignalProvider):

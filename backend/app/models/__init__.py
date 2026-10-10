@@ -5,6 +5,7 @@ from app.models.ai_memory import AIMemory
 from app.models.ai_recommendation import AIRecommendation
 from app.models.calendar_event import CalendarEvent
 from app.models.daily_review import DailyReview
+from app.models.email_account import EmailAccount
 from app.models.experiment import Experiment
 from app.models.finance import FinanceBill, FinanceBudget, FinanceTransaction, SavingsGoal
 from app.models.focus_session import FocusSession
@@ -29,6 +30,7 @@ __all__ = [
     "AIRecommendation",
     "CalendarEvent",
     "DailyReview",
+    "EmailAccount",
     "Experiment",
     "FinanceBill",
     "FinanceBudget",

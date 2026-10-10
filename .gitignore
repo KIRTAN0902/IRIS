@@ -35,3 +35,8 @@ Thumbs.db
 # Frontend
 node_modules/
 dist/
+
+# Data & Mesh Vault
+data/
+backend/data/
+

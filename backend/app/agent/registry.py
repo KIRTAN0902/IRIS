@@ -16,8 +16,11 @@ from app.agent.tools.awareness import (
 )
 from app.agent.tools.actions import action_tools
 from app.agent.tools.base import Tool
+from app.agent.tools.coding import coding_tools
+from app.agent.tools.email import email_tools
 from app.agent.tools.finance import finance_tools
 from app.agent.tools.habits import habit_tools
+from app.agent.tools.mesh import mesh_tools
 from app.agent.tools.workouts import workout_tools
 from app.agent.tools.goals import CreateGoalTool, GetGoalsTool, UpdateGoalTool
 from app.agent.tools.intelligence import (
@@ -168,6 +171,18 @@ def create_default_registry() -> ToolRegistry:
 
     # Gym workout plans
     for tool in workout_tools():
+        registry.register(tool)
+
+    # Multi-account Gmail (personal, work/college)
+    for tool in email_tools():
+        registry.register(tool)
+
+    # Autonomous Antigravity Coding
+    for tool in coding_tools():
+        registry.register(tool)
+
+    # IRIS Mesh Continuity Ecosystem
+    for tool in mesh_tools():
         registry.register(tool)
 
     return registry

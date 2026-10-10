@@ -47,3 +47,7 @@ class User(Base):
     )
     signals = relationship("Signal", back_populates="user", cascade="all, delete-orphan")
     memories = relationship("AIMemory", back_populates="user", cascade="all, delete-orphan")
+    email_accounts = relationship(
+        "EmailAccount", back_populates="user", cascade="all, delete-orphan"
+    )
+

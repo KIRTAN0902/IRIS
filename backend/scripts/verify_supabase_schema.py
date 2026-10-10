@@ -45,6 +45,8 @@ def main():
         "ai_conversations",
         "ai_messages",
         "ai_recommendations",
+        "ai_memories",
+        "email_accounts",
         "alembic_version",
     }
 

@@ -65,12 +65,15 @@ def create_app() -> FastAPI:
         analytics,
         assistant,
         chat,
+        coding,
+        email,
         finance,
         habits,
         focus,
         goals,
         health,
         intelligence,
+        mesh,
         projects,
         reviews,
         schedule,
@@ -97,9 +100,19 @@ def create_app() -> FastAPI:
     app.include_router(chat.router, prefix=api)
     app.include_router(assistant.router, prefix=api)
     app.include_router(voice.router, prefix=api)
+    app.include_router(email.router, prefix=api)
+    app.include_router(coding.router, prefix=api)
+    app.include_router(mesh.router, prefix=api)
     app.include_router(finance.router, prefix=api)
     app.include_router(habits.router, prefix=api)
     app.include_router(workouts.router, prefix=api)
+
+    from fastapi.responses import HTMLResponse
+
+    @app.get("/companion", response_class=HTMLResponse, include_in_schema=False)
+    @app.get("/mesh/companion", response_class=HTMLResponse, include_in_schema=False)
+    def root_companion():
+        return mesh.get_companion_page()
 
     return app
 
