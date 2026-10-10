@@ -13,8 +13,10 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+    host: true, // Listen on all local IPs (0.0.0.0) so phone can access
     proxy: {
-      "/api": { target: "http://127.0.0.1:8000", changeOrigin: true },
+      "/api": { target: "http://127.0.0.1:8000", changeOrigin: true, ws: true },
+      "/companion": { target: "http://127.0.0.1:8000", changeOrigin: true },
     },
   },
 });

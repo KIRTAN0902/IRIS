@@ -48,8 +48,15 @@ def create_app() -> FastAPI:
         for dev_origin in ["http://localhost:5173", "http://127.0.0.1:5173"]:
             if dev_origin not in cors_origins:
                 cors_origins.append(dev_origin)
-
-    if cors_origins:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=cors_origins,
+            allow_origin_regex=r"^https?://.*",
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
+    elif cors_origins:
         app.add_middleware(
             CORSMiddleware,
             allow_origins=cors_origins,
