@@ -181,17 +181,20 @@ export function MeshPage() {
             {devices.length === 0 ? (
               <div className="flex flex-col items-center justify-center p-3 text-center border border-dashed border-ops-line-bright rounded-lg bg-ops-ground/40 space-y-2">
                 <img
-                  src="https://api.qrserver.com/v1/create-qr-code/?size=130x130&margin=3&data=http://192.168.1.5:8000/companion"
+                  src="https://api.qrserver.com/v1/create-qr-code/?size=140x140&margin=3&data=https://barrier-priority-whole-gdp.trycloudflare.com/companion"
                   alt="Scan to pair mobile"
                   className="rounded bg-white p-1 shadow-sm"
-                  width={130}
-                  height={130}
+                  width={140}
+                  height={140}
                 />
                 <div className="text-[12px] font-medium text-ink flex items-center gap-1">
                   <QrCode size={13} className="text-ai" /> Scan with Phone Camera
                 </div>
-                <p className="text-[11px] text-ink-faint font-mono selection:bg-ai">
-                  http://192.168.1.5:8000/companion
+                <p className="text-[11px] text-ai font-mono break-all selection:bg-ai">
+                  https://barrier-priority-whole-gdp.trycloudflare.com/companion
+                </p>
+                <p className="text-[10px] text-ink-faint">
+                  Works on 5G, Wi-Fi, or anywhere on Earth
                 </p>
               </div>
             ) : (
