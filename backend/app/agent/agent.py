@@ -324,7 +324,17 @@ HOW YOU OPERATE:
 5. ACT: When the user asks to change something or to remember something, use the tools. When they share a lasting fact about their routine, work style, preferences or people, save it with save_memory.
 6. ONE MEMORY: Every conversation with the user shares the same memory. What was discussed in other conversations (below) is something you already know; connect it naturally (e.g. relate internship plans to startup decisions). Never say you cannot see other conversations; use search_conversations / get_conversation for details.
 7. HONEST: Not connected yet: {unavailable}. Say so instead of guessing.
-8. CONCISE: Talk like a sharp chief of staff: direct, specific, no filler. Lead with the answer.""",
+8. CONCISE: Talk like a sharp chief of staff: direct, specific, no filler. Lead with the answer.
+9. REMOTE LAPTOP & FILE SURFING: You have full access to control the user's Windows laptop workstation remotely:
+   - To open Antigravity IDE, call `launch_laptop_app` with `app="antigravity"`.
+   - To open Windows Terminal / PowerShell, call `launch_laptop_app` with `app="terminal"`.
+   - To open VS Code, call `launch_laptop_app` with `app="vscode"`.
+   - To open File Explorer, call `launch_laptop_app` with `app="explorer"`.
+   - To execute PowerShell commands or CLI scripts remotely, call `run_laptop_terminal_command`.
+   - To browse, surf, or list files and folders, call `list_laptop_files`.
+   - To read file contents, call `read_laptop_file`.
+   - To open a file or folder on the physical laptop screen, call `open_laptop_file`.
+   When the user asks via voice or chat to open Antigravity, run commands, or surf/read files, always use these tools immediately!""",
         ]
         if personal_model:
             sections.append(personal_model)
@@ -363,6 +373,107 @@ HOW YOU OPERATE:
         """Deterministic rule-based response when AI provider is unavailable."""
         msg_lower = user_message.lower()
         evidence: list[str] = []
+
+        # Check for remote laptop app launch (Antigravity IDE, WT, VS Code, Explorer)
+        if "antigravity" in msg_lower:
+            from app.services import mesh_service as ms
+            res = ms.launch_windows_app("antigravity", argument=r"C:\kirtan\IRIS")
+            msg_text = "🚀 I've launched Antigravity IDE on your Windows laptop display." if res.get("success") else f"Could not launch Antigravity: {res.get('error')}"
+            return AgentResponseSchema(
+                thought="User commanded to open Antigravity IDE.",
+                actions=[],
+                message=msg_text,
+                actions_summary=["Launched Antigravity IDE on laptop"],
+                evidence=["Antigravity IDE: Launched on WinSta0\\Default"],
+            )
+
+        if "terminal" in msg_lower and any(w in msg_lower for w in ["open", "launch", "start", "wt"]):
+            from app.services import mesh_service as ms
+            res = ms.launch_windows_app("terminal", argument=r"C:\kirtan\IRIS")
+            return AgentResponseSchema(
+                thought="User commanded to open Windows Terminal.",
+                actions=[],
+                message="💻 Opened Windows Terminal on your laptop display.",
+                actions_summary=["Opened Windows Terminal"],
+                evidence=["Windows Terminal: Active"],
+            )
+
+        if any(w in msg_lower for w in ["vscode", "vs code", "code"]) and any(w in msg_lower for w in ["open", "launch", "start"]):
+            from app.services import mesh_service as ms
+            res = ms.launch_windows_app("vscode", argument=r"C:\kirtan\IRIS")
+            return AgentResponseSchema(
+                thought="User commanded to open VS Code.",
+                actions=[],
+                message="📝 Opened VS Code on your laptop display.",
+                actions_summary=["Opened VS Code"],
+                evidence=["VS Code: Active"],
+            )
+
+        if any(w in msg_lower for w in ["explorer", "open files", "browse folder"]):
+            from app.services import mesh_service as ms
+            res = ms.launch_windows_app("explorer", argument=r"C:\kirtan\IRIS")
+            return AgentResponseSchema(
+                thought="User commanded to open File Explorer.",
+                actions=[],
+                message="📁 Opened File Explorer on your laptop display.",
+                actions_summary=["Opened File Explorer"],
+                evidence=["File Explorer: Active"],
+            )
+
+        # Check for file surfing / reading
+        if any(w in msg_lower for w in ["surf file", "read file", "show file", "cat ", "view file"]):
+            from pathlib import Path
+            words = user_message.strip().split()
+            target_file = words[-1] if len(words) > 1 else "main.py"
+            p = Path(target_file) if Path(target_file).is_absolute() else Path(r"C:\kirtan\IRIS") / target_file
+            if p.exists() and p.is_file():
+                try:
+                    content = p.read_text(encoding="utf-8", errors="replace")
+                    lines = content.splitlines()[:60]
+                    return AgentResponseSchema(
+                        thought=f"Read file {p.name}",
+                        actions=[],
+                        message=f"📄 **{p.name}** ({len(lines)} lines):\n```\n" + "\n".join(lines) + "\n```",
+                        actions_summary=[f"Read {p.name}"],
+                        evidence=[f"File: {p.name}"],
+                    )
+                except Exception as exc:
+                    return AgentResponseSchema(
+                        thought=f"Error reading file {p.name}",
+                        actions=[],
+                        message=f"Could not read `{p.name}`: {exc}",
+                        actions_summary=[],
+                        evidence=[],
+                    )
+
+        # Check for file listing / surfing project files
+        if any(w in msg_lower for w in ["surf files", "list files", "show files", "what files", "browse files"]):
+            from pathlib import Path
+            root = Path(r"C:\kirtan\IRIS")
+            if root.exists():
+                items = sorted(root.iterdir())[:25]
+                items_str = "\n".join(f"- 📁 `{i.name}/`" if i.is_dir() else f"- 📄 `{i.name}`" for i in items)
+                return AgentResponseSchema(
+                    thought="List files in C:\\kirtan\\IRIS",
+                    actions=[],
+                    message=f"📂 Here are the files in `C:\\kirtan\\IRIS`:\n{items_str}",
+                    actions_summary=["Listed repository files"],
+                    evidence=["Files listed from C:\\kirtan\\IRIS"],
+                )
+
+        # Check for remote command execution ("run command", "terminal <cmd>", "exec <cmd>")
+        if msg_lower.startswith("run command ") or msg_lower.startswith("exec ") or msg_lower.startswith("terminal "):
+            from app.services import mesh_service as ms
+            clean_cmd = user_message.replace("run command ", "").replace("exec ", "").replace("terminal ", "").strip()
+            res = ms.execute_terminal_command(clean_cmd)
+            out_str = (res.get("stdout") or res.get("stderr") or "Command completed with no output.").strip()
+            return AgentResponseSchema(
+                thought=f"Executed command: {clean_cmd}",
+                actions=[],
+                message=f"💻 Output for `{clean_cmd}` (Exit {res.get('returncode', 0)}):\n```\n{out_str[:2000]}\n```",
+                actions_summary=[f"Ran `{clean_cmd}` on laptop"],
+                evidence=[f"Exit code: {res.get('returncode', 0)}"],
+            )
 
         # Check for explicit memory or recall queries
         mem_queries = [

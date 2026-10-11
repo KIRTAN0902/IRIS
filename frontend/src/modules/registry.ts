@@ -27,7 +27,6 @@ import {
   Settings,
   Smartphone,
   Target,
-  Terminal,
   Wallet,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -77,14 +76,6 @@ export const SETTINGS_NAV_ITEM: NavItem = {
   route: "/settings",
   glyph: "⚙",
   icon: Settings,
-};
-
-export const TERMINAL_NAV_ITEM: NavItem = {
-  id: "terminal",
-  name: "Terminal",
-  route: "/terminal",
-  glyph: ">_",
-  icon: Terminal,
 };
 
 /**
@@ -146,7 +137,6 @@ export const PRIMARY_NAV_ITEMS_DESKTOP: NavItem[] = [
 export const PRIMARY_NAV_ITEMS: NavItem[] = PRIMARY_NAV_ITEMS_DESKTOP;
 
 export const MORE_NAV_ITEMS: NavItem[] = [
-  TERMINAL_NAV_ITEM,
   {
     id: "gym",
     name: "Gym",

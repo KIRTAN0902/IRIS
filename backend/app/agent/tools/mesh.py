@@ -224,6 +224,133 @@ class RunLaptopTerminalCommandTool(Tool):
         )
 
 
+class ListLaptopFilesParams(BaseModel):
+    directory: str | None = Field(
+        default=r"C:\kirtan\IRIS",
+        description="Path of folder to list on laptop (defaults to 'C:\\kirtan\\IRIS')",
+    )
+    max_items: int = Field(default=40, ge=1, le=150, description="Max entries to return")
+
+
+class ListLaptopFilesTool(Tool):
+    name = "list_laptop_files"
+    description = (
+        "List files and directories on your Windows laptop. Use when user asks via voice or chat "
+        "to list, surf, or browse files in a folder or repo (e.g. 'what files are in the project', 'surf files in backend', 'list files')."
+    )
+    parameters_schema = ListLaptopFilesParams
+    read_only = True
+
+    async def run(self, db: Session, user: User, **kwargs: Any) -> ToolResult:
+        import os
+        from pathlib import Path
+        from app.services import mesh_relay_service as mrs
+
+        folder = kwargs.get("directory") or r"C:\kirtan\IRIS"
+        max_items = kwargs.get("max_items", 40)
+
+        target = Path(folder)
+        if not target.is_absolute():
+            target = Path(r"C:\kirtan\IRIS") / folder
+
+        if mrs.is_local_windows_host():
+            if not target.exists():
+                return ToolResult(tool_name=self.name, success=False, error=f"Directory '{target}' not found.", summary=f"Directory '{target}' does not exist.")
+            
+            entries = []
+            try:
+                for item in sorted(target.iterdir()):
+                    entries.append({
+                        "name": item.name,
+                        "type": "directory" if item.is_dir() else "file",
+                        "size_bytes": item.stat().st_size if item.is_file() else None,
+                    })
+                    if len(entries) >= max_items:
+                        break
+            except Exception as exc:
+                return ToolResult(tool_name=self.name, success=False, error=str(exc), summary=f"Error reading directory: {exc}")
+            
+            file_names = [f"📁 {e['name']}/" if e["type"] == "directory" else f"📄 {e['name']}" for e in entries]
+            summary = f"Found {len(entries)} items in `{target}`:\n" + "\n".join(file_names[:30])
+            return ToolResult(tool_name=self.name, success=True, data={"directory": str(target), "entries": entries, "count": len(entries)}, summary=summary)
+        else:
+            ps_cmd = f"Get-ChildItem -Path '{target}' | Select-Object -First {max_items} Name, Mode, Length | Format-Table -AutoSize | Out-String"
+            res = ms.execute_terminal_command(ps_cmd)
+            return ToolResult(tool_name=self.name, success=res.get("success", False), data=res, summary=res.get("stdout") or "No files found.")
+
+
+class ReadLaptopFileParams(BaseModel):
+    file_path: str = Field(
+        ...,
+        description="Path of file to read (relative to 'C:\\kirtan\\IRIS' or absolute path, e.g. 'main.py' or 'backend/app/main.py')",
+    )
+    max_lines: int = Field(default=120, ge=1, le=500, description="Max lines to read")
+
+
+class ReadLaptopFileTool(Tool):
+    name = "read_laptop_file"
+    description = (
+        "Read and surf the text content of a file on your Windows laptop. "
+        "Use when user asks to read, check, or surf a specific file (e.g. 'read main.py', 'surf requirements.txt', 'what is in README.md')."
+    )
+    parameters_schema = ReadLaptopFileParams
+    read_only = True
+
+    async def run(self, db: Session, user: User, **kwargs: Any) -> ToolResult:
+        from pathlib import Path
+        from app.services import mesh_relay_service as mrs
+
+        fpath = kwargs["file_path"].strip()
+        max_lines = kwargs.get("max_lines", 120)
+
+        target = Path(fpath)
+        if not target.is_absolute():
+            target = Path(r"C:\kirtan\IRIS") / fpath
+
+        if mrs.is_local_windows_host():
+            if not target.exists() or not target.is_file():
+                return ToolResult(tool_name=self.name, success=False, error=f"File '{target}' not found.", summary=f"File '{target}' was not found.")
+            
+            try:
+                lines = target.read_text(encoding="utf-8", errors="replace").splitlines()
+                preview = "\n".join(lines[:max_lines])
+                total_lines = len(lines)
+                summary = f"Read `{target.name}` ({min(len(lines), max_lines)} of {total_lines} lines):\n```\n{preview[:2500]}\n```"
+                return ToolResult(tool_name=self.name, success=True, data={"file_path": str(target), "lines": total_lines, "content": preview}, summary=summary)
+            except Exception as exc:
+                return ToolResult(tool_name=self.name, success=False, error=str(exc), summary=f"Failed to read file: {exc}")
+        else:
+            res = ms.execute_terminal_command(f"Get-Content -Path '{target}' -Head {max_lines} | Out-String")
+            return ToolResult(tool_name=self.name, success=res.get("success", False), data=res, summary=res.get("stdout") or res.get("stderr"))
+
+
+class OpenLaptopFileParams(BaseModel):
+    file_path: str = Field(
+        ...,
+        description="Path of file or folder to open on the laptop display",
+    )
+    application: str | None = Field(
+        default="antigravity",
+        description="Application to open with ('antigravity', 'vscode', 'explorer')",
+    )
+
+
+class OpenLaptopFileTool(Tool):
+    name = "open_laptop_file"
+    description = (
+        "Open a file or folder on the Windows laptop screen in Antigravity IDE, VS Code, or File Explorer. "
+        "Use when user asks to open a file in Antigravity or open a folder in Explorer on their laptop screen."
+    )
+    parameters_schema = OpenLaptopFileParams
+    read_only = False
+
+    async def run(self, db: Session, user: User, **kwargs: Any) -> ToolResult:
+        fpath = kwargs["file_path"].strip()
+        app = (kwargs.get("application") or "antigravity").lower()
+        res = ms.launch_windows_app(app_name=app, argument=fpath)
+        return ToolResult(tool_name=self.name, success=res.get("success", False), data=res, summary=res.get("message", f"Opened {fpath} in {app}."))
+
+
 def mesh_tools() -> list[Tool]:
     """Factory returning all IRIS Mesh continuity tools."""
     return [
@@ -233,5 +360,8 @@ def mesh_tools() -> list[Tool]:
         GetDeviceMeshStatusTool(),
         LaunchLaptopAppTool(),
         RunLaptopTerminalCommandTool(),
+        ListLaptopFilesTool(),
+        ReadLaptopFileTool(),
+        OpenLaptopFileTool(),
     ]
 

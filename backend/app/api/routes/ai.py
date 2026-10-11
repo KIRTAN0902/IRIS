@@ -264,7 +264,51 @@ async def ask_iris(
 
     answer_text: str | None = None
     source = "DETERMINISTIC"
-    if provider.enabled:
+
+    # Fast intent handling for desktop control and file surfing
+    q_lower = data.question.lower().strip()
+    if "antigravity" in q_lower:
+        from app.services import mesh_service as ms
+        res = ms.launch_windows_app("antigravity", argument=r"C:\kirtan\IRIS")
+        answer_text = "🚀 I've launched Antigravity IDE on your Windows laptop display." if res.get("success") else f"Could not launch Antigravity: {res.get('error')}"
+        source = "AI"
+    elif "terminal" in q_lower and any(w in q_lower for w in ["open", "launch", "start", "wt"]):
+        from app.services import mesh_service as ms
+        res = ms.launch_windows_app("terminal", argument=r"C:\kirtan\IRIS")
+        answer_text = "💻 Opened Windows Terminal on your laptop display."
+        source = "AI"
+    elif any(w in q_lower for w in ["vscode", "vs code"]) and any(w in q_lower for w in ["open", "launch", "start"]):
+        from app.services import mesh_service as ms
+        res = ms.launch_windows_app("vscode", argument=r"C:\kirtan\IRIS")
+        answer_text = "📝 Opened VS Code on your laptop display."
+        source = "AI"
+    elif any(w in q_lower for w in ["surf files", "list files", "browse files"]):
+        from pathlib import Path
+        root = Path(r"C:\kirtan\IRIS")
+        items = sorted(root.iterdir())[:25]
+        items_str = "\n".join(f"- 📁 `{i.name}/`" if i.is_dir() else f"- 📄 `{i.name}`" for i in items)
+        answer_text = f"📂 Here are the files in `C:\\kirtan\\IRIS`:\n{items_str}"
+        source = "AI"
+    elif any(w in q_lower for w in ["surf file", "read file", "show file"]):
+        from pathlib import Path
+        target_name = data.question.strip().split()[-1]
+        p = Path(target_name) if Path(target_name).is_absolute() else Path(r"C:\kirtan\IRIS") / target_name
+        if p.exists() and p.is_file():
+            content = p.read_text(encoding="utf-8", errors="replace")
+            lines = content.splitlines()[:60]
+            answer_text = f"📄 **{p.name}** ({len(lines)} lines):\n```\n" + "\n".join(lines) + "\n```"
+        else:
+            answer_text = f"File `{target_name}` was not found in `C:\\kirtan\\IRIS`."
+        source = "AI"
+    elif q_lower.startswith("run command ") or q_lower.startswith("terminal "):
+        from app.services import mesh_service as ms
+        clean_cmd = data.question.replace("run command ", "").replace("terminal ", "").strip()
+        res = ms.execute_terminal_command(clean_cmd)
+        out_str = (res.get("stdout") or res.get("stderr") or "Command completed with no output.").strip()
+        answer_text = f"💻 Output for `{clean_cmd}` (Exit {res.get('returncode', 0)}):\n```\n{out_str[:2000]}\n```"
+        source = "AI"
+
+    if answer_text is None and provider.enabled:
         try:
             transcript = "\n".join(f"{m.role}: {m.content}" for m in history)
             prompt = (
