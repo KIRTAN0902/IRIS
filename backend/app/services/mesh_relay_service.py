@@ -354,17 +354,86 @@ def poll_relay_messages(
     return unconsumed
 
 
+# --- Sovereign Host Detection & Relay Response Waiting ---
+
+
+def is_local_windows_host() -> bool:
+    """Returns True if the current process is running on the local Windows workstation."""
+    import os
+    from pathlib import Path
+
+    return os.name == "nt" and Path(r"C:\kirtan\IRIS").exists()
+
+
+def update_host_heartbeat(db: Session, user_id: int = 1) -> None:
+    """Records the laptop host heartbeat in the database so the mesh knows it is online."""
+    pairing = db.query(MeshPairing).filter(MeshPairing.device_id == LAPTOP_HOST_DEVICE_ID).first()
+    if not pairing:
+        pairing = MeshPairing(
+            user_id=user_id,
+            device_id=LAPTOP_HOST_DEVICE_ID,
+            device_name="Windows Workstation",
+            device_type="laptop_windows",
+            is_active=True,
+            last_seen_at=datetime.now(UTC),
+        )
+        db.add(pairing)
+    else:
+        pairing.last_seen_at = datetime.now(UTC)
+        pairing.is_active = True
+    db.commit()
+
+
+def is_host_laptop_online(db: Session, user_id: int = 1) -> bool:
+    """Returns True if the host laptop daemon is currently active."""
+    if is_local_windows_host():
+        return True
+    pairing = db.query(MeshPairing).filter(MeshPairing.device_id == LAPTOP_HOST_DEVICE_ID).first()
+    if pairing and pairing.last_seen_at:
+        return (datetime.now(UTC) - pairing.last_seen_at).total_seconds() < 25.0
+    return False
+
+
+async def wait_for_relay_response(
+    db: Session,
+    user_id: int,
+    req_id: str,
+    timeout_seconds: float = 20.0,
+) -> dict[str, Any] | None:
+    """Waits for a specific response message from the laptop host across the cloud relay."""
+    start_time = asyncio.get_event_loop().time()
+    while (asyncio.get_event_loop().time() - start_time) < timeout_seconds:
+        cutoff = datetime.now(UTC) - timedelta(minutes=2)
+        messages = (
+            db.query(MeshRelayMessage)
+            .filter(
+                MeshRelayMessage.user_id == user_id,
+                MeshRelayMessage.created_at >= cutoff,
+                MeshRelayMessage.sender_device_id == LAPTOP_HOST_DEVICE_ID,
+                MeshRelayMessage.msg_type.in_(["TERMINAL_RESULT", "COMMAND_RESULT"]),
+            )
+            .order_by(MeshRelayMessage.id.desc())
+            .limit(10)
+            .all()
+        )
+        for m in messages:
+            if isinstance(m.payload, dict) and m.payload.get("req_id") == req_id:
+                return m.payload.get("result")
+        await asyncio.sleep(0.4)
+    return None
+
+
 # --- Autonomous Laptop Relay Daemon ---
 
 
 class LaptopRelayDaemon:
     """Background listener that processes cloud relay messages on the Windows laptop.
-    
+
     Guarantees that commands sent from mobile phones anywhere in the world (e.g. 5G)
     reach the laptop and execute without requiring open router ports or dynamic tunnels.
     """
 
-    def __init__(self, interval_seconds: float = 1.5) -> None:
+    def __init__(self, interval_seconds: float = 1.0) -> None:
         self.interval = interval_seconds
         self.running = False
         self._task: asyncio.Task[None] | None = None
@@ -395,9 +464,13 @@ class LaptopRelayDaemon:
             await asyncio.sleep(self.interval)
 
     async def _poll_and_execute(self) -> None:
-        # Default user 1 (Kirtan)
+        # Only run on Windows laptop host
+        if not is_local_windows_host():
+            return
+
         db = SessionLocal()
         try:
+            update_host_heartbeat(db, user_id=1)
             messages = poll_relay_messages(
                 db=db,
                 user_id=1,
@@ -431,10 +504,10 @@ class LaptopRelayDaemon:
                 charging = payload.get("is_charging")
                 update_device_telemetry(db, sender, battery_level=level, is_charging=charging)
             elif cmd == "TRIGGER_CODER":
-                # Autonomous Antigravity coder triggered remotely
                 prompt = payload.get("prompt", "")
                 if prompt:
                     from app.services.autonomous_coder_service import trigger_autonomous_task
+
                     result = await trigger_autonomous_task(prompt)
                     logger.info("Remote Autonomous Coder triggered: %s", result)
             elif cmd == "LAUNCH_APP":
@@ -443,6 +516,23 @@ class LaptopRelayDaemon:
                 res = ms.launch_windows_app(app_name=app_name, argument=arg)
                 logger.info("Remote LAUNCH_APP executed: %s", res)
 
+        elif msg_type == "TERMINAL_EXEC":
+            req_id = payload.get("req_id")
+            cmd = payload.get("command", "")
+            cwd = payload.get("working_dir")
+            timeout = payload.get("timeout", 30)
+            logger.info("Laptop executing remote terminal command: %s (cwd=%s)", cmd, cwd)
+            res = ms.execute_terminal_command(command=cmd, cwd=cwd, timeout=timeout)
+            logger.info("Laptop terminal executed: success=%s returncode=%s", res.get("success"), res.get("returncode"))
+            push_relay_message(
+                db=db,
+                user_id=1,
+                sender_device_id=LAPTOP_HOST_DEVICE_ID,
+                target_device_id=sender,
+                msg_type="TERMINAL_RESULT",
+                payload={"req_id": req_id, "result": res},
+            )
+
         elif msg_type == "HANDOFF":
             state_type = payload.get("type", "UNKNOWN")
             data = payload.get("data", {})
@@ -450,3 +540,4 @@ class LaptopRelayDaemon:
 
 
 relay_daemon = LaptopRelayDaemon()
+

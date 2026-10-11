@@ -415,14 +415,19 @@ def get_companion_page():
 
 
 @router.get("/devices")
-def list_connected_devices():
+def list_connected_devices(
+    db: Session = Depends(get_db),
+    user: User = Depends(current_user),
+):
     """List all currently connected mesh devices with battery and connection info."""
     devices = [d.model_dump(mode="json") for d in ms.hub.devices.values()]
     windows_battery = ms.get_windows_battery()
+    host_online = mrs.is_host_laptop_online(db, user.id)
     return {
         "devices": devices,
         "total_connected": len(devices),
         "host_power": windows_battery,
+        "host_online": host_online,
     }
 
 
@@ -549,15 +554,18 @@ async def trigger_remote_command(
     user: User = Depends(current_user),
 ):
     """Trigger a remote hardware/OS command across devices."""
-    if req.command == "LOCK_PC":
+    if req.command == "LOCK_PC" and mrs.is_local_windows_host():
         locked = ms.lock_windows_pc()
         return {"command": "LOCK_PC", "executed": locked}
 
     # Broadcast remote command locally and across cloud relay
+    target = req.target_device or (
+        mrs.LAPTOP_HOST_DEVICE_ID if req.command in ["LOCK_PC", "LAUNCH_APP", "TRIGGER_CODER"] else None
+    )
     msg = ms.MeshMessage(
         type="REMOTE_COMMAND",
         sender_device="system",
-        target_device=req.target_device,
+        target_device=target,
         payload={"command": req.command, **req.parameters},
     )
     await ms.hub.broadcast(msg, exclude_sender=False)
@@ -565,11 +573,11 @@ async def trigger_remote_command(
         db=db,
         user_id=user.id,
         sender_device_id="system",
-        target_device_id=req.target_device,
+        target_device_id=target,
         msg_type="REMOTE_COMMAND",
         payload={"command": req.command, **req.parameters},
     )
-    return {"command": req.command, "broadcast": True, "target": req.target_device or "all"}
+    return {"command": req.command, "broadcast": True, "target": target or "all"}
 
 
 # --- Terminal & Remote CLI Execution ---
@@ -582,24 +590,80 @@ class TerminalExecRequest(BaseModel):
 
 
 @router.post("/terminal/exec")
-def execute_laptop_terminal(
+async def execute_laptop_terminal(
     req: TerminalExecRequest,
+    db: Session = Depends(get_db),
     user: User = Depends(current_user),
 ):
-    """Executes a terminal / PowerShell command on the Windows laptop remotely and returns output."""
-    result = ms.execute_terminal_command(
-        command=req.command,
-        cwd=req.working_dir,
-        timeout=req.timeout,
+    """Executes a terminal / PowerShell command on the Windows laptop remotely and returns output.
+
+    If invoked directly on the local Windows workstation, executes immediately.
+    If invoked via the Cloud Relay (e.g. phone on 5G), dispatches across the Sovereign Relay
+    to the Windows laptop daemon and returns the laptop's actual execution output.
+    """
+    if mrs.is_local_windows_host():
+        return ms.execute_terminal_command(
+            command=req.command,
+            cwd=req.working_dir,
+            timeout=req.timeout,
+        )
+
+    # Dispatch across Sovereign Cloud Relay
+    import secrets
+
+    req_id = secrets.token_hex(6)
+    mrs.push_relay_message(
+        db=db,
+        user_id=user.id,
+        sender_device_id="mobile_web_client",
+        target_device_id=mrs.LAPTOP_HOST_DEVICE_ID,
+        msg_type="TERMINAL_EXEC",
+        payload={
+            "req_id": req_id,
+            "command": req.command,
+            "working_dir": req.working_dir,
+            "timeout": req.timeout,
+        },
     )
-    return result
+
+    # Wait for the laptop daemon to return the result
+    res = await mrs.wait_for_relay_response(
+        db=db,
+        user_id=user.id,
+        req_id=req_id,
+        timeout_seconds=min(req.timeout + 4, 25.0),
+    )
+    if res is not None:
+        return res
+
+    return {
+        "success": False,
+        "returncode": 1,
+        "stdout": "",
+        "stderr": "Laptop did not respond within timeout. Make sure the IRIS backend is running on your Windows laptop.",
+        "command": req.command,
+        "cwd": req.working_dir or r"C:\kirtan\IRIS",
+    }
 
 
 @router.post("/terminal/open")
 def open_laptop_terminal(
     argument: str | None = Query(None, description="Optional directory path"),
+    db: Session = Depends(get_db),
     user: User = Depends(current_user),
 ):
     """Opens an interactive Windows Terminal / PowerShell window on the laptop desktop."""
-    return ms.launch_windows_app(app_name="terminal", argument=argument)
+    if mrs.is_local_windows_host():
+        return ms.launch_windows_app(app_name="terminal", argument=argument)
+
+    mrs.push_relay_message(
+        db=db,
+        user_id=user.id,
+        sender_device_id="mobile_web_client",
+        target_device_id=mrs.LAPTOP_HOST_DEVICE_ID,
+        msg_type="REMOTE_COMMAND",
+        payload={"command": "LAUNCH_APP", "app": "terminal", "argument": argument},
+    )
+    return {"success": True, "message": "Dispatched terminal launch to laptop across Sovereign Relay."}
+
 

@@ -86,6 +86,7 @@ export function ContinuityPage({ initialView }: ContinuityPageProps) {
   // Data state
   const [pairedDevices, setPairedDevices] = useState<PairedDevice[]>([]);
   const [hostPower, setHostPower] = useState<HostPower | null>(null);
+  const [hostOnline, setHostOnline] = useState<boolean>(true);
   const [clipboard, setClipboard] = useState("");
   const [newClip, setNewClip] = useState("");
   const [vaultFiles, setVaultFiles] = useState<VaultFile[]>([]);
@@ -125,7 +126,7 @@ export function ContinuityPage({ initialView }: ContinuityPageProps) {
   const loadData = async () => {
     try {
       const [devRes, pairRes, clipRes, filesRes] = await Promise.allSettled([
-        api.get<{ host_power: HostPower | null }>("/mesh/devices"),
+        api.get<{ host_power: HostPower | null; host_online?: boolean }>("/mesh/devices"),
         api.get<{ paired_devices: PairedDevice[] }>("/mesh/pair/devices"),
         api.get<{ text: string }>("/mesh/clipboard"),
         api.get<{ files: VaultFile[] }>("/mesh/files"),
@@ -133,6 +134,9 @@ export function ContinuityPage({ initialView }: ContinuityPageProps) {
 
       if (devRes.status === "fulfilled") {
         setHostPower(devRes.value.host_power);
+        if (devRes.value.host_online !== undefined) {
+          setHostOnline(devRes.value.host_online);
+        }
       }
       if (pairRes.status === "fulfilled") {
         setPairedDevices(pairRes.value.paired_devices || []);
@@ -456,11 +460,16 @@ export function ContinuityPage({ initialView }: ContinuityPageProps) {
               <div>
                 <p className="text-[11px] uppercase tracking-wider text-ink-faint font-semibold">Host Workstation</p>
                 <p className="text-[14px] font-semibold text-ink flex items-center gap-1.5 mt-0.5">
-                  <span className="h-2 w-2 rounded-full bg-go animate-pulse" />
-                  Windows Host Active
+                  <span
+                    className={cn(
+                      "h-2 w-2 rounded-full",
+                      hostOnline ? "bg-go animate-pulse" : "bg-amber-400",
+                    )}
+                  />
+                  {hostOnline ? "Windows Host Online (5G Relay)" : "Laptop Relay Waiting"}
                 </p>
               </div>
-              <Laptop size={22} className="text-ai opacity-80" />
+              <Laptop size={22} className={cn("opacity-80", hostOnline ? "text-ai" : "text-ink-faint")} />
             </div>
 
             <div className="rounded-xl border border-ops-line bg-ops-panel p-3.5 flex items-center justify-between">
@@ -694,7 +703,7 @@ export function ContinuityPage({ initialView }: ContinuityPageProps) {
                 <span className="text-[11px] uppercase tracking-wider text-ink-faint font-semibold mr-1">
                   Presets:
                 </span>
-                {["git status", "dir", "tasklist", "ipconfig", "whoami", "npm test"].map((preset) => (
+                {["git status", "agy --version", "dir", "ipconfig", "tasklist", "whoami", "npm test"].map((preset) => (
                   <button
                     key={preset}
                     onClick={() => {

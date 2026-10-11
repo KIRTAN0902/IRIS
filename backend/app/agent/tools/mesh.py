@@ -173,17 +173,39 @@ class RunLaptopTerminalCommandTool(Tool):
     read_only = False
 
     async def run(self, db: Session, user: User, **kwargs: Any) -> ToolResult:
+        from app.services import mesh_relay_service as mrs
+        import secrets
+
         cmd = kwargs["command"]
         cwd = kwargs.get("working_dir")
-        res = ms.execute_terminal_command(command=cmd, cwd=cwd)
 
-        # Broadcast remote command notification across mesh
-        msg = ms.MeshMessage(
-            type="REMOTE_COMMAND",
-            sender_device="iris_agent",
-            payload={"command": "TERMINAL_EXEC", "cli": cmd, "success": res["success"]},
-        )
-        await ms.hub.broadcast(msg, exclude_sender=False)
+        if mrs.is_local_windows_host():
+            res = ms.execute_terminal_command(command=cmd, cwd=cwd)
+        else:
+            req_id = secrets.token_hex(6)
+            mrs.push_relay_message(
+                db=db,
+                user_id=user.id,
+                sender_device_id="iris_voice_agent",
+                target_device_id=mrs.LAPTOP_HOST_DEVICE_ID,
+                msg_type="TERMINAL_EXEC",
+                payload={"req_id": req_id, "command": cmd, "working_dir": cwd, "timeout": 30},
+            )
+            res = await mrs.wait_for_relay_response(
+                db=db,
+                user_id=user.id,
+                req_id=req_id,
+                timeout_seconds=20.0,
+            )
+            if res is None:
+                res = {
+                    "success": False,
+                    "returncode": 1,
+                    "stdout": "",
+                    "stderr": "Laptop did not respond. Ensure the backend daemon is running on your Windows laptop.",
+                    "command": cmd,
+                    "cwd": cwd or r"C:\kirtan\IRIS",
+                }
 
         output = (res.get("stdout") or res.get("stderr") or "Command completed with no output.").strip()
         truncated_output = output[:2000] + ("\n... [output truncated]" if len(output) > 2000 else "")

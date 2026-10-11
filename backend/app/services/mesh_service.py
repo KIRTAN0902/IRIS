@@ -260,6 +260,10 @@ def execute_terminal_command(
             "cwd": "",
         }
 
+    # If user runs 'agy' alone, append '--help' so it doesn't block on interactive TUI
+    if clean_cmd.lower() == "agy":
+        clean_cmd = "agy --help"
+
     default_workspace = r"C:\kirtan\IRIS"
     work_dir = cwd.strip() if cwd and cwd.strip() else default_workspace
     if not os.path.exists(work_dir):
