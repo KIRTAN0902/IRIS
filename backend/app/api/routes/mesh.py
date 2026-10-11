@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 import json
 from pathlib import Path
 from typing import Any
@@ -63,6 +64,15 @@ class PairingVerifyRequest(BaseModel):
     device_id: str | None = None
     device_name: str | None = "Mobile Phone"
     device_type: str = "phone_mobile"
+
+
+class DeviceTelemetryRequest(BaseModel):
+    device_id: str
+    device_name: str | None = None
+    device_type: str = "phone_mobile"
+    battery_level: int | None = None
+    is_charging: bool | None = None
+    pairing_token: str | None = None
 
 
 class RelaySendRequest(BaseModel):
@@ -163,23 +173,81 @@ def list_paired_devices(
     db: Session = Depends(get_db),
     user: User = Depends(current_user),
 ):
-    """Lists all active paired sovereign mesh devices."""
+    """Lists all active paired sovereign mesh devices and laptop host info."""
     devices = mrs.list_paired_devices(db=db, user_id=user.id)
+    laptop_info = mrs.get_laptop_host_info(db=db, user_id=user.id)
+    now = datetime.now(UTC)
+
+    paired_list = []
+    for d in devices:
+        if d.device_id == mrs.LAPTOP_HOST_DEVICE_ID:
+            continue
+        is_online = mrs.is_recently_active(d.last_seen_at, threshold_seconds=35.0)
+        paired_list.append({
+            "id": d.id,
+            "device_id": d.device_id,
+            "device_name": d.device_name,
+            "device_type": d.device_type,
+            "battery_level": d.battery_level,
+            "is_charging": d.is_charging,
+            "is_online": is_online,
+            "paired_at": d.paired_at.isoformat() if d.paired_at else None,
+            "last_seen_at": d.last_seen_at.isoformat() if d.last_seen_at else None,
+        })
+
     return {
-        "paired_devices": [
-            {
-                "id": d.id,
-                "device_id": d.device_id,
-                "device_name": d.device_name,
-                "device_type": d.device_type,
-                "battery_level": d.battery_level,
-                "is_charging": d.is_charging,
-                "paired_at": d.paired_at.isoformat() if d.paired_at else None,
-                "last_seen_at": d.last_seen_at.isoformat() if d.last_seen_at else None,
-            }
-            for d in devices
-        ],
-        "count": len(devices),
+        "laptop_host": laptop_info,
+        "paired_devices": paired_list,
+        "count": len(paired_list),
+    }
+
+
+@router.post("/telemetry")
+def report_device_telemetry(
+    req: DeviceTelemetryRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    """Updates device battery level, charging status, and online heartbeat."""
+    from app.models.mesh_pairing import MeshPairing
+
+    now = datetime.now(UTC)
+    pairing = db.query(MeshPairing).filter(
+        MeshPairing.user_id == user.id,
+        MeshPairing.device_id == req.device_id,
+    ).first()
+
+    if pairing:
+        pairing.last_seen_at = now
+        pairing.is_active = True
+        if req.battery_level is not None:
+            pairing.battery_level = req.battery_level
+        if req.is_charging is not None:
+            pairing.is_charging = req.is_charging
+        if req.device_name:
+            pairing.device_name = req.device_name
+        db.commit()
+    else:
+        pairing = MeshPairing(
+            user_id=user.id,
+            device_id=req.device_id,
+            device_name=req.device_name or ("Mobile Companion" if "phone" in req.device_type else "Client Device"),
+            device_type=req.device_type,
+            pairing_token=req.pairing_token or f"token_{req.device_id}",
+            is_active=True,
+            battery_level=req.battery_level,
+            is_charging=req.is_charging,
+            last_seen_at=now,
+        )
+        db.add(pairing)
+        db.commit()
+
+    return {
+        "status": "ok",
+        "device_id": req.device_id,
+        "battery_level": req.battery_level,
+        "is_charging": req.is_charging,
+        "last_seen_at": now.isoformat(),
     }
 
 
@@ -421,13 +489,21 @@ def list_connected_devices(
 ):
     """List all currently connected mesh devices with battery and connection info."""
     devices = [d.model_dump(mode="json") for d in ms.hub.devices.values()]
-    windows_battery = ms.get_windows_battery()
-    host_online = mrs.is_host_laptop_online(db, user.id)
+    laptop_info = mrs.get_laptop_host_info(db, user.id)
+    power = ms.get_windows_battery()
+    if not power and laptop_info.get("battery_level") is not None:
+        power = {
+            "percent": laptop_info.get("battery_level"),
+            "is_charging": laptop_info.get("is_charging") or False,
+            "ac_status": "Plugged In" if laptop_info.get("is_charging") else "On Battery",
+        }
+
     return {
         "devices": devices,
         "total_connected": len(devices),
-        "host_power": windows_battery,
-        "host_online": host_online,
+        "host_power": power,
+        "host_online": laptop_info.get("is_online", False),
+        "laptop_host": laptop_info,
     }
 
 
@@ -558,9 +634,17 @@ async def trigger_remote_command(
         locked = ms.lock_windows_pc()
         return {"command": "LOCK_PC", "executed": locked}
 
+    if req.command in ["PING_LAPTOP", "PING_ALERT"] and mrs.is_local_windows_host():
+        try:
+            import winsound
+            winsound.MessageBeep(winsound.MB_ICONEXCLAMATION)
+        except Exception:
+            pass
+        return {"command": req.command, "executed": True}
+
     # Broadcast remote command locally and across cloud relay
     target = req.target_device or (
-        mrs.LAPTOP_HOST_DEVICE_ID if req.command in ["LOCK_PC", "LAUNCH_APP", "TRIGGER_CODER"] else None
+        mrs.LAPTOP_HOST_DEVICE_ID if req.command in ["LOCK_PC", "PING_LAPTOP", "PING_ALERT", "LAUNCH_APP", "TRIGGER_CODER"] else None
     )
     msg = ms.MeshMessage(
         type="REMOTE_COMMAND",

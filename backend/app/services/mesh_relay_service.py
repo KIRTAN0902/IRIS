@@ -366,27 +366,47 @@ def is_local_windows_host() -> bool:
 
 
 def update_host_heartbeat(db: Session, user_id: int = 1) -> None:
-    """Records the laptop host heartbeat in the database so the mesh knows it is online."""
+    """Records the laptop host heartbeat in the database so the mesh knows it is online and its battery state."""
     try:
         pairing = db.query(MeshPairing).filter(MeshPairing.device_id == LAPTOP_HOST_DEVICE_ID).first()
+        battery = ms.get_windows_battery()
+        bat_percent = battery.get("percent") if battery else None
+        is_charging = battery.get("is_charging") if battery else None
+
         if not pairing:
             pairing = MeshPairing(
                 user_id=user_id,
                 device_id=LAPTOP_HOST_DEVICE_ID,
-                device_name="Windows Workstation",
+                device_name="Windows Laptop",
                 device_type="laptop_windows",
                 pairing_token="token_laptop_host_primary",
                 is_active=True,
+                battery_level=bat_percent,
+                is_charging=is_charging,
                 last_seen_at=datetime.now(UTC),
             )
             db.add(pairing)
         else:
             pairing.last_seen_at = datetime.now(UTC)
             pairing.is_active = True
+            if bat_percent is not None:
+                pairing.battery_level = bat_percent
+            if is_charging is not None:
+                pairing.is_charging = is_charging
         db.commit()
     except Exception as exc:
         db.rollback()
         logger.debug("Host heartbeat update error: %s", exc)
+
+
+def is_recently_active(dt: datetime | None, threshold_seconds: float = 30.0) -> bool:
+    """Helper to check if a datetime is within threshold_seconds, handling naive/aware datetimes."""
+    if not dt:
+        return False
+    now = datetime.now(UTC)
+    if dt.tzinfo is None:
+        now = now.replace(tzinfo=None)
+    return (now - dt).total_seconds() < threshold_seconds
 
 
 def is_host_laptop_online(db: Session, user_id: int = 1) -> bool:
@@ -395,8 +415,43 @@ def is_host_laptop_online(db: Session, user_id: int = 1) -> bool:
         return True
     pairing = db.query(MeshPairing).filter(MeshPairing.device_id == LAPTOP_HOST_DEVICE_ID).first()
     if pairing and pairing.last_seen_at:
-        return (datetime.now(UTC) - pairing.last_seen_at).total_seconds() < 25.0
+        return is_recently_active(pairing.last_seen_at, threshold_seconds=30.0)
     return False
+
+
+def get_laptop_host_info(db: Session, user_id: int = 1) -> dict[str, Any]:
+    """Returns the host laptop's current pairing state, battery, and online status."""
+    pairing = db.query(MeshPairing).filter(MeshPairing.device_id == LAPTOP_HOST_DEVICE_ID).first()
+    online = False
+    battery_level = None
+    is_charging = None
+    last_seen = None
+
+    if is_local_windows_host():
+        bat = ms.get_windows_battery()
+        if bat:
+            battery_level = bat.get("percent")
+            is_charging = bat.get("is_charging")
+        online = True
+        last_seen = datetime.now(UTC).isoformat()
+
+    if pairing:
+        if not online and pairing.last_seen_at:
+            online = is_recently_active(pairing.last_seen_at, threshold_seconds=30.0)
+            last_seen = pairing.last_seen_at.isoformat()
+        if battery_level is None:
+            battery_level = pairing.battery_level
+            is_charging = pairing.is_charging
+
+    return {
+        "device_id": LAPTOP_HOST_DEVICE_ID,
+        "device_name": pairing.device_name if pairing else "Windows Laptop",
+        "device_type": "laptop_windows",
+        "battery_level": battery_level,
+        "is_charging": is_charging,
+        "is_online": online,
+        "last_seen_at": last_seen,
+    }
 
 
 async def wait_for_relay_response(
@@ -504,6 +559,13 @@ class LaptopRelayDaemon:
             if cmd == "LOCK_PC":
                 locked = ms.lock_windows_pc()
                 logger.info("Remote LOCK_PC executed: success=%s", locked)
+            elif cmd in ["PING_ALERT", "PING_LAPTOP"]:
+                try:
+                    import winsound
+                    winsound.MessageBeep(winsound.MB_ICONEXCLAMATION)
+                except Exception:
+                    pass
+                logger.info("Remote PING chime played on laptop")
             elif cmd == "DEVICE_BATTERY":
                 level = payload.get("battery_level")
                 charging = payload.get("is_charging")

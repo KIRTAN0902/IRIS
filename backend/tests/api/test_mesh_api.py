@@ -308,3 +308,36 @@ def test_terminal_exec_and_open_api(client: TestClient):
         assert res_open.json()["success"] is True
 
 
+def test_device_telemetry_reporting(client: TestClient):
+    res = client.post(
+        "/api/mesh/telemetry",
+        json={
+            "device_id": "test_phone_telemetry",
+            "device_name": "Test Phone",
+            "device_type": "phone_mobile",
+            "battery_level": 88,
+            "is_charging": True,
+        },
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert data["status"] == "ok"
+    assert data["battery_level"] == 88
+    assert data["is_charging"] is True
+
+    # Verify device appears in paired list
+    res_list = client.get("/api/mesh/pair/devices")
+    assert res_list.status_code == 200
+    list_data = res_list.json()
+    assert "laptop_host" in list_data
+    matched = [d for d in list_data["paired_devices"] if d["device_id"] == "test_phone_telemetry"]
+    assert len(matched) == 1
+    assert matched[0]["battery_level"] == 88
+    assert matched[0]["is_charging"] is True
+    assert matched[0]["is_online"] is True
+
+    # Clean up
+    client.delete("/api/mesh/pair/test_phone_telemetry")
+
+
+
