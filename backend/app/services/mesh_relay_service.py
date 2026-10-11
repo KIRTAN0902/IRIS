@@ -408,6 +408,11 @@ class LaptopRelayDaemon:
                     from app.services.autonomous_coder_service import trigger_autonomous_task
                     result = await trigger_autonomous_task(prompt)
                     logger.info("Remote Autonomous Coder triggered: %s", result)
+            elif cmd == "LAUNCH_APP":
+                app_name = payload.get("app", "antigravity")
+                arg = payload.get("argument")
+                res = ms.launch_windows_app(app_name=app_name, argument=arg)
+                logger.info("Remote LAUNCH_APP executed: %s", res)
 
         elif msg_type == "HANDOFF":
             state_type = payload.get("type", "UNKNOWN")

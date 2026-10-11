@@ -111,6 +111,46 @@ class GetDeviceMeshStatusTool(Tool):
         )
 
 
+class LaunchAppParams(BaseModel):
+    app: str = Field(
+        default="antigravity",
+        description="Application to launch on the laptop (e.g. 'antigravity', 'antigravity ide', 'vscode', 'terminal', 'chrome')",
+    )
+    argument: str | None = Field(
+        None,
+        description="Optional folder, workspace path, or URL to open in the app (e.g. 'C:\\kirtan\\IRIS')",
+    )
+
+
+class LaunchLaptopAppTool(Tool):
+    name = "launch_laptop_app"
+    description = (
+        "Launch or open a desktop application on your Windows laptop remotely "
+        "(e.g. 'open antigravity on laptop', 'launch VS Code', 'open terminal')."
+    )
+    parameters_schema = LaunchAppParams
+    read_only = False
+
+    async def run(self, db: Session, user: User, **kwargs: Any) -> ToolResult:
+        app_name = kwargs.get("app", "antigravity")
+        arg = kwargs.get("argument")
+        res = ms.launch_windows_app(app_name=app_name, argument=arg)
+
+        # Broadcast remote command
+        msg = ms.MeshMessage(
+            type="REMOTE_COMMAND",
+            sender_device="iris_agent",
+            payload={"command": "LAUNCH_APP", "app": app_name, "argument": arg},
+        )
+        await ms.hub.broadcast(msg, exclude_sender=False)
+        return ToolResult(
+            tool_name=self.name,
+            success=res.get("success", False),
+            data=res,
+            summary=res.get("message", f"Launched {app_name} on laptop."),
+        )
+
+
 def mesh_tools() -> list[Tool]:
     """Factory returning all IRIS Mesh continuity tools."""
     return [
@@ -118,4 +158,5 @@ def mesh_tools() -> list[Tool]:
         LockWorkstationTool(),
         SyncClipboardTool(),
         GetDeviceMeshStatusTool(),
+        LaunchLaptopAppTool(),
     ]

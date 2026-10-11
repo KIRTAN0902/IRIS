@@ -176,3 +176,56 @@ def get_windows_battery() -> dict[str, Any] | None:
     except Exception as exc:
         logger.debug("Could not read power status: %s", exc)
     return None
+
+
+def launch_windows_app(app_name: str = "antigravity", argument: str | None = None) -> dict[str, Any]:
+    """Launches or focuses a desktop application on the Windows laptop."""
+    import subprocess
+    from pathlib import Path
+
+    app_clean = app_name.strip().lower()
+    default_workspace = r"C:\kirtan\IRIS"
+
+    antigravity_ide = r"C:\Users\shahk\AppData\Local\Programs\Antigravity IDE\Antigravity IDE.exe"
+    antigravity_app = r"C:\Users\shahk\AppData\Local\Programs\Antigravity\Antigravity.exe"
+    antigravity_cmd = r"C:\Users\shahk\AppData\Local\Programs\Antigravity IDE\bin\antigravity-ide.cmd"
+
+    cmd: list[str] = []
+
+    if any(k in app_clean for k in ["antigravity", "agy", "anti-gravity"]):
+        target = argument or default_workspace
+        if os.path.exists(antigravity_ide):
+            cmd = [antigravity_ide, target]
+        elif os.path.exists(antigravity_app):
+            cmd = [antigravity_app]
+        elif os.path.exists(antigravity_cmd):
+            cmd = [antigravity_cmd, target]
+    elif "vscode" in app_clean or "code" in app_clean:
+        cmd = ["code", argument or default_workspace]
+    elif "terminal" in app_clean or "powershell" in app_clean:
+        cmd = ["powershell.exe"]
+    elif "chrome" in app_clean or "browser" in app_clean:
+        cmd = ["explorer.exe", argument or "http://localhost:5173"]
+    else:
+        cmd = [app_name]
+        if argument:
+            cmd.append(argument)
+
+    try:
+        proc = subprocess.Popen(cmd, shell=False)
+        logger.info("Launched desktop application: %s (PID: %s)", cmd[0], proc.pid)
+        return {
+            "success": True,
+            "app": app_name,
+            "pid": proc.pid,
+            "command": cmd,
+            "message": f"Successfully launched {app_name} on Windows laptop.",
+        }
+    except Exception as exc:
+        logger.error("Failed to launch application %s: %s", app_name, exc)
+        return {
+            "success": False,
+            "app": app_name,
+            "error": str(exc),
+            "message": f"Could not launch {app_name}: {exc}",
+        }

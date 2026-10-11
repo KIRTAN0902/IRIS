@@ -98,3 +98,16 @@ async def test_get_device_mesh_status_tool(db: Session):
         assert result.data["devices"][0]["name"] == "Pixel 8"
         assert result.data["host_battery"]["percent"] == 95
         assert "1 device(s) connected" in result.summary
+
+
+@pytest.mark.asyncio
+async def test_launch_laptop_app_tool(db: Session):
+    from app.agent.tools.mesh import LaunchLaptopAppTool
+
+    user = get_current_user(db)
+    tool = LaunchLaptopAppTool()
+
+    with patch("app.services.mesh_service.launch_windows_app", return_value={"success": True, "message": "Launched antigravity"}):
+        result = await tool.execute(db, user, app="antigravity")
+        assert result.success
+        assert "Launched antigravity" in result.summary
