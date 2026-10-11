@@ -54,12 +54,14 @@ class HandoffRequest(BaseModel):
 
 class PairingCodeRequest(BaseModel):
     device_name: str = "Mobile Companion"
+    device_id: str | None = None
+    device_type: str = "phone_mobile"
 
 
 class PairingVerifyRequest(BaseModel):
     code: str = Field(..., description="6-digit pairing code or QR token")
-    device_id: str = Field(..., description="Unique client-assigned ID")
-    device_name: str = "Mobile Companion"
+    device_id: str | None = None
+    device_name: str | None = "Mobile Phone"
     device_type: str = "phone_mobile"
 
 
@@ -103,14 +105,27 @@ def create_pairing_code(
     db: Session = Depends(get_db),
     user: User = Depends(current_user),
 ):
-    """Generates a secure 6-digit numeric PIN code & QR code for one-time pairing."""
+    """Generates a secure 6-digit numeric PIN code for one-time pairing."""
     invite = mrs.generate_pairing_invite(
         db=db,
         user_id=user.id,
         device_name=req.device_name,
+        device_id=req.device_id,
+        device_type=req.device_type,
         expires_minutes=15,
     )
     return invite
+
+
+@router.get("/pair/status")
+def get_pairing_status(
+    token: str = Query(..., description="Pending invite token"),
+    device_id: str | None = Query(None, description="Optional client device ID"),
+    db: Session = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    """Polls if a pending pairing invitation has been verified and activated."""
+    return mrs.check_invite_status(db=db, user_id=user.id, token=token, device_id=device_id)
 
 
 @router.post("/pair/verify")

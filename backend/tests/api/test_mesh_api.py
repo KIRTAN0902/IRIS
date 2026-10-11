@@ -243,3 +243,53 @@ def test_mesh_screen_streaming_and_input(client: TestClient):
     )
     assert res_key.status_code == 200
     assert res_key.json()["success"] is True
+
+
+def test_phone_pin_displayed_and_laptop_verifies(client: TestClient):
+    """Verifies user's exact flow: Phone displays 6-digit PIN, Laptop inputs it, both pair forever."""
+    phone_device_id = "phone_kirtan_s24"
+
+    # Step 1: Phone loads companion / mesh page and generates 6-digit PIN
+    res_code = client.post(
+        "/api/mesh/pair/code",
+        json={
+            "device_id": phone_device_id,
+            "device_name": "Kirtan's Phone",
+            "device_type": "phone_mobile",
+        },
+    )
+    assert res_code.status_code == 200
+    data_code = res_code.json()
+    assert len(data_code["pairing_code"]) == 6
+    assert data_code["pairing_code"].isdigit()
+    pin = data_code["pairing_code"]
+    invite_token = data_code["token"]
+
+    # Step 2: Phone starts polling status while waiting for laptop
+    res_poll_1 = client.get(f"/api/mesh/pair/status?token={invite_token}&device_id={phone_device_id}")
+    assert res_poll_1.status_code == 200
+    assert res_poll_1.json()["status"] == "pending"
+
+    # Step 3: Laptop enters the 6-digit PIN on the Mesh page
+    res_verify = client.post(
+        "/api/mesh/pair/verify",
+        json={
+            "code": pin,
+            "device_name": "Kirtan's Galaxy Phone",
+        },
+    )
+    assert res_verify.status_code == 200
+    verify_data = res_verify.json()
+    assert verify_data["status"] == "paired"
+    assert verify_data["device_name"] == "Kirtan's Galaxy Phone"
+
+    # Step 4: Phone's next poll sees pairing activated, gets permanent token
+    res_poll_2 = client.get(f"/api/mesh/pair/status?token={invite_token}&device_id={phone_device_id}")
+    assert res_poll_2.status_code == 200
+    poll_data = res_poll_2.json()
+    assert poll_data["status"] == "paired"
+    assert poll_data["pairing_token"] == verify_data["pairing_token"]
+
+    # Clean up
+    client.delete(f"/api/mesh/pair/{phone_device_id}")
+

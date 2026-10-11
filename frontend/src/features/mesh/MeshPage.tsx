@@ -4,13 +4,11 @@ import {
   Check,
   Copy,
   Download,
-  ExternalLink,
   HardDrive,
   Laptop,
   Lock,
   MonitorPlay,
   Plus,
-  QrCode,
   Smartphone,
   Trash2,
   Upload,
@@ -56,7 +54,6 @@ interface PairingInvite {
   pairing_code: string;
   token: string;
   expires_at: string;
-  qr_svg_uri: string;
 }
 
 export function MeshPage() {
@@ -69,10 +66,18 @@ export function MeshPage() {
   const [copied, setCopied] = useState(false);
   const [statusMsg, setStatusMsg] = useState("");
 
-  // Pairing Modal state
+  // 6-Digit PIN Pairing state
   const [pairModalOpen, setPairModalOpen] = useState(false);
+  const [pairingMode, setPairingMode] = useState<"enter_pin" | "show_pin">("enter_pin");
+  const [pinInput, setPinInput] = useState("");
+  const [deviceNameInput, setDeviceNameInput] = useState("Mobile Phone");
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [verifyError, setVerifyError] = useState("");
+
+  // Mobile PIN generation state (if user opens on phone)
   const [invite, setInvite] = useState<PairingInvite | null>(null);
   const [loadingInvite, setLoadingInvite] = useState(false);
+  const [phonePairedSuccess, setPhonePairedSuccess] = useState(false);
 
   // Phone Mirroring state (Step 2)
   const [mirrorModalOpen, setMirrorModalOpen] = useState(false);
@@ -116,16 +121,85 @@ export function MeshPage() {
     return () => clearInterval(snapInterval);
   }, [mirrorModalOpen]);
 
-  const handleOpenPairModal = async () => {
-    setPairModalOpen(true);
-    setLoadingInvite(true);
+  // Laptop enters phone's 6-digit PIN
+  const handleVerifyPhonePin = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const cleanPin = pinInput.trim().replace(/\s+/g, "");
+    if (cleanPin.length !== 6) {
+      setVerifyError("Please enter the complete 6-digit PIN shown on your phone.");
+      return;
+    }
+    setVerifyError("");
+    setIsVerifying(true);
     try {
-      const res = await api.post<PairingInvite>("/mesh/pair/code", { device_name: "Mobile Phone" });
+      await api.post("/mesh/pair/verify", {
+        code: cleanPin,
+        device_name: deviceNameInput.trim() || "Mobile Phone",
+        device_type: "phone_mobile",
+      });
+      setStatusMsg("✨ Mobile Phone paired permanently!");
+      setPinInput("");
+      setPairModalOpen(false);
+      await loadData();
+      setTimeout(() => setStatusMsg(""), 4000);
+    } catch (err: any) {
+      const msg = err?.response?.data?.detail || err?.message || "Invalid or expired 6-digit PIN.";
+      setVerifyError(msg);
+    } finally {
+      setIsVerifying(false);
+    }
+  };
+
+  // Mobile generates its 6-digit PIN to show to laptop
+  const handleGeneratePhoneCode = async () => {
+    setLoadingInvite(true);
+    setPhonePairedSuccess(false);
+    try {
+      let localDeviceId = localStorage.getItem("iris_device_id");
+      if (!localDeviceId) {
+        localDeviceId = "phone_" + Math.random().toString(36).substring(2, 9);
+        localStorage.setItem("iris_device_id", localDeviceId);
+      }
+      const res = await api.post<PairingInvite>("/mesh/pair/code", {
+        device_id: localDeviceId,
+        device_name: "Mobile Phone",
+        device_type: "phone_mobile",
+      });
       setInvite(res);
+
+      // Start polling for laptop verification
+      const pollToken = res.token;
+      const interval = setInterval(async () => {
+        try {
+          const statusRes = await api.get<{ status: string; pairing_token?: string }>(
+            `/mesh/pair/status?token=${encodeURIComponent(pollToken)}&device_id=${encodeURIComponent(localDeviceId)}`
+          );
+          if (statusRes.status === "paired") {
+            clearInterval(interval);
+            setPhonePairedSuccess(true);
+            if (statusRes.pairing_token) {
+              localStorage.setItem("iris_pair_token", statusRes.pairing_token);
+            }
+            setStatusMsg("✨ Connected to laptop permanently!");
+            loadData();
+          }
+        } catch {
+          // ignore
+        }
+      }, 1500);
     } catch {
-      setStatusMsg("Failed to generate pairing code");
+      setVerifyError("Failed to generate pairing PIN. Check connection.");
     } finally {
       setLoadingInvite(false);
+    }
+  };
+
+  const handleOpenPairModal = (mode: "enter_pin" | "show_pin" = "enter_pin") => {
+    setPairingMode(mode);
+    setVerifyError("");
+    setPairModalOpen(true);
+    if (mode === "show_pin") {
+      handleGeneratePhoneCode();
     }
   };
 
@@ -200,7 +274,7 @@ export function MeshPage() {
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <Button size="sm" variant="outline" onClick={handleOpenPairModal}>
+          <Button size="sm" variant="outline" onClick={() => handleOpenPairModal("enter_pin")}>
             <Plus size={14} /> Pair New Phone
           </Button>
           <div className="flex items-center gap-2">
@@ -261,15 +335,53 @@ export function MeshPage() {
         >
           <div className="space-y-3 pt-2">
             {pairedDevices.length === 0 ? (
-              <div className="flex flex-col items-center justify-center p-4 text-center border border-dashed border-ops-line-bright rounded-lg bg-ops-ground/40 space-y-2">
-                <Smartphone size={24} className="text-ink-faint" />
-                <p className="text-[13px] font-medium text-ink">No mobile device paired yet</p>
-                <p className="text-[11px] text-ink-dim">
-                  Pair your phone once using a 6-digit code. Works on cellular 5G and any Wi-Fi.
-                </p>
-                <Button size="sm" onClick={handleOpenPairModal} className="mt-1">
-                  <Plus size={13} /> Pair My Phone
-                </Button>
+              <div className="flex flex-col p-4 border border-dashed border-ops-line-bright rounded-xl bg-ops-ground/40 space-y-3">
+                <div className="flex items-center gap-2.5">
+                  <Smartphone size={20} className="text-ai" />
+                  <div>
+                    <p className="text-[14px] font-semibold text-ink">Pair Mobile Phone</p>
+                    <p className="text-[12px] text-ink-dim">
+                      Enter the 6-digit PIN shown on your phone's companion screen:
+                    </p>
+                  </div>
+                </div>
+
+                <form onSubmit={handleVerifyPhonePin} className="space-y-2.5 pt-1">
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={pinInput}
+                      onChange={(e) => {
+                        setVerifyError("");
+                        setPinInput(e.target.value.replace(/\D/g, "").slice(0, 6));
+                      }}
+                      placeholder="000 000"
+                      className="w-36 rounded-md border border-ops-line-bright bg-ops-raised/40 px-3 py-2 text-center font-mono text-[20px] font-bold tracking-widest text-ink outline-none focus:border-ai"
+                      maxLength={6}
+                    />
+                    <Button
+                      type="submit"
+                      disabled={pinInput.length !== 6 || isVerifying}
+                      className="flex-1"
+                    >
+                      {isVerifying ? "Pairing..." : "Pair Phone Forever"}
+                    </Button>
+                  </div>
+                  {verifyError && (
+                    <p className="text-[12px] text-rose-400 font-medium">{verifyError}</p>
+                  )}
+                </form>
+
+                <div className="flex items-center justify-between text-[11px] text-ink-faint pt-1 border-t border-ops-line">
+                  <span>Companion: <code className="text-ink">{companionUrl}</code></span>
+                  <button
+                    type="button"
+                    onClick={() => handleOpenPairModal("show_pin")}
+                    className="text-ai hover:underline cursor-pointer"
+                  >
+                    This is my phone &rarr;
+                  </button>
+                </div>
               </div>
             ) : (
               <div className="space-y-2">
@@ -312,7 +424,7 @@ export function MeshPage() {
                   <Button variant="outline" size="sm" onClick={handleRingPhone} className="flex-1">
                     <Bell size={13} /> Ring Phone (Find My)
                   </Button>
-                  <Button variant="ghost" size="sm" onClick={handleOpenPairModal}>
+                  <Button variant="ghost" size="sm" onClick={() => handleOpenPairModal("enter_pin")}>
                     <Plus size={13} /> Pair Another
                   </Button>
                 </div>
@@ -401,65 +513,129 @@ export function MeshPage() {
         </div>
       </Panel>
 
-      {/* One-Time Pairing Modal */}
+      {/* 6-Digit PIN Pairing Modal (Zero QR Code) */}
       <Dialog open={pairModalOpen} onOpenChange={setPairModalOpen}>
-        <DialogContent title="Pair Sovereign Device (One-Time Handshake)">
-          <div className="space-y-4 py-2 text-center">
-            <p className="text-[13px] text-ink-dim">
-              Open the companion page on your phone once to link it permanently.
-            </p>
+        <DialogContent title="Pair Sovereign Device (6-Digit PIN)">
+          <div className="space-y-4 py-2">
+            {/* Toggle tabs between Laptop entering PIN vs Phone showing PIN */}
+            <div className="flex rounded-lg bg-ops-raised/40 p-1 text-[12px]">
+              <button
+                type="button"
+                onClick={() => setPairingMode("enter_pin")}
+                className={`flex-1 rounded-md py-1.5 font-medium transition-colors ${
+                  pairingMode === "enter_pin" ? "bg-ops-panel text-ink shadow-sm" : "text-ink-dim hover:text-ink"
+                }`}
+              >
+                💻 Enter Phone PIN (Laptop)
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setPairingMode("show_pin");
+                  handleGeneratePhoneCode();
+                }}
+                className={`flex-1 rounded-md py-1.5 font-medium transition-colors ${
+                  pairingMode === "show_pin" ? "bg-ops-panel text-ink shadow-sm" : "text-ink-dim hover:text-ink"
+                }`}
+              >
+                📱 Show PIN (This Phone)
+              </button>
+            </div>
 
-            {loadingInvite ? (
-              <div className="py-8 text-[13px] text-ink-dim animate-pulse">Generating secure pairing PIN...</div>
-            ) : invite ? (
-              <div className="space-y-4">
-                {/* 6-Digit PIN Display */}
-                <div className="rounded-xl border border-ai/30 bg-ai/10 p-4">
-                  <p className="text-[11px] font-semibold uppercase tracking-wider text-ai mb-1">
-                    6-Digit Pairing PIN
-                  </p>
-                  <div className="font-mono text-[36px] font-black tracking-[0.3em] text-ink">
-                    {invite.pairing_code}
-                  </div>
-                  <p className="text-[11px] text-ink-faint mt-1">
-                    Expires in 15 minutes · Valid forever once paired
-                  </p>
+            {pairingMode === "enter_pin" ? (
+              <form onSubmit={handleVerifyPhonePin} className="space-y-4 pt-1">
+                <p className="text-[13px] text-ink-dim leading-relaxed">
+                  Open the companion screen on your phone (<code>{companionUrl}</code>) and enter the 6-digit PIN displayed on your phone:
+                </p>
+
+                <div className="rounded-xl border border-ai/20 bg-ai/5 p-4 text-center space-y-2">
+                  <label className="text-[11px] font-semibold uppercase tracking-wider text-ai">
+                    6-Digit Phone PIN
+                  </label>
+                  <input
+                    type="text"
+                    value={pinInput}
+                    onChange={(e) => {
+                      setVerifyError("");
+                      setPinInput(e.target.value.replace(/\D/g, "").slice(0, 6));
+                    }}
+                    placeholder="000 000"
+                    className="w-full rounded-lg border border-ops-line-bright bg-ops-ground px-4 py-3 text-center font-mono text-[32px] font-bold tracking-[0.25em] text-ink outline-none focus:border-ai"
+                    maxLength={6}
+                    autoFocus
+                  />
+                  {verifyError && (
+                    <p className="text-[12px] text-rose-400 font-medium">{verifyError}</p>
+                  )}
                 </div>
 
-                {/* QR Code */}
-                {invite.qr_svg_uri && (
-                  <div className="flex flex-col items-center justify-center space-y-2">
-                    <img
-                      src={invite.qr_svg_uri}
-                      alt="Pairing QR Code"
-                      className="rounded-lg bg-white p-2 shadow-sm"
-                      width={160}
-                      height={160}
-                    />
-                    <p className="text-[12px] text-ink-dim flex items-center gap-1">
-                      <QrCode size={13} className="text-ai" /> Scan with Phone Camera
-                    </p>
-                  </div>
-                )}
-
-                {/* Companion Link */}
-                <div className="rounded-md bg-ops-raised/40 p-2 text-[12px] flex items-center justify-between">
-                  <span className="font-mono text-ink-dim truncate max-w-[280px]">{companionUrl}</span>
-                  <a
-                    href="/companion"
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-ai hover:underline flex items-center gap-1 font-medium"
-                  >
-                    Open <ExternalLink size={11} />
-                  </a>
+                <div className="space-y-1">
+                  <label className="text-[12px] text-ink-dim">Device Label (Optional)</label>
+                  <input
+                    type="text"
+                    value={deviceNameInput}
+                    onChange={(e) => setDeviceNameInput(e.target.value)}
+                    placeholder="e.g. Kirtan's Phone"
+                    className="w-full rounded-md border border-ops-line-bright bg-ops-ground px-3 py-2 text-[13px] text-ink outline-none focus:border-ai"
+                  />
                 </div>
+
+                <Button
+                  type="submit"
+                  disabled={pinInput.length !== 6 || isVerifying}
+                  className="w-full"
+                >
+                  {isVerifying ? "Pairing..." : "🔗 Link Device Forever"}
+                </Button>
+              </form>
+            ) : (
+              <div className="space-y-4 text-center pt-1">
+                <p className="text-[13px] text-ink-dim">
+                  Enter this 6-digit PIN on your Laptop's Mesh page to link this phone forever:
+                </p>
+
+                {loadingInvite ? (
+                  <div className="py-8 text-[13px] text-ink-dim animate-pulse">Generating PIN...</div>
+                ) : phonePairedSuccess ? (
+                  <div className="rounded-xl border border-go/30 bg-go/10 p-6 space-y-2">
+                    <p className="text-[16px] font-bold text-go">✨ Connected to Laptop!</p>
+                    <p className="text-[12px] text-ink-dim">This phone is now permanently paired.</p>
+                  </div>
+                ) : invite ? (
+                  <div className="space-y-3">
+                    <div className="rounded-xl border border-ai/30 bg-ai/10 p-5">
+                      <p className="text-[11px] font-semibold uppercase tracking-wider text-ai mb-1">
+                        6-Digit Pairing PIN
+                      </p>
+                      <div className="font-mono text-[40px] font-black tracking-[0.25em] text-ink">
+                        {invite.pairing_code}
+                      </div>
+                      <p className="text-[11px] text-ink-faint mt-1">
+                        Valid for 15 minutes · Valid forever once paired
+                      </p>
+                    </div>
+
+                    <div className="flex items-center justify-center gap-2 text-[12px] text-go font-medium animate-pulse">
+                      <div className="h-2 w-2 rounded-full bg-go" />
+                      <span>Waiting for laptop to enter PIN...</span>
+                    </div>
+
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleGeneratePhoneCode}
+                      className="mt-2"
+                    >
+                      🔄 Refresh Code
+                    </Button>
+                  </div>
+                ) : null}
               </div>
-            ) : null}
+            )}
 
             <div className="pt-2">
               <Button variant="outline" onClick={() => setPairModalOpen(false)} className="w-full">
-                Done
+                Close
               </Button>
             </div>
           </div>

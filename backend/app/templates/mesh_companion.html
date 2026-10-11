@@ -346,22 +346,47 @@
 </head>
 <body>
 
-  <!-- One-Time Pairing Modal (Shown if device not yet paired) -->
+  <!-- One-Time Pairing Modal (Shown on Phone if device not yet paired) -->
   <div id="pairingModal" class="pairing-modal" style="display: none;">
     <div class="iris-logo" style="width: 52px; height: 52px; margin-bottom: 12px;">
       <div class="iris-logo-dot" style="width: 14px; height: 14px;"></div>
     </div>
-    <h2 style="font-size: 1.4rem; font-weight: 700; margin-bottom: 6px;">Pair Sovereign Mesh</h2>
+    <h2 style="font-size: 1.35rem; font-weight: 700; margin-bottom: 6px;">Pair Phone With Laptop</h2>
     <p style="font-size: 0.85rem; color: var(--text-dim); max-width: 320px; line-height: 1.4;">
-      Enter the 6-digit pairing code shown on your IRIS dashboard to link this phone forever.
+      Enter this 6-digit PIN on your Laptop's Mesh page to link both devices forever:
     </p>
 
-    <input type="text" id="pairPinInput" class="pin-input" maxlength="6" placeholder="------" inputmode="numeric" autocomplete="one-time-code">
+    <!-- Large 6-digit PIN Display -->
+    <div id="pairPinBox" style="margin: 18px 0; background: rgba(56, 189, 248, 0.08); border: 2px solid rgba(56, 189, 248, 0.4); border-radius: 16px; padding: 14px 28px; text-align: center;">
+      <div id="pairPinCode" style="font-family: monospace; font-size: 2.8rem; font-weight: 800; letter-spacing: 0.25em; color: #38BDF8; line-height: 1.1;">
+        ------
+      </div>
+      <div style="font-size: 0.72rem; color: var(--text-dim); margin-top: 6px;">
+        Valid for 15 minutes · Permanent once linked
+      </div>
+    </div>
 
-    <div style="width: 100%; max-width: 280px; display: flex; flex-direction: column; gap: 10px;">
-      <input type="text" id="pairDeviceName" placeholder="Device Name (e.g. Kirtan's Phone)" style="text-align: center;">
-      <button onclick="submitPairing()" class="btn-primary" style="padding: 14px; font-size: 0.95rem;">
-        🔗 Pair Device Forever
+    <!-- Polling Status with Spinner -->
+    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 20px; font-size: 0.82rem; color: var(--emerald);">
+      <div style="width: 8px; height: 8px; border-radius: 50%; background: var(--emerald); box-shadow: 0 0 8px var(--emerald); animation: pulseAlert 1s infinite alternate;"></div>
+      <span id="pairStatusText">Waiting for laptop to enter PIN...</span>
+    </div>
+
+    <div style="width: 100%; max-width: 280px; display: flex; flex-direction: column; gap: 8px;">
+      <button onclick="requestNewPairingCode()" class="btn-secondary" style="padding: 10px; font-size: 0.85rem;">
+        🔄 Refresh Code
+      </button>
+      <button onclick="toggleManualEntry()" id="btnToggleManual" style="background: transparent; border: none; color: var(--text-dim); font-size: 0.78rem; text-decoration: underline; cursor: pointer; padding: 4px;">
+        Or enter laptop PIN manually
+      </button>
+    </div>
+
+    <!-- Manual PIN Entry (Collapsible fallback) -->
+    <div id="manualEntrySection" style="display: none; width: 100%; max-width: 280px; margin-top: 14px; flex-direction: column; gap: 10px;">
+      <p style="font-size: 0.8rem; color: var(--text-dim);">Enter code from laptop:</p>
+      <input type="text" id="pairPinInput" class="pin-input" maxlength="6" placeholder="------" inputmode="numeric" style="margin: 0; font-size: 1.8rem;">
+      <button onclick="submitManualPairing()" class="btn-primary" style="padding: 12px; font-size: 0.9rem;">
+        🔗 Pair Device
       </button>
     </div>
     <p id="pairingError" style="color: var(--rose); font-size: 0.8rem; margin-top: 10px; display: none;"></p>
@@ -543,32 +568,92 @@
     let peerConn = null;
     let snapshotInterval = null;
 
-    // --- Pairing Logic ---
-    function checkPairingState() {
-      // Also inspect URL params ?code=...&token=... for automatic QR pairing
-      const params = new URLSearchParams(window.location.search);
-      const urlCode = params.get("code") || params.get("token");
-      if (urlCode && !PAIR_TOKEN) {
-        document.getElementById("pairPinInput").value = urlCode;
-        submitPairing();
-        return;
-      }
+    // --- Pairing Logic (Phone Displays PIN, Laptop Enters It) ---
+    let pendingInviteToken = "";
+    let pairPollTimer = null;
 
-      if (!PAIR_TOKEN) {
-        document.getElementById("pairingModal").style.display = "flex";
-        document.getElementById("pairDeviceName").value = DEVICE_NAME;
-        document.getElementById("pairPinInput").focus();
-      } else {
+    async function checkPairingState() {
+      if (PAIR_TOKEN) {
         document.getElementById("pairingModal").style.display = "none";
         document.getElementById("headerSubtext").textContent = `Paired · ${DEVICE_NAME}`;
         connectMesh();
         startCloudRelayPolling();
+        return;
+      }
+
+      // Show modal and automatically generate 6-digit phone PIN
+      document.getElementById("pairingModal").style.display = "flex";
+      await requestNewPairingCode();
+    }
+
+    async function requestNewPairingCode() {
+      const codeDisplay = document.getElementById("pairPinCode");
+      const statusText = document.getElementById("pairStatusText");
+      const errBox = document.getElementById("pairingError");
+      errBox.style.display = "none";
+      codeDisplay.textContent = "......";
+      statusText.textContent = "Generating PIN...";
+
+      try {
+        const res = await fetch("/api/mesh/pair/code", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            device_id: DEVICE_ID,
+            device_name: DEVICE_NAME,
+            device_type: "phone_mobile",
+          }),
+        });
+        if (!res.ok) throw new Error("Failed to create code");
+        const data = await res.json();
+        pendingInviteToken = data.token;
+        const rawCode = String(data.pairing_code || "").trim();
+        codeDisplay.textContent = rawCode.length === 6 ? `${rawCode.slice(0,3)} ${rawCode.slice(3)}` : rawCode;
+        statusText.textContent = "Waiting for laptop to enter PIN...";
+
+        // Start polling for pairing confirmation from laptop
+        startPairingPolling(data.token);
+      } catch (err) {
+        codeDisplay.textContent = "ERROR";
+        statusText.textContent = "Failed to connect to server";
+        errBox.textContent = "Could not generate pairing PIN. Check network.";
+        errBox.style.display = "block";
       }
     }
 
-    async function submitPairing() {
+    function startPairingPolling(token) {
+      if (pairPollTimer) clearInterval(pairPollTimer);
+      pairPollTimer = setInterval(async () => {
+        if (!token) return;
+        try {
+          const res = await fetch(`/api/mesh/pair/status?token=${encodeURIComponent(token)}&device_id=${encodeURIComponent(DEVICE_ID)}`);
+          if (!res.ok) return;
+          const data = await res.json();
+          if (data.status === "paired" && data.pairing_token) {
+            clearInterval(pairPollTimer);
+            PAIR_TOKEN = data.pairing_token;
+            DEVICE_NAME = data.device_name || DEVICE_NAME;
+            localStorage.setItem("iris_pair_token", PAIR_TOKEN);
+            localStorage.setItem("iris_device_name", DEVICE_NAME);
+            document.getElementById("pairingModal").style.display = "none";
+            document.getElementById("headerSubtext").textContent = `Paired · ${DEVICE_NAME}`;
+            showToast("✨ Connected to Laptop Forever!");
+            connectMesh();
+            startCloudRelayPolling();
+          }
+        } catch (e) {
+          // ignore transient poll errors
+        }
+      }, 1500);
+    }
+
+    function toggleManualEntry() {
+      const sec = document.getElementById("manualEntrySection");
+      sec.style.display = sec.style.display === "flex" ? "none" : "flex";
+    }
+
+    async function submitManualPairing() {
       const pin = document.getElementById("pairPinInput").value.trim();
-      const devName = document.getElementById("pairDeviceName").value.trim() || "Mobile Companion";
       const errBox = document.getElementById("pairingError");
 
       if (!pin) {
@@ -585,15 +670,16 @@
           body: JSON.stringify({
             code: pin,
             device_id: DEVICE_ID,
-            device_name: devName,
+            device_name: DEVICE_NAME,
             device_type: "phone_mobile",
           }),
         });
 
         if (res.ok) {
           const data = await res.json();
+          if (pairPollTimer) clearInterval(pairPollTimer);
           PAIR_TOKEN = data.pairing_token;
-          DEVICE_NAME = data.device_name;
+          DEVICE_NAME = data.device_name || DEVICE_NAME;
           localStorage.setItem("iris_pair_token", PAIR_TOKEN);
           localStorage.setItem("iris_device_name", DEVICE_NAME);
           showToast("✨ Device Paired Permanently!");
@@ -621,10 +707,10 @@
       }
     }
 
-    // Auto submit on 6 digits
-    document.getElementById("pairPinInput").addEventListener("input", (e) => {
+    // Auto submit on 6 digits in manual box
+    document.getElementById("pairPinInput")?.addEventListener("input", (e) => {
       if (e.target.value.length === 6) {
-        submitPairing();
+        submitManualPairing();
       }
     });
 

@@ -32,20 +32,20 @@ def generate_pairing_invite(
     db: Session,
     user_id: int,
     device_name: str = "Mobile Companion",
+    device_id: str | None = None,
+    device_type: str = "phone_mobile",
     expires_minutes: int = 15,
 ) -> dict[str, Any]:
     """Generates a secure 6-digit numeric pairing code and temporary pairing invitation token."""
-    # Generate 6-digit numeric PIN
     code = f"{secrets.randbelow(900000) + 100000}"
-    temp_token = secrets.token_hex(20)
+    temp_token = f"iris_pair_{secrets.token_hex(24)}"
     expires_at = datetime.now(UTC) + timedelta(minutes=expires_minutes)
+    dev_id = device_id or f"pending_pair_{secrets.token_hex(6)}"
 
-    # Check if a pending invite already exists for this user/slot, otherwise create
     invite = (
         db.query(MeshPairing)
         .filter(
             MeshPairing.user_id == user_id,
-            MeshPairing.device_id.like("pending_pair_%"),
             MeshPairing.is_active == False,
         )
         .first()
@@ -54,9 +54,9 @@ def generate_pairing_invite(
     if not invite:
         invite = MeshPairing(
             user_id=user_id,
-            device_id=f"pending_pair_{secrets.token_hex(6)}",
+            device_id=dev_id,
             device_name=device_name,
-            device_type="phone_mobile",
+            device_type=device_type,
             pairing_code=code,
             pairing_code_expires_at=expires_at,
             pairing_token=temp_token,
@@ -64,38 +64,52 @@ def generate_pairing_invite(
         )
         db.add(invite)
     else:
+        invite.device_id = dev_id
         invite.pairing_code = code
         invite.pairing_code_expires_at = expires_at
         invite.pairing_token = temp_token
         invite.device_name = device_name
+        invite.device_type = device_type
 
     db.commit()
     db.refresh(invite)
-
-    # Generate QR Code SVG URI if segno is installed
-    qr_svg_uri = ""
-    try:
-        import segno
-
-        qr = segno.make(f"iris://mesh/pair?code={code}&token={temp_token}")
-        qr_svg_uri = qr.svg_data_uri(scale=5)
-    except Exception as exc:
-        logger.debug("QR generation error: %s", exc)
 
     return {
         "pairing_code": code,
         "token": temp_token,
         "expires_at": expires_at.isoformat(),
-        "qr_svg_uri": qr_svg_uri,
+        "device_id": dev_id,
     }
+
+
+def check_invite_status(db: Session, user_id: int, token: str, device_id: str | None = None) -> dict[str, Any]:
+    """Checks if a pending pairing invitation has been activated by the other device."""
+    query = db.query(MeshPairing).filter(MeshPairing.user_id == user_id, MeshPairing.is_active == True)
+    if token:
+        pairing = query.filter(MeshPairing.pairing_token == token).first()
+    elif device_id:
+        pairing = query.filter(MeshPairing.device_id == device_id).first()
+    else:
+        pairing = None
+
+    if pairing:
+        return {
+            "status": "paired",
+            "device_id": pairing.device_id,
+            "device_name": pairing.device_name,
+            "device_type": pairing.device_type,
+            "pairing_token": pairing.pairing_token,
+            "paired_at": pairing.paired_at.isoformat() if pairing.paired_at else None,
+        }
+    return {"status": "pending"}
 
 
 def verify_and_pair_device(
     db: Session,
     user_id: int,
     code_or_token: str,
-    device_id: str,
-    device_name: str,
+    device_id: str | None = None,
+    device_name: str | None = None,
     device_type: str = "phone_mobile",
 ) -> MeshPairing | None:
     """Verifies a 6-digit code or QR token and registers a permanent sovereign pairing."""
@@ -124,30 +138,45 @@ def verify_and_pair_device(
         logger.warning("Pairing attempt failed: Code expired at %s", invite.pairing_code_expires_at)
         return None
 
-    # Check if this exact device_id was already paired before
+    # Resolve target device_id and device_name
+    # Keep the invite's device_id if verifier didn't specify one, or if verifier is laptop
+    target_device_id = (
+        device_id
+        if (device_id and not device_id.startswith("pending_") and device_id not in ("web_client", "laptop", "desktop"))
+        else invite.device_id
+    )
+    if target_device_id.startswith("pending_"):
+        target_device_id = f"phone_{secrets.token_hex(4)}"
+
+    target_device_name = device_name or invite.device_name or "Mobile Phone"
+
+    # Retain the invite's token so that a device polling by token receives the active record immediately!
+    perm_token = invite.pairing_token or f"iris_pair_{secrets.token_hex(24)}"
+
+    # Check if a device with target_device_id already exists (excluding this invite)
     existing_device = (
         db.query(MeshPairing)
-        .filter(MeshPairing.user_id == user_id, MeshPairing.device_id == device_id)
+        .filter(
+            MeshPairing.user_id == user_id,
+            MeshPairing.device_id == target_device_id,
+            MeshPairing.id != invite.id,
+        )
         .first()
     )
 
-    perm_token = f"iris_pair_{secrets.token_hex(24)}"
-
     if existing_device:
         existing_device.is_active = True
-        existing_device.device_name = device_name
+        existing_device.device_name = target_device_name
         existing_device.device_type = device_type
         existing_device.pairing_token = perm_token
         existing_device.pairing_code = None
         existing_device.pairing_code_expires_at = None
         existing_device.last_seen_at = now
         active_record = existing_device
-        # Remove old invite placeholder if it was a different row
-        if invite.id != existing_device.id:
-            db.delete(invite)
+        db.delete(invite)
     else:
-        invite.device_id = device_id
-        invite.device_name = device_name
+        invite.device_id = target_device_id
+        invite.device_name = target_device_name
         invite.device_type = device_type
         invite.pairing_token = perm_token
         invite.pairing_code = None
@@ -158,7 +187,7 @@ def verify_and_pair_device(
 
     db.commit()
     db.refresh(active_record)
-    logger.info("Device '%s' (%s) successfully paired to user %s!", device_name, device_id, user_id)
+    logger.info("Device '%s' (%s) successfully paired to user %s!", target_device_name, target_device_id, user_id)
 
     # Broadcast device states update if loop is running
     try:
