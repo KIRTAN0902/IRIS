@@ -82,13 +82,31 @@ class GetDeviceMeshStatusTool(Tool):
     read_only = True
 
     async def run(self, db: Session, user: User, **kwargs: Any) -> ToolResult:
-        devices = [d.model_dump(mode="json") for d in ms.hub.devices.values()]
+        from app.services import mesh_relay_service as mrs
+
+        active_devices = [d.model_dump(mode="json") for d in ms.hub.devices.values()]
+        paired_devices = [
+            {
+                "id": p.id,
+                "device_id": p.device_id,
+                "device_name": p.device_name,
+                "device_type": p.device_type,
+                "battery_level": p.battery_level,
+                "last_seen_at": p.last_seen_at.isoformat() if p.last_seen_at else None,
+            }
+            for p in mrs.list_paired_devices(db, user.id)
+        ]
         battery = ms.get_windows_battery()
-        summary = f"{len(devices)} device(s) connected to IRIS Mesh."
+        summary = f"{len(active_devices)} device(s) connected to IRIS Mesh."
         return ToolResult(
             tool_name=self.name,
             success=True,
-            data={"devices": devices, "host_battery": battery},
+            data={
+                "devices": active_devices,
+                "active_devices": active_devices,
+                "paired_devices": paired_devices,
+                "host_battery": battery,
+            },
             summary=summary,
         )
 

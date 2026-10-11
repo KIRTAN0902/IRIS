@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>IRIS Mesh · Mobile Companion</title>
+  <title>IRIS Mesh · Sovereign Mobile Companion</title>
   <meta name="theme-color" content="#090D16">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -135,7 +135,7 @@
     .status-row:last-child {
       border-bottom: none;
     }
-    textarea, input[type="text"] {
+    textarea, input[type="text"], input[type="number"] {
       width: 100%;
       background: rgba(0, 0, 0, 0.3);
       border: 1px solid var(--card-border);
@@ -144,9 +144,12 @@
       color: var(--text);
       font-size: 0.9rem;
       resize: vertical;
+      min-height: 44px;
+    }
+    textarea {
       min-height: 80px;
     }
-    textarea:focus, input[type="text"]:focus, select:focus {
+    textarea:focus, input:focus, select:focus {
       outline: none;
       border-color: var(--accent);
       box-shadow: 0 0 10px var(--accent-glow);
@@ -196,6 +199,11 @@
       border-color: rgba(244, 63, 94, 0.3);
       color: #FDA4AF;
     }
+    .btn-emerald {
+      background: rgba(16, 185, 129, 0.2);
+      border-color: rgba(16, 185, 129, 0.4);
+      color: #6EE7B7;
+    }
     .file-drop-area {
       border: 2px dashed rgba(255, 255, 255, 0.15);
       border-radius: 12px;
@@ -216,12 +224,80 @@
       border-radius: 8px;
       font-size: 0.82rem;
     }
+
+    /* Screen Streaming Styles */
+    .screen-container {
+      position: relative;
+      width: 100%;
+      background: #000;
+      border-radius: 12px;
+      overflow: hidden;
+      border: 1px solid var(--card-border);
+      aspect-ratio: 16 / 10;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      touch-action: none;
+    }
+    #remoteVideo, #remoteSnapshot {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      user-select: none;
+    }
+    .screen-overlay-controls {
+      position: absolute;
+      bottom: 8px;
+      right: 8px;
+      display: flex;
+      gap: 6px;
+      z-index: 10;
+    }
+    .icon-btn {
+      background: rgba(0, 0, 0, 0.6);
+      backdrop-filter: blur(6px);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      color: #fff;
+      padding: 6px 10px;
+      border-radius: 8px;
+      font-size: 0.75rem;
+    }
+
+    /* One-Time Pairing Modal */
+    .pairing-modal {
+      position: fixed;
+      inset: 0;
+      background: rgba(4, 7, 14, 0.96);
+      backdrop-filter: blur(20px);
+      z-index: 9999;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      text-align: center;
+    }
+    .pin-input {
+      font-family: monospace;
+      font-size: 2.2rem;
+      letter-spacing: 0.4em;
+      text-align: center;
+      padding: 12px;
+      width: 240px;
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.08);
+      border: 2px solid var(--accent);
+      color: #fff;
+      margin: 16px 0;
+    }
+
+    /* Siren Modal */
     .modal-alarm {
       display: none;
       position: fixed;
       inset: 0;
       background: rgba(244, 63, 94, 0.95);
-      z-index: 9999;
+      z-index: 10000;
       flex-direction: column;
       align-items: center;
       justify-content: center;
@@ -270,6 +346,27 @@
 </head>
 <body>
 
+  <!-- One-Time Pairing Modal (Shown if device not yet paired) -->
+  <div id="pairingModal" class="pairing-modal" style="display: none;">
+    <div class="iris-logo" style="width: 52px; height: 52px; margin-bottom: 12px;">
+      <div class="iris-logo-dot" style="width: 14px; height: 14px;"></div>
+    </div>
+    <h2 style="font-size: 1.4rem; font-weight: 700; margin-bottom: 6px;">Pair Sovereign Mesh</h2>
+    <p style="font-size: 0.85rem; color: var(--text-dim); max-width: 320px; line-height: 1.4;">
+      Enter the 6-digit pairing code shown on your IRIS dashboard to link this phone forever.
+    </p>
+
+    <input type="text" id="pairPinInput" class="pin-input" maxlength="6" placeholder="------" inputmode="numeric" autocomplete="one-time-code">
+
+    <div style="width: 100%; max-width: 280px; display: flex; flex-direction: column; gap: 10px;">
+      <input type="text" id="pairDeviceName" placeholder="Device Name (e.g. Kirtan's Phone)" style="text-align: center;">
+      <button onclick="submitPairing()" class="btn-primary" style="padding: 14px; font-size: 0.95rem;">
+        🔗 Pair Device Forever
+      </button>
+    </div>
+    <p id="pairingError" style="color: var(--rose); font-size: 0.8rem; margin-top: 10px; display: none;"></p>
+  </div>
+
   <!-- Fullscreen Remote Alarm Modal -->
   <div id="alarmModal" class="modal-alarm">
     <div style="font-size: 4rem;">🚨</div>
@@ -285,18 +382,64 @@
       <div class="iris-logo"><div class="iris-logo-dot"></div></div>
       <div>
         <h1>IRIS Mesh</h1>
-        <div style="font-size: 0.7rem; color: var(--text-dim);">Apple-Like Continuity</div>
+        <div style="font-size: 0.7rem; color: var(--text-dim);" id="headerSubtext">Sovereign Continuity</div>
       </div>
     </div>
-    <div id="connBadge" class="badge">
-      <div id="connDot" class="badge-dot"></div>
-      <span id="connText">Connecting...</span>
+    <div style="display: flex; gap: 8px; align-items: center;">
+      <div id="connBadge" class="badge">
+        <div id="connDot" class="badge-dot"></div>
+        <span id="connText">Relay Connected</span>
+      </div>
+      <button onclick="unpairPrompt()" class="btn-secondary" style="flex: 0; padding: 4px 8px; font-size: 0.7rem;" title="Unpair Device">
+        ⚙️
+      </button>
     </div>
   </header>
 
   <div class="grid">
 
-    <!-- Card 1: System Status & Hardware Control -->
+    <!-- Card 1: Remote Desktop Screen Mirroring (Step 2) -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">🖥️ Laptop Screen (Live)</span>
+        <div style="display: flex; gap: 6px;">
+          <button id="btnToggleScreen" onclick="toggleScreenStream()" class="btn-emerald" style="flex:0; padding:4px 10px; font-size:0.75rem;">
+            ▶ View Desktop
+          </button>
+        </div>
+      </div>
+
+      <div class="screen-container" id="screenViewerBox" style="display: none;">
+        <video id="remoteVideo" autoplay playsinline muted style="display: none;"></video>
+        <img id="remoteSnapshot" alt="Laptop Desktop" style="display: block;">
+        <div class="screen-overlay-controls">
+          <button class="icon-btn" onclick="toggleVirtualKeyboard()" title="Type on Laptop">⌨️ Key</button>
+          <button class="icon-btn" onclick="requestFullScreenViewer()" title="Fullscreen">⛶ Full</button>
+        </div>
+      </div>
+
+      <!-- Virtual Keyboard Drawer -->
+      <div id="kbDrawer" style="display: none; flex-direction: column; gap: 8px;">
+        <div style="display: flex; gap: 6px;">
+          <input type="text" id="kbTextInput" placeholder="Type text to send to Laptop..." onkeydown="handleKbEnter(event)">
+          <button onclick="sendKbText()" class="btn-primary" style="flex:0; padding:8px 14px;">Send</button>
+        </div>
+        <div style="display: flex; gap: 6px;">
+          <button onclick="sendSpecialKey('Enter')" class="btn-secondary" style="font-size:0.75rem;">Enter ↵</button>
+          <button onclick="sendSpecialKey('Backspace')" class="btn-secondary" style="font-size:0.75rem;">Backspace ⌫</button>
+          <button onclick="sendSpecialKey('Escape')" class="btn-secondary" style="font-size:0.75rem;">Esc</button>
+          <button onclick="sendSpecialKey('Space')" class="btn-secondary" style="font-size:0.75rem;">Space</button>
+        </div>
+      </div>
+
+      <div style="display: flex; gap: 8px;">
+        <button onclick="sharePhoneScreen()" class="btn-secondary" style="font-size: 0.8rem;">
+          📱 Broadcast My Phone Screen
+        </button>
+      </div>
+    </div>
+
+    <!-- Card 2: System Status & Hardware Control -->
     <div class="card">
       <div class="card-header">
         <span class="card-title">💻 Laptop & Hardware</span>
@@ -305,12 +448,12 @@
         </button>
       </div>
       <div class="status-row">
-        <span style="color: var(--text-dim);">Laptop Battery</span>
-        <span id="laptopBattery">--% (Checking...)</span>
+        <span style="color: var(--text-dim);">Laptop Power</span>
+        <span id="laptopBattery">AC Power (Plugged In)</span>
       </div>
       <div class="status-row">
-        <span style="color: var(--text-dim);">Lid Status</span>
-        <span style="color: var(--emerald);">Active (Headless)</span>
+        <span style="color: var(--text-dim);">Lid / Sleep Mode</span>
+        <span style="color: var(--emerald);">Running (Sleep Disabled)</span>
       </div>
       <div class="status-row">
         <span style="color: var(--text-dim);">Phone Battery</span>
@@ -323,13 +466,13 @@
       </div>
     </div>
 
-    <!-- Card 2: Universal Clipboard -->
+    <!-- Card 3: Universal Clipboard -->
     <div class="card">
       <div class="card-header">
         <span class="card-title">📋 Universal Clipboard</span>
-        <span id="clipTime" style="font-size: 0.7rem; color: var(--text-dim);">Live Sync</span>
+        <span id="clipTime" style="font-size: 0.7rem; color: var(--text-dim);">Sovereign Sync</span>
       </div>
-      <textarea id="clipText" placeholder="Text synced from Laptop will appear here..."></textarea>
+      <textarea id="clipText" placeholder="Text copied from laptop appears here instantly..."></textarea>
       <div class="btn-group">
         <button onclick="copyToPhone()" class="btn-secondary">
           📲 Copy to Phone
@@ -340,7 +483,7 @@
       </div>
     </div>
 
-    <!-- Card 3: AirDrop File Drop -->
+    <!-- Card 4: AirDrop File Drop -->
     <div class="card">
       <div class="card-header">
         <span class="card-title">📦 AirDrop File Vault</span>
@@ -354,12 +497,10 @@
         <div style="font-size: 0.85rem; font-weight: 500;">Tap to Drop File to Laptop</div>
         <div style="font-size: 0.72rem; color: var(--text-dim);">Direct transfer over Mesh Vault</div>
       </div>
-      <div id="vaultList" style="display: flex; flex-direction: column; gap: 6px;">
-        <!-- Dropped files list -->
-      </div>
+      <div id="vaultList" style="display: flex; flex-direction: column; gap: 6px;"></div>
     </div>
 
-    <!-- Card 4: Autonomous Coding Trigger -->
+    <!-- Card 5: Autonomous Coding Trigger -->
     <div class="card">
       <div class="card-header">
         <span class="card-title">⚡ Autonomous Antigravity</span>
@@ -371,7 +512,7 @@
           <option value="outreach">Workspace: Outreach Agent</option>
         </select>
       </div>
-      <input type="text" id="codePrompt" placeholder="Instruction: e.g. Run pytest and fix bugs">
+      <input type="text" id="codePrompt" placeholder="Instruction: e.g. Run tests, build UI features">
       <button onclick="launchCodingTask()" class="btn-primary">
         ▶ Run Autonomous Coding Task
       </button>
@@ -383,19 +524,109 @@
   <div id="toast" class="toast">Action completed</div>
 
   <script>
-    // Configuration
-    const DEVICE_ID = "phone_mobile_" + (localStorage.getItem("mesh_phone_id") || Math.random().toString(36).substring(2, 7));
-    localStorage.setItem("mesh_phone_id", DEVICE_ID);
+    // --- Sovereign State & Device Storage ---
+    let DEVICE_ID = localStorage.getItem("iris_device_id");
+    if (!DEVICE_ID) {
+      DEVICE_ID = "phone_" + Math.random().toString(36).substring(2, 9);
+      localStorage.setItem("iris_device_id", DEVICE_ID);
+    }
 
-    const loc = window.location;
-    const wsProto = loc.protocol === "https:" ? "wss:" : "ws:";
-    const wsUrl = `${wsProto}//${loc.host}/api/mesh/ws?device_id=${DEVICE_ID}&device_type=phone_mobile&name=Kirtan's%20Phone`;
+    let PAIR_TOKEN = localStorage.getItem("iris_pair_token") || "";
+    let DEVICE_NAME = localStorage.getItem("iris_device_name") || "Mobile Phone";
 
     let ws = null;
     let alarmOscillator = null;
     let alarmGain = null;
     let audioCtx = null;
     let isAlarmPlaying = false;
+    let isStreaming = false;
+    let peerConn = null;
+    let snapshotInterval = null;
+
+    // --- Pairing Logic ---
+    function checkPairingState() {
+      // Also inspect URL params ?code=...&token=... for automatic QR pairing
+      const params = new URLSearchParams(window.location.search);
+      const urlCode = params.get("code") || params.get("token");
+      if (urlCode && !PAIR_TOKEN) {
+        document.getElementById("pairPinInput").value = urlCode;
+        submitPairing();
+        return;
+      }
+
+      if (!PAIR_TOKEN) {
+        document.getElementById("pairingModal").style.display = "flex";
+        document.getElementById("pairDeviceName").value = DEVICE_NAME;
+        document.getElementById("pairPinInput").focus();
+      } else {
+        document.getElementById("pairingModal").style.display = "none";
+        document.getElementById("headerSubtext").textContent = `Paired · ${DEVICE_NAME}`;
+        connectMesh();
+        startCloudRelayPolling();
+      }
+    }
+
+    async function submitPairing() {
+      const pin = document.getElementById("pairPinInput").value.trim();
+      const devName = document.getElementById("pairDeviceName").value.trim() || "Mobile Companion";
+      const errBox = document.getElementById("pairingError");
+
+      if (!pin) {
+        errBox.textContent = "Please enter the 6-digit code";
+        errBox.style.display = "block";
+        return;
+      }
+
+      errBox.style.display = "none";
+      try {
+        const res = await fetch("/api/mesh/pair/verify", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            code: pin,
+            device_id: DEVICE_ID,
+            device_name: devName,
+            device_type: "phone_mobile",
+          }),
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          PAIR_TOKEN = data.pairing_token;
+          DEVICE_NAME = data.device_name;
+          localStorage.setItem("iris_pair_token", PAIR_TOKEN);
+          localStorage.setItem("iris_device_name", DEVICE_NAME);
+          showToast("✨ Device Paired Permanently!");
+          document.getElementById("pairingModal").style.display = "none";
+          document.getElementById("headerSubtext").textContent = `Paired · ${DEVICE_NAME}`;
+          connectMesh();
+          startCloudRelayPolling();
+        } else {
+          const errData = await res.json();
+          errBox.textContent = errData.detail || "Invalid or expired code.";
+          errBox.style.display = "block";
+        }
+      } catch (err) {
+        errBox.textContent = "Pairing failed. Check connection.";
+        errBox.style.display = "block";
+      }
+    }
+
+    function unpairPrompt() {
+      if (confirm("Unpair this phone from IRIS Mesh? You will need a new 6-digit PIN to reconnect.")) {
+        fetch(`/api/mesh/pair/${DEVICE_ID}`, { method: "DELETE" }).catch(() => {});
+        localStorage.removeItem("iris_pair_token");
+        PAIR_TOKEN = "";
+        location.reload();
+      }
+    }
+
+    // Auto submit on 6 digits
+    document.getElementById("pairPinInput").addEventListener("input", (e) => {
+      if (e.target.value.length === 6) {
+        submitPairing();
+      }
+    });
 
     // Toast helper
     function showToast(text) {
@@ -405,7 +636,7 @@
       setTimeout(() => toast.classList.remove("show"), 2600);
     }
 
-    // Audio Siren Synthesizer using Web Audio API
+    // --- Audio Siren Synthesizer ---
     function getAudioContext() {
       if (!audioCtx) {
         audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -430,7 +661,6 @@
       alarmOscillator.type = "sawtooth";
       alarmOscillator.frequency.setValueAtTime(800, ctx.currentTime);
 
-      // Oscillate frequency like police/find-my-phone siren
       let up = true;
       const interval = setInterval(() => {
         if (!isAlarmPlaying) {
@@ -461,43 +691,63 @@
       setTimeout(stopAlarm, 1800);
     }
 
-    // WebSocket Connection
+    // --- WebSocket Gateway & Cloud Relay Polling ---
     function connectMesh() {
       const badge = document.getElementById("connBadge");
       const dot = document.getElementById("connDot");
       const text = document.getElementById("connText");
 
-      text.textContent = "Connecting...";
-      dot.className = "badge-dot";
+      const loc = window.location;
+      const wsProto = loc.protocol === "https:" ? "wss:" : "ws:";
+      const wsUrl = `${wsProto}//${loc.host}/api/mesh/ws?device_id=${DEVICE_ID}&device_type=phone_mobile&name=${encodeURIComponent(DEVICE_NAME)}&token=${PAIR_TOKEN}`;
 
-      ws = new WebSocket(wsUrl);
+      try {
+        ws = new WebSocket(wsUrl);
 
-      ws.onopen = () => {
-        text.textContent = "Connected";
+        ws.onopen = () => {
+          text.textContent = "Live WS";
+          dot.className = "badge-dot connected";
+          showToast("Connected to IRIS Sovereign Mesh");
+          fetchDevices();
+          fetchClipboard();
+          loadVaultFiles();
+          reportPhoneBattery();
+        };
+
+        ws.onmessage = (event) => {
+          try {
+            const msg = JSON.parse(event.data);
+            handleMeshMessage(msg);
+          } catch(e) {}
+        };
+
+        ws.onclose = () => {
+          text.textContent = "Cloud Relay (5G)";
+          dot.className = "badge-dot connected";
+          setTimeout(connectMesh, 4000);
+        };
+
+        ws.onerror = () => ws.close();
+      } catch(e) {
+        text.textContent = "Cloud Relay (5G)";
         dot.className = "badge-dot connected";
-        showToast("Connected to IRIS Mesh");
-        fetchDevices();
-        fetchClipboard();
-        loadVaultFiles();
-        reportPhoneBattery();
-      };
+      }
+    }
 
-      ws.onmessage = (event) => {
+    function startCloudRelayPolling() {
+      setInterval(async () => {
         try {
-          const msg = JSON.parse(event.data);
-          handleMeshMessage(msg);
-        } catch(e) {
-          console.error("WS Parse error", e);
-        }
-      };
-
-      ws.onclose = () => {
-        text.textContent = "Disconnected";
-        dot.className = "badge-dot";
-        setTimeout(connectMesh, 3000);
-      };
-
-      ws.onerror = () => ws.close();
+          const res = await fetch(`/api/mesh/relay/poll?device_id=${DEVICE_ID}&token=${PAIR_TOKEN}`);
+          if (res.ok) {
+            const data = await res.json();
+            if (data.messages && data.messages.length > 0) {
+              data.messages.forEach(m => {
+                handleMeshMessage({ type: m.msg_type, payload: m.payload });
+              });
+            }
+          }
+        } catch(e) {}
+      }, 2000);
     }
 
     function handleMeshMessage(msg) {
@@ -505,7 +755,7 @@
         const text = msg.payload?.text || "";
         document.getElementById("clipText").value = text;
         document.getElementById("clipTime").textContent = "Updated " + new Date().toLocaleTimeString();
-        showToast("Clipboard updated from Laptop");
+        showToast("Clipboard synced from Laptop");
       } else if (msg.type === "REMOTE_COMMAND") {
         if (msg.payload?.command === "RING_PHONE") {
           playSiren();
@@ -513,8 +763,172 @@
       } else if (msg.type === "FILE_DROP") {
         showToast("File dropped: " + (msg.payload?.filename || "file"));
         loadVaultFiles();
-      } else if (msg.type === "DEVICE_STATE") {
-        fetchDevices();
+      }
+    }
+
+    // --- Step 2: Screen Streaming & Remote Input ---
+    async function toggleScreenStream() {
+      const viewer = document.getElementById("screenViewerBox");
+      const btn = document.getElementById("btnToggleScreen");
+
+      if (isStreaming) {
+        // Stop stream
+        isStreaming = false;
+        viewer.style.display = "none";
+        btn.textContent = "▶ View Desktop";
+        btn.className = "btn-emerald";
+        if (snapshotInterval) clearInterval(snapshotInterval);
+        if (peerConn) {
+          peerConn.close();
+          peerConn = null;
+        }
+        return;
+      }
+
+      // Start stream
+      isStreaming = true;
+      viewer.style.display = "flex";
+      btn.textContent = "⏹ Stop View";
+      btn.className = "btn-danger";
+
+      // 1. Start snapshot fallback immediate polling
+      startSnapshotFallback();
+
+      // 2. Negotiate WebRTC PeerConnection for 30fps smooth streaming
+      tryWebRTCStream();
+    }
+
+    function startSnapshotFallback() {
+      const img = document.getElementById("remoteSnapshot");
+      img.style.display = "block";
+      const refreshSnapshot = () => {
+        if (!isStreaming) return;
+        img.src = `/api/mesh/screen/snapshot?quality=60&scale=2&t=${Date.now()}`;
+      };
+      refreshSnapshot();
+      snapshotInterval = setInterval(refreshSnapshot, 400);
+    }
+
+    async function tryWebRTCStream() {
+      try {
+        const config = {
+          iceServers: [{ urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"] }]
+        };
+        peerConn = new RTCPeerConnection(config);
+        const video = document.getElementById("remoteVideo");
+        const img = document.getElementById("remoteSnapshot");
+
+        peerConn.addTransceiver("video", { direction: "recvonly" });
+
+        peerConn.ontrack = (event) => {
+          if (event.streams && event.streams[0]) {
+            video.srcObject = event.streams[0];
+            video.style.display = "block";
+            img.style.display = "none";
+            if (snapshotInterval) clearInterval(snapshotInterval);
+          }
+        };
+
+        const offer = await peerConn.createOffer();
+        await peerConn.setLocalDescription(offer);
+
+        const res = await fetch("/api/mesh/screen/webrtc/offer", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            session_id: `session_${DEVICE_ID}`,
+            sdp: offer.sdp,
+            type: offer.type,
+          }),
+        });
+
+        if (res.ok) {
+          const answer = await res.json();
+          await peerConn.setRemoteDescription(new RTCSessionDescription(answer));
+        }
+      } catch(e) {
+        console.warn("WebRTC fallback to snapshot stream:", e);
+      }
+    }
+
+    // Touch click mapping on screen
+    const screenViewerBox = document.getElementById("screenViewerBox");
+    screenViewerBox.addEventListener("click", (e) => {
+      const rect = screenViewerBox.getBoundingClientRect();
+      const xRatio = (e.clientX - rect.left) / rect.width;
+      const yRatio = (e.clientY - rect.top) / rect.height;
+      if (xRatio >= 0 && xRatio <= 1 && yRatio >= 0 && yRatio <= 1) {
+        sendMouseClick(xRatio, yRatio, "left");
+      }
+    });
+
+    async function sendMouseClick(x, y, button = "left") {
+      try {
+        await fetch("/api/mesh/screen/input/mouse", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "click", x: x, y: y, button: button }),
+        });
+      } catch(e) {}
+    }
+
+    function toggleVirtualKeyboard() {
+      const kb = document.getElementById("kbDrawer");
+      kb.style.display = kb.style.display === "none" ? "flex" : "none";
+      if (kb.style.display === "flex") {
+        document.getElementById("kbTextInput").focus();
+      }
+    }
+
+    async function sendKbText() {
+      const input = document.getElementById("kbTextInput");
+      const text = input.value;
+      if (!text) return;
+      try {
+        await fetch("/api/mesh/screen/input/keyboard", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text: text }),
+        });
+        showToast("Sent to laptop!");
+        input.value = "";
+      } catch(e) {}
+    }
+
+    function handleKbEnter(e) {
+      if (e.key === "Enter") {
+        sendKbText();
+      }
+    }
+
+    async function sendSpecialKey(keyName) {
+      try {
+        await fetch("/api/mesh/screen/input/keyboard", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ key: keyName }),
+        });
+        showToast(`Sent ${keyName}`);
+      } catch(e) {}
+    }
+
+    function requestFullScreenViewer() {
+      const elem = document.getElementById("screenViewerBox");
+      if (elem.requestFullscreen) elem.requestFullscreen();
+      else if (elem.webkitRequestFullscreen) elem.webkitRequestFullscreen();
+    }
+
+    // Share Phone Screen back to Laptop
+    async function sharePhoneScreen() {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
+        showToast("Screen broadcast requires HTTPS or Chrome/Safari");
+        return;
+      }
+      try {
+        const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+        showToast("📱 Broadcasting screen to IRIS Dashboard!");
+      } catch(e) {
+        showToast("Screen share cancelled");
       }
     }
 
@@ -576,7 +990,7 @@
 
     // Hardware Control
     async function lockWorkstation() {
-      if (!confirm("Are you sure you want to lock the Windows laptop workstation?")) return;
+      if (!confirm("Lock the Windows laptop workstation now?")) return;
       try {
         const res = await fetch("/api/mesh/command", {
           method: "POST",
@@ -599,7 +1013,7 @@
           const update = () => {
             const level = Math.round(b.level * 100);
             const charging = b.charging;
-            document.getElementById("phoneBattery").textContent = `${level}% (${charging ? "⚡ Charging" : "🔋 Discharging"})`;
+            document.getElementById("phoneBattery").textContent = `${level}% (${charging ? "⚡ Charging" : "🔋 Battery"})`;
             if (ws && ws.readyState === WebSocket.OPEN) {
               ws.send(JSON.stringify({
                 type: "REMOTE_COMMAND",
@@ -616,7 +1030,7 @@
           b.addEventListener('chargingchange', update);
         } catch(e) {}
       } else {
-        document.getElementById("phoneBattery").textContent = "Available via mobile browser";
+        document.getElementById("phoneBattery").textContent = "Available in mobile browser";
       }
     }
 
@@ -727,10 +1141,9 @@
       }, 1500);
     }
 
-    // Start everything on boot
+    // Boot
     window.addEventListener("DOMContentLoaded", () => {
-      connectMesh();
-      // Keep awake & audio unlock on first user tap
+      checkPairingState();
       document.body.addEventListener("click", () => {
         getAudioContext();
       }, { once: true });

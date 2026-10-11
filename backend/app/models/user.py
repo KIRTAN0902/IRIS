@@ -50,4 +50,10 @@ class User(Base):
     email_accounts = relationship(
         "EmailAccount", back_populates="user", cascade="all, delete-orphan"
     )
+    mesh_pairings = relationship(
+        "MeshPairing", back_populates="user", cascade="all, delete-orphan"
+    )
+    mesh_relay_messages = relationship(
+        "MeshRelayMessage", back_populates="user", cascade="all, delete-orphan"
+    )
 

@@ -24,7 +24,17 @@ async def lifespan(app: FastAPI):
         get_current_user(db)
     finally:
         db.close()
+
+    # Start sovereign laptop relay daemon if on local host (not serverless)
+    import os
+    from app.services.mesh_relay_service import relay_daemon
+    if not os.environ.get("VERCEL") and not os.environ.get("AWS_LAMBDA_FUNCTION_NAME"):
+        await relay_daemon.start()
+
     yield
+
+    if not os.environ.get("VERCEL") and not os.environ.get("AWS_LAMBDA_FUNCTION_NAME"):
+        await relay_daemon.stop()
 
 
 def create_app() -> FastAPI:

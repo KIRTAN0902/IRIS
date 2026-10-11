@@ -12,6 +12,7 @@ from app.models.focus_session import FocusSession
 from app.models.goal import Goal
 from app.models.habit import Habit, HabitLog
 from app.models.lead import Lead
+from app.models.mesh_pairing import MeshPairing, MeshRelayMessage
 from app.models.metric import Metric
 from app.models.outreach import OutreachActivity
 from app.models.project import Project
@@ -40,6 +41,8 @@ __all__ = [
     "Habit",
     "HabitLog",
     "Lead",
+    "MeshPairing",
+    "MeshRelayMessage",
     "Metric",
     "OutreachActivity",
     "Project",
