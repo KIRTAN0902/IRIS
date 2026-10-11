@@ -29,6 +29,7 @@ interface LaptopHostInfo {
   battery_level: number | null;
   is_charging: boolean | null;
   is_online: boolean;
+  is_locked?: boolean;
   last_seen_at?: string | null;
 }
 
@@ -189,6 +190,9 @@ export function ContinuityPage({ initialView }: ContinuityPageProps) {
 
       if (res.laptop_host) {
         setLaptopHost(res.laptop_host);
+        if (typeof res.laptop_host.is_locked === "boolean") {
+          setIsLaptopLocked(res.laptop_host.is_locked);
+        }
       }
       if (res.paired_devices) {
         setPairedDevices(res.paired_devices);
@@ -266,9 +270,12 @@ export function ContinuityPage({ initialView }: ContinuityPageProps) {
   const handleLockLaptop = async () => {
     setIsLoading(true);
     try {
-      await api.post("/mesh/command", { command: "LOCK_PC" });
+      await api.post("/mesh/command", {
+        command: "LOCK_PC",
+        parameters: { mode: "shield" },
+      });
       setIsLaptopLocked(true);
-      setStatusMsg("🔒 Signal sent: Windows Laptop locked!");
+      setStatusMsg("🔒 Sovereign Privacy Shield engaged: Laptop display locked!");
       setTimeout(() => setStatusMsg(""), 4000);
     } catch {
       setStatusMsg("Failed to send lock command.");
@@ -295,12 +302,26 @@ export function ContinuityPage({ initialView }: ContinuityPageProps) {
     }
 
     try {
-      await api.post("/mesh/command", {
+      const res = await api.post<{
+        command: string;
+        executed?: { success: boolean; error?: string; message?: string } | boolean;
+      }>("/mesh/command", {
         command: "UNLOCK_PC",
-        parameters: { pin: pwd.trim() || undefined },
+        parameters: {
+          pin: pwd.trim() || undefined,
+          password: pwd.trim() || undefined,
+        },
       });
+
+      if (res && typeof res.executed === "object" && res.executed.success === false) {
+        setStatusMsg(`❌ Unlock failed: ${res.executed.error || "Incorrect password"}`);
+        setIsLaptopLocked(true);
+        setTimeout(() => setStatusMsg(""), 4500);
+        return;
+      }
+
       setIsLaptopLocked(false);
-      setStatusMsg("🔓 Waking Windows laptop and entering credentials...");
+      setStatusMsg("🔓 Sovereign Privacy Shield unlocked successfully!");
       setTimeout(() => setStatusMsg(""), 4500);
     } catch {
       setStatusMsg("Failed to send unlock command.");
@@ -530,7 +551,7 @@ export function ContinuityPage({ initialView }: ContinuityPageProps) {
                   </button>
                 </div>
                 <p className="mt-1.5 text-[11px] text-ink-faint">
-                  IRIS will automatically wake the monitor, lift the lock wallpaper, and enter your credentials.
+                  IRIS will verify your credentials and dismiss the Sovereign Privacy Shield instantly.
                 </p>
               </div>
 

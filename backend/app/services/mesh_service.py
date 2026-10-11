@@ -134,97 +134,181 @@ class MeshHub:
 hub = MeshHub()
 
 
-# --- Windows Desktop System Actions ---
+# --- Windows Desktop System Actions & Sovereign Privacy Shield ---
+
+SHIELD_STATE_FILE = Path(__file__).resolve().parent.parent.parent / "shield_state.json"
+SHIELD_CONFIG_FILE = Path(__file__).resolve().parent.parent.parent / "shield_config.json"
+SHIELD_SCRIPT_PATH = Path(__file__).resolve().parent / "privacy_shield.py"
 
 
-def lock_windows_pc() -> bool:
-    """Locks the Windows workstation remotely."""
-    try:
-        import ctypes
-        ctypes.windll.user32.LockWorkStation()
-        return True
-    except Exception as exc:
-        logger.error("Failed to lock Windows workstation: %s", exc)
-        return False
-
-
-def unlock_windows_pc(pin: str | None = None) -> bool:
-    """Wakes the Windows workstation, attaches to the active input desktop, and enters PIN/password."""
-    try:
-        import ctypes
-        from ctypes import wintypes
-        import time
-
-        class KEYBDINPUT(ctypes.Structure):
-            _fields_ = [
-                ("wVk", wintypes.WORD),
-                ("wScan", wintypes.WORD),
-                ("dwFlags", wintypes.DWORD),
-                ("time", wintypes.DWORD),
-                ("dwExtraInfo", ctypes.c_ulong),
-            ]
-
-        class INPUT(ctypes.Structure):
-            class _INPUT(ctypes.Union):
-                _fields_ = [("ki", KEYBDINPUT)]
-
-            _anonymous_ = ("_input",)
-            _fields_ = [("type", wintypes.DWORD), ("_input", _INPUT)]
-
-        def send_vk(vk: int) -> None:
-            inp = INPUT(type=1)
-            inp.ki.wVk = vk
-            inp.ki.dwFlags = 0
-            ctypes.windll.user32.SendInput(1, ctypes.byref(inp), ctypes.sizeof(INPUT))
-            time.sleep(0.02)
-            inp.ki.dwFlags = 0x0002  # KEYEVENTF_KEYUP
-            ctypes.windll.user32.SendInput(1, ctypes.byref(inp), ctypes.sizeof(INPUT))
-
-        def send_unicode(char: str) -> None:
-            inp = INPUT(type=1)
-            inp.ki.wScan = ord(char)
-            inp.ki.dwFlags = 0x0004  # KEYEVENTF_UNICODE
-            ctypes.windll.user32.SendInput(1, ctypes.byref(inp), ctypes.sizeof(INPUT))
-            time.sleep(0.02)
-            inp.ki.dwFlags = 0x0004 | 0x0002  # KEYEVENTF_UNICODE | KEYEVENTF_KEYUP
-            ctypes.windll.user32.SendInput(1, ctypes.byref(inp), ctypes.sizeof(INPUT))
-
-        # 1. Attach to active input desktop (handles Winlogon lock screen)
+def is_privacy_shield_locked() -> bool:
+    """Returns True if the sovereign privacy shield is currently active."""
+    if SHIELD_STATE_FILE.exists():
         try:
-            import win32con
-            import win32service
+            import json
+            data = json.loads(SHIELD_STATE_FILE.read_text(encoding="utf-8"))
+            if not data.get("locked"):
+                return False
+            pid = data.get("pid")
+            if pid:
+                import psutil
+                if not psutil.pid_exists(pid):
+                    SHIELD_STATE_FILE.write_text(json.dumps({"locked": False, "pid": None}), encoding="utf-8")
+                    return False
+            return True
+        except Exception:
+            pass
+    return False
 
-            hwinsta = win32service.OpenWindowStation("WinSta0", False, win32con.MAXIMUM_ALLOWED)
-            hwinsta.SetProcessWindowStation()
-            desk = win32service.OpenInputDesktop(0, False, win32con.MAXIMUM_ALLOWED)
-            desk.SetThreadDesktop()
-        except Exception as exc:
-            logger.debug("Desktop switch notice: %s", exc)
 
-        # 2. Wake monitor via mouse move
-        ctypes.windll.user32.mouse_event(0x0001, 1, 1, 0, 0)
-        time.sleep(0.15)
+def lock_privacy_shield(password: str | None = None) -> bool:
+    """Locks the workstation display using the Sovereign Privacy Shield."""
+    try:
+        import hashlib
+        import json
+        import os
+        import subprocess
+        import sys
 
-        # 3. Press Space and Enter to dismiss lock screen wallpaper
-        send_vk(0x20)  # VK_SPACE
-        time.sleep(0.1)
-        send_vk(0x0D)  # VK_RETURN
+        stored_hash = None
+        stored_salt = None
 
-        # 4. If password or PIN provided, type it and press Enter
-        if pin:
-            time.sleep(0.6)  # Allow slide-up animation to focus input box
-            for char in str(pin):
-                send_unicode(char)
-                time.sleep(0.04)
+        if SHIELD_CONFIG_FILE.exists():
+            try:
+                cfg = json.loads(SHIELD_CONFIG_FILE.read_text(encoding="utf-8"))
+                stored_hash = cfg.get("password_hash")
+                stored_salt = cfg.get("salt")
+            except Exception:
+                pass
 
-            time.sleep(0.2)
-            send_vk(0x0D)  # VK_RETURN
+        if password and password.strip():
+            salt = os.urandom(16).hex()
+            h = hashlib.sha256((password.strip() + salt).encode("utf-8")).hexdigest()
+            SHIELD_CONFIG_FILE.write_text(
+                json.dumps({"password_hash": h, "salt": salt}),
+                encoding="utf-8",
+            )
+            stored_hash = h
+            stored_salt = salt
 
-        logger.info("Successfully executed Windows unlock sequence")
+        if is_privacy_shield_locked():
+            logger.info("Privacy Shield is already active.")
+            return True
+
+        python_exe = sys.executable
+        pythonw = Path(python_exe).parent / "pythonw.exe"
+        exe_to_use = str(pythonw) if pythonw.exists() else python_exe
+
+        proc = subprocess.Popen(
+            [exe_to_use, str(SHIELD_SCRIPT_PATH)],
+            cwd=str(Path(__file__).resolve().parent.parent.parent),
+            close_fds=True,
+        )
+
+        SHIELD_STATE_FILE.write_text(
+            json.dumps({
+                "locked": True,
+                "pid": proc.pid,
+                "password_hash": stored_hash,
+                "salt": stored_salt,
+                "locked_at": datetime.now(UTC).isoformat(),
+            }),
+            encoding="utf-8",
+        )
+
+        logger.info("Sovereign Privacy Shield launched successfully (PID: %s)", proc.pid)
         return True
     except Exception as exc:
-        logger.error("Failed to unlock Windows workstation: %s", exc)
+        logger.error("Failed to launch Privacy Shield: %s", exc)
         return False
+
+
+def unlock_privacy_shield(password: str | None = None) -> dict[str, Any]:
+    """Unlocks the Sovereign Privacy Shield if credentials match."""
+    try:
+        import hashlib
+        import json
+        import os
+
+        stored_hash = None
+        stored_salt = None
+
+        if SHIELD_CONFIG_FILE.exists():
+            try:
+                cfg = json.loads(SHIELD_CONFIG_FILE.read_text(encoding="utf-8"))
+                stored_hash = cfg.get("password_hash")
+                stored_salt = cfg.get("salt")
+            except Exception:
+                pass
+
+        if not stored_hash and SHIELD_STATE_FILE.exists():
+            try:
+                st = json.loads(SHIELD_STATE_FILE.read_text(encoding="utf-8"))
+                stored_hash = st.get("password_hash")
+                stored_salt = st.get("salt")
+            except Exception:
+                pass
+
+        # First-time setup: If no password was ever configured, register this password
+        if not stored_hash and password and password.strip():
+            salt = os.urandom(16).hex()
+            stored_hash = hashlib.sha256((password.strip() + salt).encode("utf-8")).hexdigest()
+            stored_salt = salt
+            SHIELD_CONFIG_FILE.write_text(
+                json.dumps({"password_hash": stored_hash, "salt": stored_salt}),
+                encoding="utf-8",
+            )
+
+        if stored_hash and stored_salt:
+            if not password or not password.strip():
+                return {"success": False, "error": "Password required"}
+            attempt = hashlib.sha256((password.strip() + stored_salt).encode("utf-8")).hexdigest()
+            if attempt != stored_hash:
+                return {"success": False, "error": "Incorrect password"}
+
+        # Signal shield to close and clear state
+        SHIELD_STATE_FILE.write_text(json.dumps({"locked": False, "pid": None}), encoding="utf-8")
+
+        try:
+            import winsound
+            winsound.MessageBeep(winsound.MB_OK)
+        except Exception:
+            pass
+
+        logger.info("Sovereign Privacy Shield unlocked successfully")
+        return {"success": True, "message": "Workstation unlocked"}
+    except Exception as exc:
+        logger.error("Failed to unlock Privacy Shield: %s", exc)
+        return {"success": False, "error": str(exc)}
+
+
+def lock_windows_pc(password: str | None = None, mode: str = "shield") -> bool:
+    """Locks the workstation remotely using the Sovereign Privacy Shield."""
+    if mode == "os":
+        try:
+            import ctypes
+            ctypes.windll.user32.LockWorkStation()
+            return True
+        except Exception as exc:
+            logger.error("Failed to lock Windows workstation: %s", exc)
+            return False
+    return lock_privacy_shield(password=password)
+
+
+def unlock_windows_pc(pin: str | None = None, password: str | None = None) -> dict[str, Any]:
+    """Unlocks the Sovereign Privacy Shield and wakes the display."""
+    pwd = password or pin
+    # 1. First unlock privacy shield
+    result = unlock_privacy_shield(password=pwd)
+
+    # 2. Also wake monitor via mouse move
+    try:
+        import ctypes
+        ctypes.windll.user32.mouse_event(0x0001, 1, 1, 0, 0)
+    except Exception:
+        pass
+
+    return result
 
 
 def get_windows_battery() -> dict[str, Any] | None:

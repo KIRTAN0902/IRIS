@@ -43,4 +43,8 @@ backend/data/
 # Binaries & Tunnels
 cloudflared.exe
 
+# Sovereign Privacy Shield Runtime
+backend/shield_*.json
+shield_*.json
+
 

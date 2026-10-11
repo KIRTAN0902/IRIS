@@ -443,6 +443,8 @@ def get_laptop_host_info(db: Session, user_id: int = 1) -> dict[str, Any]:
             battery_level = pairing.battery_level
             is_charging = pairing.is_charging
 
+    is_shield_locked = ms.is_privacy_shield_locked() if is_local_windows_host() else False
+
     return {
         "device_id": LAPTOP_HOST_DEVICE_ID,
         "device_name": pairing.device_name if pairing else "Windows Laptop",
@@ -450,6 +452,7 @@ def get_laptop_host_info(db: Session, user_id: int = 1) -> dict[str, Any]:
         "battery_level": battery_level,
         "is_charging": is_charging,
         "is_online": online,
+        "is_locked": is_shield_locked,
         "last_seen_at": last_seen,
     }
 
@@ -557,12 +560,23 @@ class LaptopRelayDaemon:
         elif msg_type == "REMOTE_COMMAND":
             cmd = payload.get("command")
             if cmd == "LOCK_PC":
-                locked = ms.lock_windows_pc()
+                pwd = payload.get("password") or payload.get("pin")
+                mode = payload.get("mode", "shield")
+                locked = ms.lock_windows_pc(password=pwd, mode=mode)
                 logger.info("Remote LOCK_PC executed: success=%s", locked)
             elif cmd == "UNLOCK_PC":
-                pin = payload.get("pin")
-                unlocked = ms.unlock_windows_pc(pin=pin)
+                pwd = payload.get("password") or payload.get("pin")
+                unlocked = ms.unlock_windows_pc(password=pwd, pin=pwd)
                 logger.info("Remote UNLOCK_PC executed: success=%s", unlocked)
+                if sender and sender != "system":
+                    push_relay_message(
+                        db=db,
+                        user_id=1,
+                        sender_device_id=LAPTOP_HOST_DEVICE_ID,
+                        target_device_id=sender,
+                        msg_type="COMMAND_RESULT",
+                        payload={"command": cmd, "result": unlocked},
+                    )
             elif cmd in ["PING_ALERT", "PING_LAPTOP"]:
                 try:
                     import winsound

@@ -423,7 +423,12 @@ async def mesh_websocket_endpoint(
                 elif msg_type == "REMOTE_COMMAND":
                     cmd = payload.get("command")
                     if cmd == "LOCK_PC":
-                        ms.lock_windows_pc()
+                        pwd = payload.get("password") or payload.get("pin")
+                        mode = payload.get("mode", "shield")
+                        ms.lock_windows_pc(password=pwd, mode=mode)
+                    elif cmd == "UNLOCK_PC":
+                        pwd = payload.get("password") or payload.get("pin")
+                        ms.unlock_windows_pc(password=pwd, pin=pwd)
                     elif cmd == "DEVICE_BATTERY":
                         if device_id in ms.hub.devices:
                             ms.hub.devices[device_id].battery_level = payload.get("battery_level")
@@ -631,11 +636,14 @@ async def trigger_remote_command(
 ):
     """Trigger a remote hardware/OS command across devices."""
     if req.command == "LOCK_PC" and mrs.is_local_windows_host():
-        locked = ms.lock_windows_pc()
+        pwd = req.parameters.get("password") or req.parameters.get("pin")
+        mode = req.parameters.get("mode", "shield")
+        locked = ms.lock_windows_pc(password=pwd, mode=mode)
         return {"command": "LOCK_PC", "executed": locked}
 
     if req.command == "UNLOCK_PC" and mrs.is_local_windows_host():
-        unlocked = ms.unlock_windows_pc(pin=req.parameters.get("pin"))
+        pwd = req.parameters.get("password") or req.parameters.get("pin")
+        unlocked = ms.unlock_windows_pc(password=pwd, pin=pwd)
         return {"command": "UNLOCK_PC", "executed": unlocked}
 
     if req.command in ["PING_LAPTOP", "PING_ALERT"] and mrs.is_local_windows_host():

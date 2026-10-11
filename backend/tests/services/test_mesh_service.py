@@ -127,9 +127,32 @@ def test_handoff_state():
 
 def test_lock_windows_pc():
     with patch("ctypes.windll.user32.LockWorkStation", return_value=1, create=True) as mock_lock:
-        res = ms.lock_windows_pc()
+        res = ms.lock_windows_pc(mode="os")
         assert res is True
         mock_lock.assert_called_once()
+
+
+def test_lock_and_unlock_privacy_shield(tmp_path):
+    with patch("subprocess.Popen") as mock_popen, \
+         patch("app.services.mesh_service.SHIELD_CONFIG_FILE", tmp_path / "shield_config.json"), \
+         patch("app.services.mesh_service.SHIELD_STATE_FILE", tmp_path / "shield_state.json"):
+        mock_proc = MagicMock()
+        mock_proc.pid = 99999
+        mock_popen.return_value = mock_proc
+
+        # Lock with initial password
+        locked = ms.lock_windows_pc(password="123456")
+        assert locked is True
+        assert (tmp_path / "shield_state.json").exists()
+
+        # Unlock with wrong password
+        fail = ms.unlock_windows_pc(password="wrong")
+        assert fail["success"] is False
+        assert "Incorrect password" in fail["error"]
+
+        # Unlock with correct password
+        ok = ms.unlock_windows_pc(password="123456")
+        assert ok["success"] is True
 
 
 def test_get_windows_battery_success():
