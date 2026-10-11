@@ -81,6 +81,16 @@ export const PRIMARY_NAV_ITEMS: NavItem[] = [
     icon: ListChecks,
   },
   {
+    id: "mesh",
+    name: "Mesh",
+    route: "/mesh",
+    glyph: "◎",
+    icon: Radio,
+  },
+];
+
+export const MORE_NAV_ITEMS: NavItem[] = [
+  {
     id: "gym",
     name: "Gym",
     route: "/gym",
@@ -101,14 +111,9 @@ export const PRIMARY_NAV_ITEMS: NavItem[] = [
     glyph: "⌁",
     icon: FolderTree,
   },
-  {
-    id: "mesh",
-    name: "Mesh",
-    route: "/mesh",
-    glyph: "◎",
-    icon: Radio,
-  },
 ];
+
+export const ALL_NAV_ITEMS: NavItem[] = [...PRIMARY_NAV_ITEMS, ...MORE_NAV_ITEMS];
 
 export const MODULES: ModuleDefinition[] = [
   // --- Primary Navigation ---------------------------------------------------
@@ -219,7 +224,7 @@ export const PLANNED_MODULES: ModuleDefinition[] = [
   { id: "agents", name: "AI Agents", icon: BrainCircuit, category: "planned", enabled: false, brief: "Delegated autonomous tasks." },
 ];
 
-export const ENABLED_MODULES = PRIMARY_NAV_ITEMS;
+export const ENABLED_MODULES = ALL_NAV_ITEMS;
 
 export function findModule(id: string): ModuleDefinition | undefined {
   return [...MODULES, ...PLANNED_MODULES].find((m) => m.id === id);

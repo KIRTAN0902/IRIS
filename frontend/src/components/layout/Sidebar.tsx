@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { NavLink, useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import { Brain, Menu, PanelLeftClose, PanelLeftOpen, SquarePen, Square, Trash2, X } from "lucide-react";
-import { PRIMARY_NAV_ITEMS } from "@/modules/registry";
+import { Brain, ChevronRight, Menu, MoreHorizontal, PanelLeftClose, PanelLeftOpen, SquarePen, Square, Trash2, X } from "lucide-react";
+import { MORE_NAV_ITEMS, PRIMARY_NAV_ITEMS } from "@/modules/registry";
 import { cn, parseUtc } from "@/lib/format";
 import { useFocusStore, useUiStore } from "@/stores";
 import {
@@ -48,6 +48,7 @@ export function Sidebar() {
             <item.icon size={16} strokeWidth={1.75} />
           </NavLink>
         ))}
+        <MoreNavItem folded />
       </nav>
     );
   }
@@ -94,6 +95,7 @@ export function Sidebar() {
             <span>{item.name}</span>
           </NavLink>
         ))}
+        <MoreNavItem />
       </div>
 
       {/* Conversations, listed like notes */}
@@ -114,6 +116,221 @@ export function Sidebar() {
 
       <MemoryModal open={memoryOpen} onClose={() => setMemoryOpen(false)} />
     </nav>
+  );
+}
+
+/** "More" tab that reveals Gym, Finance, and Projects on hover or click. */
+function MoreNavItem({ folded = false }: { folded?: boolean }) {
+  const location = useLocation();
+  const [open, setOpen] = useState(false);
+  const [pinned, setPinned] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const isChildActive = MORE_NAV_ITEMS.some(
+    (item) => location.pathname === item.route || location.pathname.startsWith(item.route + "/"),
+  );
+
+  // Close when navigating
+  useEffect(() => {
+    setOpen(false);
+    setPinned(false);
+  }, [location.pathname]);
+
+  // Click outside and escape key handling
+  useEffect(() => {
+    if (!open && !pinned) return;
+
+    const handleOutside = (e: MouseEvent | TouchEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+        setPinned(false);
+      }
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setOpen(false);
+        setPinned(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleOutside);
+    document.addEventListener("touchstart", handleOutside);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handleOutside);
+      document.removeEventListener("touchstart", handleOutside);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open, pinned]);
+
+  const handleMouseEnter = () => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+    setOpen(true);
+  };
+
+  const handleMouseLeave = () => {
+    if (pinned) return;
+    timerRef.current = setTimeout(() => {
+      setOpen(false);
+    }, 180);
+  };
+
+  const handleClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (pinned) {
+      setPinned(false);
+      setOpen(false);
+    } else {
+      setPinned(true);
+      setOpen(true);
+    }
+  };
+
+  const handleClose = () => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+    setOpen(false);
+    setPinned(false);
+  };
+
+  if (folded) {
+    return (
+      <div
+        ref={containerRef}
+        className="relative"
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
+      >
+        <button
+          type="button"
+          onClick={handleClick}
+          title="More"
+          aria-label="More sections"
+          aria-haspopup="true"
+          aria-expanded={open}
+          className={cn(
+            "rounded-md p-2 transition-colors cursor-pointer",
+            isChildActive || open
+              ? "bg-ops-raised text-ink"
+              : "text-ink-faint hover:bg-ops-raised hover:text-ink",
+          )}
+        >
+          <MoreHorizontal size={16} strokeWidth={1.75} />
+        </button>
+
+        {open && (
+          <div
+            role="menu"
+            aria-label="More sections"
+            className="absolute left-[calc(100%+8px)] top-0 z-50 min-w-[175px] rounded-lg border border-ops-line-bright bg-ops-panel/95 backdrop-blur-md p-1.5 shadow-[0_12px_32px_rgba(0,0,0,0.7)] animate-in fade-in zoom-in-95 duration-150 before:absolute before:-left-3 before:inset-y-0 before:w-3 before:content-['']"
+          >
+            <p className="px-2 pb-1.5 pt-1 text-[11px] uppercase tracking-[0.18em] text-ink-faint font-medium">
+              More
+            </p>
+            <div className="space-y-0.5">
+              {MORE_NAV_ITEMS.map((item) => (
+                <NavLink
+                  key={item.id}
+                  to={item.route}
+                  onClick={handleClose}
+                  className={({ isActive }) =>
+                    cn(
+                      "flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-[13px] transition-colors",
+                      isActive
+                        ? "bg-ops-raised text-ink font-medium"
+                        : "text-ink-dim hover:bg-ops-raised/60 hover:text-ink",
+                    )
+                  }
+                >
+                  <item.icon size={15} strokeWidth={1.75} className="shrink-0 opacity-80" />
+                  <span className="flex-1">{item.name}</span>
+                  <span className="text-[11px] text-ink-faint font-mono opacity-50 tnum">
+                    {item.glyph}
+                  </span>
+                </NavLink>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div
+      ref={containerRef}
+      className="relative"
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+    >
+      <button
+        type="button"
+        onClick={handleClick}
+        aria-label="More sections"
+        aria-haspopup="true"
+        aria-expanded={open}
+        className={cn(
+          "flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-[14px] transition-colors cursor-pointer text-left",
+          isChildActive || open
+            ? "bg-ops-raised text-ink font-medium"
+            : "text-ink-dim hover:bg-ops-raised/60 hover:text-ink",
+        )}
+      >
+        <MoreHorizontal size={15} strokeWidth={1.75} className="shrink-0 opacity-80" />
+        <span className="flex-1">More</span>
+        <ChevronRight
+          size={14}
+          strokeWidth={1.75}
+          className={cn(
+            "text-ink-faint transition-transform duration-150",
+            open ? "text-ink translate-x-0.5" : "opacity-60",
+          )}
+        />
+      </button>
+
+      {open && (
+        <div
+          role="menu"
+          aria-label="More sections"
+          className="absolute left-[calc(100%+8px)] top-0 z-50 min-w-[175px] rounded-lg border border-ops-line-bright bg-ops-panel/95 backdrop-blur-md p-1.5 shadow-[0_12px_32px_rgba(0,0,0,0.7)] animate-in fade-in zoom-in-95 duration-150 before:absolute before:-left-3 before:inset-y-0 before:w-3 before:content-['']"
+        >
+          <p className="px-2 pb-1.5 pt-1 text-[11px] uppercase tracking-[0.18em] text-ink-faint font-medium">
+            More
+          </p>
+          <div className="space-y-0.5">
+            {MORE_NAV_ITEMS.map((item) => (
+              <NavLink
+                key={item.id}
+                to={item.route}
+                onClick={handleClose}
+                className={({ isActive }) =>
+                  cn(
+                    "flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-[13px] transition-colors",
+                    isActive
+                      ? "bg-ops-raised text-ink font-medium"
+                      : "text-ink-dim hover:bg-ops-raised/60 hover:text-ink",
+                  )
+                }
+              >
+                <item.icon size={15} strokeWidth={1.75} className="shrink-0 opacity-80" />
+                <span className="flex-1">{item.name}</span>
+                <span className="text-[11px] text-ink-faint font-mono opacity-50 tnum">
+                  {item.glyph}
+                </span>
+              </NavLink>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 

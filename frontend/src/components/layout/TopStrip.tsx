@@ -1,11 +1,8 @@
 import { useEffect, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { ChevronRight, LayoutGrid } from "lucide-react";
-import { PRIMARY_NAV_ITEMS } from "@/modules/registry";
+import { MORE_NAV_ITEMS, PRIMARY_NAV_ITEMS } from "@/modules/registry";
 import { cn } from "@/lib/format";
-
-/** Always on the bottom bar; every other section lives under "More". */
-const MOBILE_TABS = new Set(["home", "schedule", "tasks"]);
 
 const tabClass = (active: boolean) =>
   cn(
@@ -17,8 +14,8 @@ const tabClass = (active: boolean) =>
 export function MobileBottomNav() {
   const location = useLocation();
   const [moreOpen, setMoreOpen] = useState(false);
-  const tabs = PRIMARY_NAV_ITEMS.filter((item) => MOBILE_TABS.has(item.id));
-  const more = PRIMARY_NAV_ITEMS.filter((item) => !MOBILE_TABS.has(item.id));
+  const tabs = PRIMARY_NAV_ITEMS;
+  const more = MORE_NAV_ITEMS;
   const onMorePage = more.some((item) => location.pathname.startsWith(item.route));
 
   // Collapse after navigating anywhere.
@@ -63,7 +60,7 @@ export function MobileBottomNav() {
 
       <nav
         aria-label="Primary Mobile Navigation"
-        className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-4 border-t border-ops-line bg-ops-ground/95 backdrop-blur md:hidden"
+        className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-ops-line bg-ops-ground/95 backdrop-blur md:hidden"
         style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
       >
         {tabs.map((item) => (
