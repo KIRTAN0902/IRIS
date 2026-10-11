@@ -388,8 +388,14 @@ COMPANION_HTML_PATH = Path(__file__).resolve().parent.parent.parent / "templates
 @router.get("/companion", response_class=HTMLResponse)
 def get_companion_page():
     """Serves the standalone Apple Continuity-style Mobile Companion web app."""
-    if COMPANION_HTML_PATH.exists():
-        return HTMLResponse(content=COMPANION_HTML_PATH.read_text(encoding="utf-8"))
+    candidate_paths = [
+        Path(__file__).resolve().parent.parent.parent / "templates" / "mesh_companion.html",
+        Path.cwd() / "backend" / "app" / "templates" / "mesh_companion.html",
+        Path.cwd() / "app" / "templates" / "mesh_companion.html",
+    ]
+    for p in candidate_paths:
+        if p.exists():
+            return HTMLResponse(content=p.read_text(encoding="utf-8"))
     return HTMLResponse(content="<h1>IRIS Mesh Companion template not found</h1>", status_code=404)
 
 

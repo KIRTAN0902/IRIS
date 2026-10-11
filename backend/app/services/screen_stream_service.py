@@ -15,20 +15,29 @@ import io
 import time
 from typing import Any
 
-from aiortc import RTCConfiguration, RTCIceServer, RTCPeerConnection, RTCSessionDescription, VideoStreamTrack
-from aiortc.contrib.media import MediaRelay
-import av
-import numpy as np
+try:
+    from aiortc import RTCConfiguration, RTCIceServer, RTCPeerConnection, RTCSessionDescription, VideoStreamTrack
+    from aiortc.contrib.media import MediaRelay
+    import av
+    import numpy as np
+    WEBRTC_AVAILABLE = True
+    STUN_SERVERS = [
+        RTCIceServer(urls=["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"]),
+    ]
+    RTC_CONFIG = RTCConfiguration(iceServers=STUN_SERVERS)
+except ImportError:
+    WEBRTC_AVAILABLE = False
+    RTCConfiguration = RTCIceServer = RTCPeerConnection = RTCSessionDescription = object
+    VideoStreamTrack = object
+    MediaRelay = None
+    av = None
+    np = None
+    STUN_SERVERS = []
+    RTC_CONFIG = None
 
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
-
-# Default public Google STUN servers for NAT traversal ($0 forever)
-STUN_SERVERS = [
-    RTCIceServer(urls=["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"]),
-]
-RTC_CONFIG = RTCConfiguration(iceServers=STUN_SERVERS)
 
 
 def attach_input_desktop() -> None:
@@ -83,36 +92,38 @@ def get_screen_dimensions() -> tuple[int, int]:
 # --- WebRTC Desktop Video Track ---
 
 
-class DesktopVideoStreamTrack(VideoStreamTrack):
-    """WebRTC VideoStreamTrack delivering real-time desktop frames at 30 FPS."""
+if WEBRTC_AVAILABLE:
+    class DesktopVideoStreamTrack(VideoStreamTrack):
+        """WebRTC VideoStreamTrack delivering real-time desktop frames at 30 FPS."""
 
-    kind = "video"
+        kind = "video"
 
-    def __init__(self, fps: int = 30, scale_factor: int = 2) -> None:
-        super().__init__()
-        self.fps = fps
-        self.scale_factor = scale_factor
-        self.frame_time = 1.0 / fps
-        self._start_time: float | None = None
-        self._timestamp = 0
+        def __init__(self, fps: int = 30, scale_factor: int = 2) -> None:
+            super().__init__()
+            self.fps = fps
+            self.scale_factor = scale_factor
+            self.frame_time = 1.0 / fps
+            self._start_time: float | None = None
+            self._timestamp = 0
 
-    async def recv(self) -> av.VideoFrame:
-        pts, time_base = await self.next_timestamp()
+        async def recv(self) -> Any:
+            pts, time_base = await self.next_timestamp()
 
-        # Capture desktop frame asynchronously in thread pool to prevent blocking asyncio event loop
-        loop = asyncio.get_running_loop()
-        img = await loop.run_in_executor(None, capture_screen_frame, self.scale_factor)
+            loop = asyncio.get_running_loop()
+            img = await loop.run_in_executor(None, capture_screen_frame, self.scale_factor)
 
-        if img is None:
-            # Fallback black placeholder frame
-            img = np.zeros((720, 1280, 3), dtype=np.uint8)
+            if img is None:
+                img = np.zeros((720, 1280, 3), dtype=np.uint8)
 
-        # Ensure contiguous memory layout for av.VideoFrame
-        img = np.ascontiguousarray(img)
-        frame = av.VideoFrame.from_ndarray(img, format="bgr24")
-        frame.pts = pts
-        frame.time_base = time_base
-        return frame
+            img = np.ascontiguousarray(img)
+            frame = av.VideoFrame.from_ndarray(img, format="bgr24")
+            frame.pts = pts
+            frame.time_base = time_base
+            return frame
+else:
+    class DesktopVideoStreamTrack:  # type: ignore[no-redef]
+        """Fallback placeholder when WebRTC dependencies are not installed."""
+        pass
 
 
 # --- Remote Input Control (Mouse & Keyboard) ---

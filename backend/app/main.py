@@ -19,11 +19,15 @@ async def lifespan(app: FastAPI):
     from app.core.database import SessionLocal
     from app.core.security import get_current_user
 
-    db = SessionLocal()
     try:
-        get_current_user(db)
-    finally:
-        db.close()
+        db = SessionLocal()
+        try:
+            get_current_user(db)
+        finally:
+            db.close()
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).warning("Could not initialize default user in lifespan: %s", exc)
 
     # Start sovereign laptop relay daemon if on local host (not serverless)
     import os
