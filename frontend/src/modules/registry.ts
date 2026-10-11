@@ -18,11 +18,14 @@ import {
   FolderTree,
   GraduationCap,
   HeartPulse,
+  Laptop,
   LayoutGrid,
   ListChecks,
   Mail,
   Radio,
   Rocket,
+  Settings,
+  Smartphone,
   Target,
   Wallet,
 } from "lucide-react";
@@ -51,14 +54,34 @@ export interface NavItem {
   icon: LucideIcon;
 }
 
+export const LAPTOP_NAV_ITEM: NavItem = {
+  id: "laptop",
+  name: "Laptop",
+  route: "/laptop",
+  glyph: "💻",
+  icon: Laptop,
+};
+
+export const PHONE_NAV_ITEM: NavItem = {
+  id: "phone",
+  name: "Phone",
+  route: "/phone",
+  glyph: "📱",
+  icon: Smartphone,
+};
+
+export const SETTINGS_NAV_ITEM: NavItem = {
+  id: "settings",
+  name: "Settings",
+  route: "/settings",
+  glyph: "⚙",
+  icon: Settings,
+};
+
 /**
- * The FOUR primary navigation concepts of IRIS:
- * 1. Home (⌾) — Talk to IRIS
- * 2. Schedule (▦) — When am I doing things?
- * 3. Tasks (☷) — What do I need to do? (Startup, Internship, College)
- * 4. Projects (⌁) — What am I building/managing?
+ * Mobile navigation: Home, Schedule, Tasks, Laptop (and More).
  */
-export const PRIMARY_NAV_ITEMS: NavItem[] = [
+export const PRIMARY_NAV_ITEMS_MOBILE: NavItem[] = [
   {
     id: "home",
     name: "Home",
@@ -80,14 +103,38 @@ export const PRIMARY_NAV_ITEMS: NavItem[] = [
     glyph: "☷",
     icon: ListChecks,
   },
+  LAPTOP_NAV_ITEM,
+];
+
+/**
+ * Desktop sidebar navigation: Home, Phone, Schedule, Tasks (and More).
+ */
+export const PRIMARY_NAV_ITEMS_DESKTOP: NavItem[] = [
   {
-    id: "mesh",
-    name: "Mesh",
-    route: "/mesh",
-    glyph: "◎",
-    icon: Radio,
+    id: "home",
+    name: "Home",
+    route: "/",
+    glyph: "⌾",
+    icon: Compass,
+  },
+  PHONE_NAV_ITEM,
+  {
+    id: "schedule",
+    name: "Schedule",
+    route: "/schedule",
+    glyph: "▦",
+    icon: CalendarDays,
+  },
+  {
+    id: "tasks",
+    name: "Tasks",
+    route: "/tasks",
+    glyph: "☷",
+    icon: ListChecks,
   },
 ];
+
+export const PRIMARY_NAV_ITEMS: NavItem[] = PRIMARY_NAV_ITEMS_DESKTOP;
 
 export const MORE_NAV_ITEMS: NavItem[] = [
   {
@@ -111,9 +158,14 @@ export const MORE_NAV_ITEMS: NavItem[] = [
     glyph: "⌁",
     icon: FolderTree,
   },
+  SETTINGS_NAV_ITEM,
 ];
 
-export const ALL_NAV_ITEMS: NavItem[] = [...PRIMARY_NAV_ITEMS, ...MORE_NAV_ITEMS];
+export const ALL_NAV_ITEMS: NavItem[] = [
+  ...PRIMARY_NAV_ITEMS_DESKTOP,
+  LAPTOP_NAV_ITEM,
+  ...MORE_NAV_ITEMS,
+];
 
 export const MODULES: ModuleDefinition[] = [
   // --- Primary Navigation ---------------------------------------------------

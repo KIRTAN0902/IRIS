@@ -14,7 +14,8 @@ import { AreaLensPage } from "@/features/areas/AreaLensPage";
 import { InsightsPage } from "@/features/insights/InsightsPage";
 import { ModulesPage } from "@/features/modules/ModulesPage";
 import { FocusPage } from "@/features/focus/FocusPage";
-import { MeshPage } from "@/features/mesh/MeshPage";
+import { SettingsPage } from "@/features/settings/SettingsPage";
+import { ContinuityPage } from "@/features/continuity/ContinuityPage";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -41,7 +42,10 @@ export function App() {
             <Route path="finance" element={<FinancePage />} />
             <Route path="gym" element={<WorkoutsPage />} />
             <Route path="focus" element={<FocusPage />} />
-            <Route path="mesh" element={<MeshPage />} />
+            <Route path="laptop" element={<ContinuityPage initialView="laptop" />} />
+            <Route path="phone" element={<ContinuityPage initialView="phone" />} />
+            <Route path="settings" element={<SettingsPage />} />
+            <Route path="mesh" element={<Navigate to="/settings?tab=mesh" replace />} />
             <Route path="startup" element={<StartupPage />} />
             <Route path="college" element={<AreaLensPage area="COLLEGE" title="College" />} />
             <Route path="internship" element={<AreaLensPage area="INTERNSHIP" title="Internship" />} />

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { ChevronRight, LayoutGrid } from "lucide-react";
-import { MORE_NAV_ITEMS, PRIMARY_NAV_ITEMS } from "@/modules/registry";
+import { MORE_NAV_ITEMS, PRIMARY_NAV_ITEMS_MOBILE } from "@/modules/registry";
 import { cn } from "@/lib/format";
 
 const tabClass = (active: boolean) =>
@@ -14,7 +14,7 @@ const tabClass = (active: boolean) =>
 export function MobileBottomNav() {
   const location = useLocation();
   const [moreOpen, setMoreOpen] = useState(false);
-  const tabs = PRIMARY_NAV_ITEMS;
+  const tabs = PRIMARY_NAV_ITEMS_MOBILE;
   const more = MORE_NAV_ITEMS;
   const onMorePage = more.some((item) => location.pathname.startsWith(item.route));
 
