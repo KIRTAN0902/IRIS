@@ -149,34 +149,78 @@ def lock_windows_pc() -> bool:
 
 
 def unlock_windows_pc(pin: str | None = None) -> bool:
-    """Wakes the Windows workstation and optionally types the PIN to unlock."""
+    """Wakes the Windows workstation, attaches to the active input desktop, and enters PIN/password."""
     try:
         import ctypes
+        from ctypes import wintypes
         import time
-        import win32api
-        import win32con
 
-        # 1. Wake the display monitor using mouse movement
+        class KEYBDINPUT(ctypes.Structure):
+            _fields_ = [
+                ("wVk", wintypes.WORD),
+                ("wScan", wintypes.WORD),
+                ("dwFlags", wintypes.DWORD),
+                ("time", wintypes.DWORD),
+                ("dwExtraInfo", ctypes.c_ulong),
+            ]
+
+        class INPUT(ctypes.Structure):
+            class _INPUT(ctypes.Union):
+                _fields_ = [("ki", KEYBDINPUT)]
+
+            _anonymous_ = ("_input",)
+            _fields_ = [("type", wintypes.DWORD), ("_input", _INPUT)]
+
+        def send_vk(vk: int) -> None:
+            inp = INPUT(type=1)
+            inp.ki.wVk = vk
+            inp.ki.dwFlags = 0
+            ctypes.windll.user32.SendInput(1, ctypes.byref(inp), ctypes.sizeof(INPUT))
+            time.sleep(0.02)
+            inp.ki.dwFlags = 0x0002  # KEYEVENTF_KEYUP
+            ctypes.windll.user32.SendInput(1, ctypes.byref(inp), ctypes.sizeof(INPUT))
+
+        def send_unicode(char: str) -> None:
+            inp = INPUT(type=1)
+            inp.ki.wScan = ord(char)
+            inp.ki.dwFlags = 0x0004  # KEYEVENTF_UNICODE
+            ctypes.windll.user32.SendInput(1, ctypes.byref(inp), ctypes.sizeof(INPUT))
+            time.sleep(0.02)
+            inp.ki.dwFlags = 0x0004 | 0x0002  # KEYEVENTF_UNICODE | KEYEVENTF_KEYUP
+            ctypes.windll.user32.SendInput(1, ctypes.byref(inp), ctypes.sizeof(INPUT))
+
+        # 1. Attach to active input desktop (handles Winlogon lock screen)
+        try:
+            import win32con
+            import win32service
+
+            hwinsta = win32service.OpenWindowStation("WinSta0", False, win32con.MAXIMUM_ALLOWED)
+            hwinsta.SetProcessWindowStation()
+            desk = win32service.OpenInputDesktop(0, False, win32con.MAXIMUM_ALLOWED)
+            desk.SetThreadDesktop()
+        except Exception as exc:
+            logger.debug("Desktop switch notice: %s", exc)
+
+        # 2. Wake monitor via mouse move
         ctypes.windll.user32.mouse_event(0x0001, 1, 1, 0, 0)
+        time.sleep(0.15)
+
+        # 3. Press Space and Enter to dismiss lock screen wallpaper
+        send_vk(0x20)  # VK_SPACE
         time.sleep(0.1)
+        send_vk(0x0D)  # VK_RETURN
 
-        # 2. Press Space to dismiss lock screen wallpaper and reveal PIN input box
-        win32api.keybd_event(win32con.VK_SPACE, 0, 0, 0)
-        win32api.keybd_event(win32con.VK_SPACE, 0, win32con.KEYEVENTF_KEYUP, 0)
-
-        # 3. If PIN provided, type the PIN digits and press Enter
+        # 4. If password or PIN provided, type it and press Enter
         if pin:
-            time.sleep(0.4)
+            time.sleep(0.6)  # Allow slide-up animation to focus input box
             for char in str(pin):
-                vk = ord(char.upper()) if char.isalnum() else win32con.VK_SPACE
-                win32api.keybd_event(vk, 0, 0, 0)
-                win32api.keybd_event(vk, 0, win32con.KEYEVENTF_KEYUP, 0)
-                time.sleep(0.05)
+                send_unicode(char)
+                time.sleep(0.04)
 
-            time.sleep(0.1)
-            win32api.keybd_event(win32con.VK_RETURN, 0, 0, 0)
-            win32api.keybd_event(win32con.VK_RETURN, 0, win32con.KEYEVENTF_KEYUP, 0)
+            time.sleep(0.2)
+            send_vk(0x0D)  # VK_RETURN
 
+        logger.info("Successfully executed Windows unlock sequence")
         return True
     except Exception as exc:
         logger.error("Failed to unlock Windows workstation: %s", exc)

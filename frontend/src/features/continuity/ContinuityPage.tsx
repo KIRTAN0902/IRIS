@@ -3,6 +3,9 @@ import { useLocation, useNavigate } from "react-router-dom";
 import {
   Bell,
   Copy,
+  Eye,
+  EyeOff,
+  KeyRound,
   Laptop,
   Lock,
   MessageSquare,
@@ -126,10 +129,13 @@ export function ContinuityPage({ initialView }: ContinuityPageProps) {
   const [isPhoneLocked, setIsPhoneLocked] = useState(false);
   const [isLaptopLocked, setIsLaptopLocked] = useState(false);
   const [isPhoneRemotelyLocked, setIsPhoneRemotelyLocked] = useState(false);
-  const [laptopPin, setLaptopPin] = useState(() => {
-    return (typeof window !== "undefined" && localStorage.getItem("iris_laptop_pin")) || "";
+  const [savedPassword, setSavedPassword] = useState(() => {
+    return (typeof window !== "undefined" && localStorage.getItem("iris_laptop_pwd")) || "";
   });
-  const [showPinInput, setShowPinInput] = useState(false);
+  const [isUnlockModalOpen, setIsUnlockModalOpen] = useState(false);
+  const [inputPassword, setInputPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [rememberPassword, setRememberPassword] = useState(true);
   const [pairingCode, setPairingCode] = useState<string | null>(null);
   const [isGeneratingCode, setIsGeneratingCode] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -271,17 +277,31 @@ export function ContinuityPage({ initialView }: ContinuityPageProps) {
     }
   };
 
-  // Action: Unlock Windows Laptop
-  const handleUnlockLaptop = async () => {
+  // Open password prompt modal
+  const handleOpenUnlockModal = () => {
+    setInputPassword(savedPassword);
+    setIsUnlockModalOpen(true);
+  };
+
+  // Submit unlock with entered password
+  const handleConfirmUnlock = async (pwdOverride?: string) => {
+    const pwd = pwdOverride !== undefined ? pwdOverride : inputPassword;
     setIsLoading(true);
+    setIsUnlockModalOpen(false);
+
+    if (rememberPassword && pwd) {
+      setSavedPassword(pwd);
+      localStorage.setItem("iris_laptop_pwd", pwd);
+    }
+
     try {
       await api.post("/mesh/command", {
         command: "UNLOCK_PC",
-        parameters: { pin: laptopPin.trim() || undefined },
+        parameters: { pin: pwd.trim() || undefined },
       });
       setIsLaptopLocked(false);
-      setStatusMsg("🔓 Signal sent: Waking and unlocking Laptop!");
-      setTimeout(() => setStatusMsg(""), 4000);
+      setStatusMsg("🔓 Waking Windows laptop and entering credentials...");
+      setTimeout(() => setStatusMsg(""), 4500);
     } catch {
       setStatusMsg("Failed to send unlock command.");
     } finally {
@@ -466,6 +486,99 @@ export function ContinuityPage({ initialView }: ContinuityPageProps) {
         </div>
       )}
 
+      {/* Remote Laptop Unlock Password Prompt Modal */}
+      {isUnlockModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm animate-fade-in">
+          <div className="w-full max-w-sm rounded-2xl border border-ops-line-bright bg-ops-panel p-6 shadow-2xl">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-emerald-500/15 text-emerald-400 border border-emerald-500/25">
+                <KeyRound size={22} />
+              </div>
+              <div>
+                <h3 className="text-base font-semibold text-ink">Unlock Windows Laptop</h3>
+                <p className="text-xs text-ink-faint">Enter your Windows PIN or password</p>
+              </div>
+            </div>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleConfirmUnlock();
+              }}
+              className="space-y-4"
+            >
+              <div>
+                <label className="text-xs font-medium text-ink block mb-1.5">
+                  Laptop Password / PIN
+                </label>
+                <div className="relative">
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    value={inputPassword}
+                    onChange={(e) => setInputPassword(e.target.value)}
+                    placeholder="Enter Windows PIN / Password"
+                    autoFocus
+                    className="w-full rounded-xl border border-ops-line bg-ops-surface px-3.5 py-2.5 pr-10 text-sm text-ink placeholder:text-ink-faint focus:border-ops-accent focus:outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((s) => !s)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-faint hover:text-ink"
+                    tabIndex={-1}
+                  >
+                    {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
+                <p className="mt-1.5 text-[11px] text-ink-faint">
+                  IRIS will automatically wake the monitor, lift the lock wallpaper, and enter your credentials.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="rememberPwd"
+                  checked={rememberPassword}
+                  onChange={(e) => setRememberPassword(e.target.checked)}
+                  className="rounded border-ops-line text-emerald-500 focus:ring-0"
+                />
+                <label htmlFor="rememberPwd" className="text-xs text-ink-faint cursor-pointer">
+                  Remember on this phone for quick unlock
+                </label>
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => setIsUnlockModalOpen(false)}
+                  className="flex-1 justify-center rounded-xl py-2.5 text-xs text-ink-faint"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={isLoading}
+                  className="flex-1 justify-center bg-emerald-600 hover:bg-emerald-500 text-white font-medium rounded-xl py-2.5 text-xs shadow-md"
+                >
+                  <Unlock size={14} className="mr-1.5" /> Unlock Laptop
+                </Button>
+              </div>
+
+              <div className="border-t border-ops-line/60 pt-3 text-center">
+                <button
+                  type="button"
+                  onClick={() => handleConfirmUnlock("")}
+                  className="text-[11px] text-ink-faint hover:text-ink underline"
+                >
+                  Just wake monitor without password
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* Top Header & Switcher */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-ops-line pb-4">
         <div>
@@ -583,66 +696,19 @@ export function ContinuityPage({ initialView }: ContinuityPageProps) {
 
             {/* Laptop Remote Controls */}
             <div className="mt-6">
-              <div className="flex items-center justify-between mb-3">
-                <p className="text-[11px] uppercase tracking-wider text-ink-faint font-semibold">
-                  Remote Controls
-                </p>
-                <button
-                  type="button"
-                  onClick={() => setShowPinInput((p) => !p)}
-                  className="text-[11px] text-ops-accent hover:underline font-medium"
-                >
-                  {showPinInput ? "Close PIN Settings" : "Configure Windows PIN"}
-                </button>
-              </div>
-
-              {/* Optional Windows PIN config */}
-              {showPinInput && (
-                <div className="mb-3 rounded-xl border border-ops-line bg-ops-surface p-3 animate-slide-down">
-                  <div className="flex items-center justify-between mb-1.5">
-                    <label className="text-[11px] font-medium text-ink">
-                      Windows Login PIN (stored locally on this phone):
-                    </label>
-                  </div>
-                  <div className="flex gap-2">
-                    <input
-                      type="password"
-                      value={laptopPin}
-                      onChange={(e) => {
-                        setLaptopPin(e.target.value);
-                        localStorage.setItem("iris_laptop_pin", e.target.value);
-                      }}
-                      placeholder="e.g. 1234 (optional for auto-unlock)"
-                      className="flex-1 rounded-lg border border-ops-line bg-ops-ground px-3 py-1.5 text-xs text-ink placeholder:text-ink-faint focus:border-ops-accent focus:outline-none"
-                    />
-                    {laptopPin && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setLaptopPin("");
-                          localStorage.removeItem("iris_laptop_pin");
-                        }}
-                        className="rounded-lg px-2 text-xs text-red-400 hover:bg-ops-raised"
-                      >
-                        Clear
-                      </button>
-                    )}
-                  </div>
-                  <p className="mt-1.5 text-[10px] text-ink-faint">
-                    When you tap Unlock, IRIS automatically wakes your laptop display, presses Space, and enters your PIN.
-                  </p>
-                </div>
-              )}
+              <p className="text-[11px] uppercase tracking-wider text-ink-faint font-semibold mb-3">
+                Remote Controls
+              </p>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {isLaptopLocked ? (
                   <Button
-                    onClick={handleUnlockLaptop}
+                    onClick={handleOpenUnlockModal}
                     disabled={isLoading}
-                    className="w-full justify-center bg-emerald-600 hover:bg-emerald-500 text-white py-3 rounded-xl font-medium shadow-md"
+                    className="w-full justify-center bg-emerald-600 hover:bg-emerald-500 text-white py-3 rounded-xl font-medium shadow-md transition-transform active:scale-[0.98]"
                   >
                     <Unlock size={16} className="mr-2" />
-                    Unlock Laptop (Wake & PIN)
+                    Unlock Laptop
                   </Button>
                 ) : (
                   <Button
@@ -664,6 +730,19 @@ export function ContinuityPage({ initialView }: ContinuityPageProps) {
                   Ping Laptop (Play Sound)
                 </Button>
               </div>
+
+              {/* Quick option to unlock even if status was already unlocked */}
+              {!isLaptopLocked && (
+                <div className="mt-2.5 text-center">
+                  <button
+                    type="button"
+                    onClick={handleOpenUnlockModal}
+                    className="inline-flex items-center gap-1.5 text-xs text-ops-accent hover:underline font-medium"
+                  >
+                    <Unlock size={13} /> Unlock Laptop with Password
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* Quick Note to Laptop */}
