@@ -346,49 +346,61 @@
 </head>
 <body>
 
-  <!-- One-Time Pairing Modal (Shown on Phone if device not yet paired) -->
+  <!-- One-Time Pairing Modal (Shown if device not yet paired) -->
   <div id="pairingModal" class="pairing-modal" style="display: none;">
     <div class="iris-logo" style="width: 52px; height: 52px; margin-bottom: 12px;">
       <div class="iris-logo-dot" style="width: 14px; height: 14px;"></div>
     </div>
-    <h2 style="font-size: 1.35rem; font-weight: 700; margin-bottom: 6px;">Pair Phone With Laptop</h2>
-    <p style="font-size: 0.85rem; color: var(--text-dim); max-width: 320px; line-height: 1.4;">
-      Enter this 6-digit PIN on your Laptop's Mesh page to link both devices forever:
-    </p>
+    <h2 style="font-size: 1.35rem; font-weight: 700; margin-bottom: 12px;">Pair IRIS Sovereign Mesh</h2>
 
-    <!-- Large 6-digit PIN Display -->
-    <div id="pairPinBox" style="margin: 18px 0; background: rgba(56, 189, 248, 0.08); border: 2px solid rgba(56, 189, 248, 0.4); border-radius: 16px; padding: 14px 28px; text-align: center;">
-      <div id="pairPinCode" style="font-family: monospace; font-size: 2.8rem; font-weight: 800; letter-spacing: 0.25em; color: #38BDF8; line-height: 1.1;">
-        ------
-      </div>
-      <div style="font-size: 0.72rem; color: var(--text-dim); margin-top: 6px;">
-        Valid for 15 minutes · Permanent once linked
-      </div>
+    <!-- Clear Role Selector Tabs -->
+    <div style="display: flex; background: rgba(255,255,255,0.06); border: 1px solid var(--card-border); border-radius: 12px; padding: 4px; margin-bottom: 16px; width: 100%; max-width: 320px; gap: 4px;">
+      <button id="btnRolePhone" onclick="setCompanionRole('phone')" class="btn-primary" style="flex: 1; padding: 8px; font-size: 0.8rem; border-radius: 8px;">
+        📱 Phone (Show PIN)
+      </button>
+      <button id="btnRoleLaptop" onclick="setCompanionRole('laptop')" class="btn-secondary" style="flex: 1; padding: 8px; font-size: 0.8rem; border-radius: 8px;">
+        💻 Laptop (Type PIN)
+      </button>
     </div>
 
-    <!-- Polling Status with Spinner -->
-    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 20px; font-size: 0.82rem; color: var(--emerald);">
-      <div style="width: 8px; height: 8px; border-radius: 50%; background: var(--emerald); box-shadow: 0 0 8px var(--emerald); animation: pulseAlert 1s infinite alternate;"></div>
-      <span id="pairStatusText">Waiting for laptop to enter PIN...</span>
-    </div>
+    <!-- Phone View (Shows PIN) -->
+    <div id="phoneViewSection" style="display: flex; flex-direction: column; align-items: center; width: 100%;">
+      <p style="font-size: 0.85rem; color: var(--text-dim); max-width: 320px; line-height: 1.4;">
+        Enter this 6-digit PIN on your Laptop's Mesh page to link both devices forever:
+      </p>
 
-    <div style="width: 100%; max-width: 280px; display: flex; flex-direction: column; gap: 8px;">
-      <button onclick="requestNewPairingCode()" class="btn-secondary" style="padding: 10px; font-size: 0.85rem;">
+      <div id="pairPinBox" style="margin: 16px 0; background: rgba(56, 189, 248, 0.08); border: 2px solid rgba(56, 189, 248, 0.4); border-radius: 16px; padding: 14px 28px; text-align: center;">
+        <div id="pairPinCode" style="font-family: monospace; font-size: 2.8rem; font-weight: 800; letter-spacing: 0.25em; color: #38BDF8; line-height: 1.1;">
+          ------
+        </div>
+        <div style="font-size: 0.72rem; color: var(--text-dim); margin-top: 6px;">
+          Valid for 15 minutes · Permanent once linked
+        </div>
+      </div>
+
+      <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 16px; font-size: 0.82rem; color: var(--emerald);">
+        <div style="width: 8px; height: 8px; border-radius: 50%; background: var(--emerald); box-shadow: 0 0 8px var(--emerald); animation: pulseAlert 1s infinite alternate;"></div>
+        <span id="pairStatusText">Waiting for laptop to enter PIN...</span>
+      </div>
+
+      <button onclick="requestNewPairingCode()" class="btn-secondary" style="padding: 10px 16px; font-size: 0.85rem; max-width: 200px;">
         🔄 Refresh Code
       </button>
-      <button onclick="toggleManualEntry()" id="btnToggleManual" style="background: transparent; border: none; color: var(--text-dim); font-size: 0.78rem; text-decoration: underline; cursor: pointer; padding: 4px;">
-        Or enter laptop PIN manually
+    </div>
+
+    <!-- Laptop View (Enters PIN) -->
+    <div id="laptopViewSection" style="display: none; flex-direction: column; align-items: center; width: 100%; max-width: 300px;">
+      <p style="font-size: 0.85rem; color: var(--text-dim); max-width: 300px; line-height: 1.4; margin-bottom: 12px;">
+        Look at the 6-digit PIN shown on your phone screen and type it here:
+      </p>
+
+      <input type="text" id="pairPinInput" class="pin-input" maxlength="6" placeholder="000000" inputmode="numeric" style="margin: 0 0 14px 0; font-size: 2.2rem; width: 100%;">
+
+      <button onclick="submitManualPairing()" class="btn-primary" style="padding: 12px; font-size: 0.95rem; width: 100%;">
+        🔗 Pair Phone Forever
       </button>
     </div>
 
-    <!-- Manual PIN Entry (Collapsible fallback) -->
-    <div id="manualEntrySection" style="display: none; width: 100%; max-width: 280px; margin-top: 14px; flex-direction: column; gap: 10px;">
-      <p style="font-size: 0.8rem; color: var(--text-dim);">Enter code from laptop:</p>
-      <input type="text" id="pairPinInput" class="pin-input" maxlength="6" placeholder="------" inputmode="numeric" style="margin: 0; font-size: 1.8rem;">
-      <button onclick="submitManualPairing()" class="btn-primary" style="padding: 12px; font-size: 0.9rem;">
-        🔗 Pair Device
-      </button>
-    </div>
     <p id="pairingError" style="color: var(--rose); font-size: 0.8rem; margin-top: 10px; display: none;"></p>
   </div>
 
@@ -572,6 +584,30 @@
     let pendingInviteToken = "";
     let pairPollTimer = null;
 
+    let currentCompanionRole = "phone";
+
+    function setCompanionRole(role) {
+      currentCompanionRole = role;
+      const btnPhone = document.getElementById("btnRolePhone");
+      const btnLaptop = document.getElementById("btnRoleLaptop");
+      const phoneSec = document.getElementById("phoneViewSection");
+      const laptopSec = document.getElementById("laptopViewSection");
+
+      if (role === "laptop") {
+        btnLaptop.className = "btn-primary";
+        btnPhone.className = "btn-secondary";
+        phoneSec.style.display = "none";
+        laptopSec.style.display = "flex";
+        setTimeout(() => document.getElementById("pairPinInput")?.focus(), 50);
+      } else {
+        btnPhone.className = "btn-primary";
+        btnLaptop.className = "btn-secondary";
+        phoneSec.style.display = "flex";
+        laptopSec.style.display = "none";
+        requestNewPairingCode();
+      }
+    }
+
     async function checkPairingState() {
       if (PAIR_TOKEN) {
         document.getElementById("pairingModal").style.display = "none";
@@ -581,9 +617,10 @@
         return;
       }
 
-      // Show modal and automatically generate 6-digit phone PIN
+      // Auto-detect: Desktop browser defaults to Laptop mode, mobile defaults to Phone mode
+      const isMobile = /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || (window.innerWidth < 768 && ('ontouchstart' in window || navigator.maxTouchPoints > 0));
       document.getElementById("pairingModal").style.display = "flex";
-      await requestNewPairingCode();
+      setCompanionRole(isMobile ? "phone" : "laptop");
     }
 
     async function requestNewPairingCode() {

@@ -66,9 +66,15 @@ export function MeshPage() {
   const [copied, setCopied] = useState(false);
   const [statusMsg, setStatusMsg] = useState("");
 
-  // 6-Digit PIN Pairing state
+  // Pairing modal and mode states
   const [pairModalOpen, setPairModalOpen] = useState(false);
-  const [pairingMode, setPairingMode] = useState<"enter_pin" | "show_pin">("enter_pin");
+  const [pairingMode, setPairingMode] = useState<"enter_pin" | "show_pin">(() => {
+    if (typeof window === "undefined") return "enter_pin";
+    const isMobile =
+      /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
+      (window.innerWidth < 768 && ("ontouchstart" in window || navigator.maxTouchPoints > 0));
+    return isMobile ? "show_pin" : "enter_pin";
+  });
   const [pinInput, setPinInput] = useState("");
   const [deviceNameInput, setDeviceNameInput] = useState("Mobile Phone");
   const [isVerifying, setIsVerifying] = useState(false);
@@ -193,6 +199,12 @@ export function MeshPage() {
       setLoadingInvite(false);
     }
   };
+
+  useEffect(() => {
+    if (pairingMode === "show_pin" && !invite && !loadingInvite) {
+      handleGeneratePhoneCode();
+    }
+  }, [pairingMode]);
 
   const handleOpenPairModal = (mode: "enter_pin" | "show_pin" = "enter_pin") => {
     setPairingMode(mode);
@@ -330,23 +342,51 @@ export function MeshPage() {
 
         {/* Mobile Companions */}
         <Panel
-          title={`Mobile Devices (${pairedDevices.length} Paired)`}
+          title={`Sovereign Mesh (${pairedDevices.length} Paired)`}
           lamp={<Lamp tone={pairedDevices.length > 0 ? "go" : "caution"} />}
         >
           <div className="space-y-3 pt-2">
-            {pairedDevices.length === 0 ? (
-              <div className="flex flex-col p-4 border border-dashed border-ops-line-bright rounded-xl bg-ops-ground/40 space-y-3">
-                <div className="flex items-center gap-2.5">
-                  <Smartphone size={20} className="text-ai" />
-                  <div>
-                    <p className="text-[14px] font-semibold text-ink">Pair Mobile Phone</p>
-                    <p className="text-[12px] text-ink-dim">
-                      Enter the 6-digit PIN shown on your phone's companion screen:
-                    </p>
-                  </div>
+            {/* Clear Role Selector Tabs */}
+            <div className="flex rounded-lg bg-ops-raised/60 p-1 text-[12px] border border-ops-line">
+              <button
+                type="button"
+                onClick={() => setPairingMode("enter_pin")}
+                className={`flex-1 rounded-md py-1.5 font-medium transition-colors flex items-center justify-center gap-1.5 cursor-pointer ${
+                  pairingMode === "enter_pin"
+                    ? "bg-ops-panel text-ink shadow-sm border border-ops-line-bright font-semibold"
+                    : "text-ink-dim hover:text-ink"
+                }`}
+              >
+                <Laptop size={14} /> 💻 I'm on Laptop (Type PIN)
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setPairingMode("show_pin");
+                  handleGeneratePhoneCode();
+                }}
+                className={`flex-1 rounded-md py-1.5 font-medium transition-colors flex items-center justify-center gap-1.5 cursor-pointer ${
+                  pairingMode === "show_pin"
+                    ? "bg-ops-panel text-ink shadow-sm border border-ops-line-bright font-semibold"
+                    : "text-ink-dim hover:text-ink"
+                }`}
+              >
+                <Smartphone size={14} /> 📱 I'm on Phone (Show PIN)
+              </button>
+            </div>
+
+            {pairingMode === "enter_pin" ? (
+              <div className="flex flex-col p-3.5 border border-ops-line-bright rounded-xl bg-ops-ground/60 space-y-2.5">
+                <div>
+                  <p className="text-[13px] font-semibold text-ink flex items-center gap-1.5">
+                    <Laptop size={16} className="text-ai" /> Enter 6-Digit Phone PIN
+                  </p>
+                  <p className="text-[12px] text-ink-dim">
+                    Look at your phone's screen and enter the 6-digit PIN here:
+                  </p>
                 </div>
 
-                <form onSubmit={handleVerifyPhonePin} className="space-y-2.5 pt-1">
+                <form onSubmit={handleVerifyPhonePin} className="space-y-2">
                   <div className="flex gap-2">
                     <input
                       type="text"
@@ -356,35 +396,63 @@ export function MeshPage() {
                         setPinInput(e.target.value.replace(/\D/g, "").slice(0, 6));
                       }}
                       placeholder="000 000"
-                      className="w-36 rounded-md border border-ops-line-bright bg-ops-raised/40 px-3 py-2 text-center font-mono text-[20px] font-bold tracking-widest text-ink outline-none focus:border-ai"
+                      className="w-36 rounded-md border border-ops-line-bright bg-ops-raised px-3 py-2 text-center font-mono text-[20px] font-bold tracking-widest text-ink outline-none focus:border-ai"
                       maxLength={6}
+                      autoFocus
                     />
                     <Button
                       type="submit"
                       disabled={pinInput.length !== 6 || isVerifying}
                       className="flex-1"
                     >
-                      {isVerifying ? "Pairing..." : "Pair Phone Forever"}
+                      {isVerifying ? "Verifying..." : "🔗 Link Phone Forever"}
                     </Button>
                   </div>
                   {verifyError && (
                     <p className="text-[12px] text-rose-400 font-medium">{verifyError}</p>
                   )}
                 </form>
-
-                <div className="flex items-center justify-between text-[11px] text-ink-faint pt-1 border-t border-ops-line">
-                  <span>Companion: <code className="text-ink">{companionUrl}</code></span>
-                  <button
-                    type="button"
-                    onClick={() => handleOpenPairModal("show_pin")}
-                    className="text-ai hover:underline cursor-pointer"
-                  >
-                    This is my phone &rarr;
-                  </button>
-                </div>
               </div>
             ) : (
-              <div className="space-y-2">
+              <div className="flex flex-col p-4 border border-ai/30 rounded-xl bg-ai/5 space-y-2 text-center">
+                <p className="text-[13px] font-semibold text-ink flex items-center justify-center gap-1.5">
+                  <Smartphone size={16} className="text-ai" /> Phone Pairing PIN
+                </p>
+                <p className="text-[12px] text-ink-dim">
+                  Type this 6-digit PIN into your Laptop's Mesh page:
+                </p>
+                {loadingInvite ? (
+                  <div className="py-4 text-[13px] text-ink-dim animate-pulse">Generating PIN...</div>
+                ) : phonePairedSuccess ? (
+                  <p className="text-[14px] font-bold text-go">✨ Connected to Laptop!</p>
+                ) : (
+                  <div className="space-y-2">
+                    <div className="font-mono text-[36px] font-black tracking-[0.25em] text-ink py-1">
+                      {invite?.pairing_code || "......"}
+                    </div>
+                    <div className="flex items-center justify-center gap-1.5 text-[11px] text-go font-medium animate-pulse">
+                      <div className="h-1.5 w-1.5 rounded-full bg-go" />
+                      <span>Waiting for laptop to enter PIN...</span>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleGeneratePhoneCode}
+                      className="mt-1"
+                    >
+                      🔄 Refresh Code
+                    </Button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Paired Devices List */}
+            {pairedDevices.length > 0 && (
+              <div className="space-y-2 pt-1 border-t border-ops-line">
+                <p className="text-[11px] uppercase tracking-wider text-ink-faint font-semibold">
+                  Linked Devices ({pairedDevices.length})
+                </p>
                 {pairedDevices.map((dev) => {
                   const isOnline = activeDevices.some((d) => d.device_id === dev.device_id);
                   return (
@@ -423,9 +491,6 @@ export function MeshPage() {
                 <div className="flex gap-2 pt-1">
                   <Button variant="outline" size="sm" onClick={handleRingPhone} className="flex-1">
                     <Bell size={13} /> Ring Phone (Find My)
-                  </Button>
-                  <Button variant="ghost" size="sm" onClick={() => handleOpenPairModal("enter_pin")}>
-                    <Plus size={13} /> Pair Another
                   </Button>
                 </div>
               </div>
