@@ -249,10 +249,15 @@ class PrivacyShieldApp:
 
 
 def main():
-    attach_to_interactive_desktop()
-    root = tk.Tk()
-    PrivacyShieldApp(root)
-    root.mainloop()
+    try:
+        attach_to_interactive_desktop()
+        root = tk.Tk()
+        PrivacyShieldApp(root)
+        root.mainloop()
+    except Exception as exc:
+        import traceback
+        err_file = Path(__file__).resolve().parent.parent.parent / "shield_error.log"
+        err_file.write_text(traceback.format_exc(), encoding="utf-8")
 
 
 if __name__ == "__main__":

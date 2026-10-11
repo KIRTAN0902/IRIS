@@ -351,6 +351,7 @@ def get_windows_battery() -> dict[str, Any] | None:
 
 def launch_windows_app(app_name: str = "antigravity", argument: str | None = None) -> dict[str, Any]:
     """Launches or focuses a desktop application on the Windows laptop."""
+    import os
     import subprocess
     from pathlib import Path
 
@@ -383,20 +384,27 @@ def launch_windows_app(app_name: str = "antigravity", argument: str | None = Non
             cmd = ["powershell.exe", "-NoExit", "-Command", f"Set-Location '{target_dir}'"]
     elif "chrome" in app_clean or "browser" in app_clean:
         cmd = ["explorer.exe", argument or "http://localhost:5173"]
+    elif "explorer" in app_clean or "files" in app_clean:
+        cmd = ["explorer.exe", argument or default_workspace]
     else:
         cmd = [app_name]
         if argument:
             cmd.append(argument)
 
+    si = None
+    if os.name == "nt":
+        si = subprocess.STARTUPINFO()
+        si.lpDesktop = r"WinSta0\Default"
+
     try:
-        proc = subprocess.Popen(cmd, shell=False)
+        proc = subprocess.Popen(cmd, startupinfo=si, shell=False)
         logger.info("Launched desktop application: %s (PID: %s)", cmd[0], proc.pid)
         return {
             "success": True,
             "app": app_name,
             "pid": proc.pid,
             "command": cmd,
-            "message": f"Successfully launched {app_name} on Windows laptop.",
+            "message": f"Successfully launched {app_name} on your Windows laptop.",
         }
     except Exception as exc:
         logger.error("Failed to launch application %s: %s", app_name, exc)
@@ -417,7 +425,9 @@ def execute_terminal_command(
 
     Returns stdout, stderr, return code, and execution metadata.
     """
+    import os
     import subprocess
+    import time
     from pathlib import Path
 
     clean_cmd = command.strip()
@@ -429,19 +439,84 @@ def execute_terminal_command(
             "stderr": "Empty command provided.",
             "command": "",
             "cwd": "",
+            "elapsed_ms": 0,
         }
-
-    # If user runs 'agy' alone, append '--help' so it doesn't block on interactive TUI
-    if clean_cmd.lower() == "agy":
-        clean_cmd = "agy --help"
 
     default_workspace = r"C:\kirtan\IRIS"
     work_dir = cwd.strip() if cwd and cwd.strip() else default_workspace
     if not os.path.exists(work_dir):
         work_dir = str(Path.home())
 
+    lower_cmd = clean_cmd.lower().strip()
+
+    # Intercept desktop GUI application launch shortcuts
+    if lower_cmd in ["antigravity", "open antigravity", "launch antigravity", "agy ide", "antigravity ide"]:
+        res = launch_windows_app("antigravity", argument=work_dir)
+        return {
+            "success": res.get("success", False),
+            "returncode": 0 if res.get("success") else 1,
+            "stdout": f"🚀 {res.get('message', 'Launched Antigravity IDE on Windows laptop.')}",
+            "stderr": res.get("error", ""),
+            "command": clean_cmd,
+            "cwd": work_dir,
+            "elapsed_ms": 50,
+        }
+
+    if lower_cmd in ["terminal", "open terminal", "launch terminal", "wt", "powershell"]:
+        res = launch_windows_app("terminal", argument=work_dir)
+        return {
+            "success": res.get("success", False),
+            "returncode": 0 if res.get("success") else 1,
+            "stdout": f"💻 {res.get('message', 'Opened interactive Windows Terminal on laptop desktop.')}",
+            "stderr": res.get("error", ""),
+            "command": clean_cmd,
+            "cwd": work_dir,
+            "elapsed_ms": 50,
+        }
+
+    if lower_cmd in ["code", "vscode", "open code", "open vscode"]:
+        res = launch_windows_app("vscode", argument=work_dir)
+        return {
+            "success": res.get("success", False),
+            "returncode": 0 if res.get("success") else 1,
+            "stdout": f"📝 {res.get('message', 'Launched VS Code on Windows laptop.')}",
+            "stderr": res.get("error", ""),
+            "command": clean_cmd,
+            "cwd": work_dir,
+            "elapsed_ms": 50,
+        }
+
+    if lower_cmd in ["explorer", "open explorer", "files"]:
+        res = launch_windows_app("explorer", argument=work_dir)
+        return {
+            "success": res.get("success", False),
+            "returncode": 0 if res.get("success") else 1,
+            "stdout": f"📁 {res.get('message', 'Opened File Explorer on Windows laptop.')}",
+            "stderr": res.get("error", ""),
+            "command": clean_cmd,
+            "cwd": work_dir,
+            "elapsed_ms": 50,
+        }
+
+    # If user runs 'agy' alone without arguments, show helpful usage instead of hanging on interactive TUI
+    if lower_cmd == "agy":
+        return {
+            "success": True,
+            "returncode": 0,
+            "stdout": (
+                "⚡ Antigravity CLI (v1.3.3) is active on your Windows laptop!\n"
+                "• Tap 'Open Antigravity IDE' above to open the full IDE on your laptop screen.\n"
+                "• Or run instructions with: agy --help or agy -p \"your task prompt here\""
+            ),
+            "stderr": "",
+            "command": clean_cmd,
+            "cwd": work_dir,
+            "elapsed_ms": 10,
+        }
+
     logger.info("Executing remote terminal command: %s (cwd=%s)", clean_cmd, work_dir)
 
+    start_t = time.perf_counter()
     try:
         # Run command via PowerShell with utf-8 encoding and bounded execution timeout
         res = subprocess.run(
@@ -453,6 +528,7 @@ def execute_terminal_command(
             encoding="utf-8",
             errors="replace",
         )
+        elapsed_ms = int((time.perf_counter() - start_t) * 1000)
         return {
             "success": res.returncode == 0,
             "returncode": res.returncode,
@@ -460,8 +536,10 @@ def execute_terminal_command(
             "stderr": res.stderr,
             "command": clean_cmd,
             "cwd": work_dir,
+            "elapsed_ms": elapsed_ms,
         }
     except subprocess.TimeoutExpired:
+        elapsed_ms = int((time.perf_counter() - start_t) * 1000)
         logger.warning("Terminal command timed out after %ss: %s", timeout, clean_cmd)
         return {
             "success": False,
@@ -470,8 +548,10 @@ def execute_terminal_command(
             "stderr": f"Command timed out after {timeout} seconds.",
             "command": clean_cmd,
             "cwd": work_dir,
+            "elapsed_ms": elapsed_ms,
         }
     except Exception as exc:
+        elapsed_ms = int((time.perf_counter() - start_t) * 1000)
         logger.error("Terminal execution error for '%s': %s", clean_cmd, exc)
         return {
             "success": False,
@@ -480,5 +560,6 @@ def execute_terminal_command(
             "stderr": str(exc),
             "command": clean_cmd,
             "cwd": work_dir,
+            "elapsed_ms": elapsed_ms,
         }
 

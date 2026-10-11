@@ -44,6 +44,7 @@ export function App() {
             <Route path="focus" element={<FocusPage />} />
             <Route path="laptop" element={<ContinuityPage initialView="laptop" />} />
             <Route path="phone" element={<ContinuityPage initialView="phone" />} />
+            <Route path="terminal" element={<ContinuityPage initialView="terminal" />} />
             <Route path="settings" element={<SettingsPage />} />
             <Route path="mesh" element={<Navigate to="/settings?tab=mesh" replace />} />
             <Route path="startup" element={<StartupPage />} />

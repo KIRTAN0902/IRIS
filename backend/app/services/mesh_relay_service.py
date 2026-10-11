@@ -600,6 +600,16 @@ class LaptopRelayDaemon:
                 arg = payload.get("argument")
                 res = ms.launch_windows_app(app_name=app_name, argument=arg)
                 logger.info("Remote LAUNCH_APP executed: %s", res)
+                req_id = payload.get("req_id")
+                if req_id and sender and sender != "system":
+                    push_relay_message(
+                        db=db,
+                        user_id=1,
+                        sender_device_id=LAPTOP_HOST_DEVICE_ID,
+                        target_device_id=sender,
+                        msg_type="COMMAND_RESULT",
+                        payload={"req_id": req_id, "command": cmd, "result": res},
+                    )
 
         elif msg_type == "TERMINAL_EXEC":
             req_id = payload.get("req_id")

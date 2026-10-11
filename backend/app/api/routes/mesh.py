@@ -763,3 +763,38 @@ def open_laptop_terminal(
     return {"success": True, "message": "Dispatched terminal launch to laptop across Sovereign Relay."}
 
 
+@router.post("/app/launch")
+async def launch_remote_application(
+    app: str = Query("antigravity", description="Application to launch (antigravity, terminal, vscode, chrome, explorer)"),
+    argument: str | None = Query(None, description="Optional path or URL"),
+    db: Session = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    """Launches or focuses a desktop application on the Windows laptop."""
+    if mrs.is_local_windows_host():
+        return ms.launch_windows_app(app_name=app, argument=argument)
+
+    import secrets
+
+    req_id = secrets.token_hex(6)
+    mrs.push_relay_message(
+        db=db,
+        user_id=user.id,
+        sender_device_id="mobile_web_client",
+        target_device_id=mrs.LAPTOP_HOST_DEVICE_ID,
+        msg_type="REMOTE_COMMAND",
+        payload={"req_id": req_id, "command": "LAUNCH_APP", "app": app, "argument": argument},
+    )
+
+    res = await mrs.wait_for_relay_response(
+        db=db,
+        user_id=user.id,
+        req_id=req_id,
+        timeout_seconds=6.0,
+    )
+    if res is not None:
+        return res
+
+    return {"success": True, "app": app, "message": f"Dispatched launch of {app} to laptop across Sovereign Relay."}
+
+

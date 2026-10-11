@@ -2,17 +2,25 @@ import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
   Bell,
+  Check,
+  ChevronRight,
+  Code2,
   Copy,
   Eye,
   EyeOff,
+  FolderOpen,
   KeyRound,
   Laptop,
   Lock,
   MessageSquare,
+  Play,
   Radio,
   RefreshCw,
   Send,
   Smartphone,
+  Sparkles,
+  Terminal,
+  Trash2,
   Unlock,
   Volume2,
   Zap,
@@ -46,7 +54,19 @@ interface PairedDevice {
 }
 
 interface ContinuityPageProps {
-  initialView?: "laptop" | "phone";
+  initialView?: "laptop" | "phone" | "terminal";
+}
+
+interface TerminalHistoryEntry {
+  id: string;
+  command: string;
+  stdout: string;
+  stderr: string;
+  returncode: number;
+  elapsed_ms?: number;
+  timestamp: string;
+  cwd?: string;
+  isAppLaunch?: boolean;
 }
 
 // Generate or retrieve persistent local device ID
@@ -94,9 +114,11 @@ export function ContinuityPage({ initialView }: ContinuityPageProps) {
   const navigate = useNavigate();
 
   // Active view: "laptop" means viewing the laptop's state (as seen on mobile),
-  // "phone" means viewing the mobile phone's state (as seen on laptop).
-  const [view, setView] = useState<"laptop" | "phone">(() => {
+  // "phone" means viewing the mobile phone's state (as seen on laptop),
+  // "terminal" means interactive remote PowerShell CLI & desktop app launcher.
+  const [view, setView] = useState<"laptop" | "phone" | "terminal">(() => {
     if (initialView) return initialView;
+    if (location.pathname.startsWith("/terminal")) return "terminal";
     if (location.pathname.startsWith("/laptop")) return "laptop";
     if (location.pathname.startsWith("/phone")) return "phone";
     if (typeof window !== "undefined") {
@@ -109,12 +131,131 @@ export function ContinuityPage({ initialView }: ContinuityPageProps) {
   });
 
   useEffect(() => {
-    if (location.pathname.startsWith("/laptop")) {
+    if (location.pathname.startsWith("/terminal")) {
+      setView("terminal");
+    } else if (location.pathname.startsWith("/laptop")) {
       setView("laptop");
     } else if (location.pathname.startsWith("/phone")) {
       setView("phone");
     }
   }, [location.pathname]);
+
+  // Terminal & Remote Execution State
+  const [terminalInput, setTerminalInput] = useState("");
+  const [terminalHistory, setTerminalHistory] = useState<TerminalHistoryEntry[]>([
+    {
+      id: "init",
+      command: "welcome",
+      stdout:
+        "IRIS Sovereign Terminal & App Launcher [Windows 11 / PowerShell]\nConnected to laptop host (WinSta0\\Default).\nTap quick apps above or type commands below (e.g. 'antigravity').",
+      stderr: "",
+      returncode: 0,
+      timestamp: new Date().toLocaleTimeString(),
+      cwd: "C:\\kirtan\\IRIS",
+    },
+  ]);
+  const [commandHistory, setCommandHistory] = useState<string[]>([]);
+  const [historyPointer, setHistoryPointer] = useState<number>(-1);
+  const [isExecutingCmd, setIsExecutingCmd] = useState(false);
+  const [launchingApp, setLaunchingApp] = useState<string | null>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [workingDir, setWorkingDir] = useState("C:\\kirtan\\IRIS");
+
+  // Action: Launch Windows Desktop App
+  const handleLaunchDesktopApp = async (appName: string, argument?: string) => {
+    setLaunchingApp(appName);
+    try {
+      const res = await api.post<{
+        success: boolean;
+        app?: string;
+        message?: string;
+        error?: string;
+      }>(`/mesh/app/launch?app=${encodeURIComponent(appName)}${argument ? `&argument=${encodeURIComponent(argument)}` : ""}`);
+
+      const entry: TerminalHistoryEntry = {
+        id: Math.random().toString(36).substring(2, 9),
+        command: `launch ${appName}`,
+        stdout: res.success
+          ? `🚀 ${res.message || `Launched ${appName} on laptop desktop`}`
+          : "",
+        stderr: res.success ? "" : (res.error || `Failed to launch ${appName}`),
+        returncode: res.success ? 0 : 1,
+        timestamp: new Date().toLocaleTimeString(),
+        cwd: workingDir,
+        isAppLaunch: true,
+      };
+      setTerminalHistory((prev) => [...prev, entry]);
+      setStatusMsg(res.success ? `🚀 Launched ${appName} on Windows laptop display!` : `Failed to launch ${appName}`);
+      playChime(750);
+      setTimeout(() => setStatusMsg(""), 4000);
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : "Failed to launch app";
+      setStatusMsg(`❌ Error launching ${appName}: ${errMsg}`);
+    } finally {
+      setLaunchingApp(null);
+    }
+  };
+
+  // Action: Execute Remote Terminal Command
+  const handleExecuteCommand = async (cmdToRun?: string) => {
+    const rawCmd = cmdToRun !== undefined ? cmdToRun : terminalInput;
+    const cmd = rawCmd.trim();
+    if (!cmd || isExecutingCmd) return;
+
+    setTerminalInput("");
+    setIsExecutingCmd(true);
+    setCommandHistory((prev) => [cmd, ...prev.filter((c) => c !== cmd)]);
+    setHistoryPointer(-1);
+
+    try {
+      const res = await api.post<{
+        success: boolean;
+        returncode: number;
+        stdout: string;
+        stderr: string;
+        command: string;
+        cwd: string;
+        elapsed_ms?: number;
+      }>("/mesh/terminal/exec", {
+        command: cmd,
+        working_dir: workingDir,
+      });
+
+      const entry: TerminalHistoryEntry = {
+        id: Math.random().toString(36).substring(2, 9),
+        command: cmd,
+        stdout: res.stdout || "",
+        stderr: res.stderr || "",
+        returncode: res.returncode,
+        elapsed_ms: res.elapsed_ms,
+        timestamp: new Date().toLocaleTimeString(),
+        cwd: res.cwd || workingDir,
+      };
+
+      setTerminalHistory((prev) => [...prev, entry]);
+      if (res.cwd) setWorkingDir(res.cwd);
+
+      if (res.success) {
+        playChime(880);
+      } else {
+        playChime(350);
+      }
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : "Command execution failed";
+      const entry: TerminalHistoryEntry = {
+        id: Math.random().toString(36).substring(2, 9),
+        command: cmd,
+        stdout: "",
+        stderr: `Execution error: ${errMsg}`,
+        returncode: 1,
+        timestamp: new Date().toLocaleTimeString(),
+        cwd: workingDir,
+      };
+      setTerminalHistory((prev) => [...prev, entry]);
+    } finally {
+      setIsExecutingCmd(false);
+    }
+  };
 
   // Mesh & Telemetry state
   const [myDeviceId] = useState<string>(getOrCreateDeviceId);
@@ -648,6 +789,21 @@ export function ContinuityPage({ initialView }: ContinuityPageProps) {
           </button>
           <button
             onClick={() => {
+              setView("terminal");
+              navigate("/terminal");
+            }}
+            className={cn(
+              "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-all",
+              view === "terminal"
+                ? "bg-ops-raised text-ink shadow-sm"
+                : "text-ink-faint hover:text-ink"
+            )}
+          >
+            <Terminal size={14} />
+            <span>Terminal</span>
+          </button>
+          <button
+            onClick={() => {
               reportLocalTelemetry();
               loadMeshState();
               setStatusMsg("Telemetry refreshed.");
@@ -672,7 +828,7 @@ export function ContinuityPage({ initialView }: ContinuityPageProps) {
       )}
 
       {/* MAIN VIEW: MOBILE PERSPECTIVE (Looking at Laptop) */}
-      {view === "laptop" ? (
+      {view === "laptop" && (
         <div className="space-y-6">
           {/* Primary Card: Windows Laptop */}
           <Panel className="relative overflow-hidden border-ops-line-bright bg-ops-panel p-6 shadow-md">
@@ -764,6 +920,30 @@ export function ContinuityPage({ initialView }: ContinuityPageProps) {
                   </button>
                 </div>
               )}
+
+              {/* Quick Access: Remote Terminal & App Launcher */}
+              <div className="mt-5 rounded-2xl border border-ops-line bg-ops-surface/60 p-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-ops-accent/15 text-ops-accent">
+                      <Terminal size={17} />
+                    </div>
+                    <div>
+                      <h4 className="text-xs font-semibold text-ink">Remote Terminal & App Launcher</h4>
+                      <p className="text-[11px] text-ink-faint">Launch Antigravity IDE, WT, VS Code, or run PowerShell</p>
+                    </div>
+                  </div>
+                  <Button
+                    onClick={() => {
+                      setView("terminal");
+                      navigate("/terminal");
+                    }}
+                    className="rounded-xl px-3 py-1.5 text-xs font-medium"
+                  >
+                    Open <ChevronRight size={13} className="ml-1" />
+                  </Button>
+                </div>
+              </div>
             </div>
 
             {/* Quick Note to Laptop */}
@@ -811,8 +991,10 @@ export function ContinuityPage({ initialView }: ContinuityPageProps) {
             </div>
           </Panel>
         </div>
-      ) : (
-        /* MAIN VIEW: LAPTOP PERSPECTIVE (Looking at Phone) */
+      )}
+
+      {/* MAIN VIEW: LAPTOP PERSPECTIVE (Looking at Phone) */}
+      {view === "phone" && (
         <div className="space-y-6">
           {/* Primary Card: Mobile Phone */}
           <Panel className="relative overflow-hidden border-ops-line-bright bg-ops-panel p-6 shadow-md">
@@ -981,6 +1163,322 @@ export function ContinuityPage({ initialView }: ContinuityPageProps) {
               )}
             </Panel>
           )}
+        </div>
+      )}
+
+      {/* MAIN VIEW: TERMINAL TAB (Interactive Remote PowerShell CLI & App Launcher) */}
+      {view === "terminal" && (
+        <div className="space-y-4">
+          {/* Host status and quick app launchers */}
+          <Panel className="border-ops-line-bright bg-ops-panel p-5 shadow-sm">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-ops-raised text-ink border border-ops-line">
+                  <Terminal size={22} className="text-ops-accent" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-base font-semibold text-ink">
+                      Remote Terminal & App Launcher
+                    </h2>
+                    {laptopHost?.is_online ? (
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/15 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-400">
+                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                        Host Online
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-zinc-700/40 px-2.5 py-0.5 text-[11px] font-medium text-zinc-400">
+                        Relay Active
+                      </span>
+                    )}
+                  </div>
+                  <p className="mt-0.5 text-xs text-ink-faint font-mono">
+                    Session: {workingDir}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    setTerminalHistory([]);
+                    setStatusMsg("Console cleared.");
+                    setTimeout(() => setStatusMsg(""), 2000);
+                  }}
+                  className="text-xs text-ink-faint hover:text-ink rounded-xl h-8 px-3"
+                  title="Clear console output"
+                >
+                  <Trash2 size={13} className="mr-1.5" /> Clear Console
+                </Button>
+              </div>
+            </div>
+
+            {/* Quick Launch Desktop Applications Grid */}
+            <div className="mt-5 border-t border-ops-line/60 pt-4">
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-[11px] uppercase tracking-wider text-ink-faint font-semibold flex items-center gap-1.5">
+                  <Sparkles size={12} className="text-ops-accent" />
+                  Launch Desktop Apps on Laptop
+                </p>
+                <span className="text-[10px] text-ink-faint">Renders directly on physical screen</span>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                {/* Antigravity IDE */}
+                <button
+                  type="button"
+                  onClick={() => handleLaunchDesktopApp("antigravity")}
+                  disabled={launchingApp !== null}
+                  className={cn(
+                    "flex flex-col items-start gap-1 p-3.5 rounded-xl border text-left transition-all active:scale-[0.98] cursor-pointer",
+                    launchingApp === "antigravity"
+                      ? "border-ops-accent bg-ops-accent/15 ring-1 ring-ops-accent"
+                      : "border-ops-line bg-ops-surface/80 hover:bg-ops-surface hover:border-ops-line-bright"
+                  )}
+                >
+                  <div className="flex items-center justify-between w-full">
+                    <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-ops-accent/15 text-ops-accent">
+                      <Sparkles size={14} />
+                    </div>
+                    <span className="text-[10px] text-ops-accent font-semibold px-1.5 py-0.5 rounded bg-ops-accent/10">IDE</span>
+                  </div>
+                  <span className="text-xs font-semibold text-ink mt-1">Antigravity IDE</span>
+                  <span className="text-[10px] text-ink-faint leading-tight">
+                    {launchingApp === "antigravity" ? "Opening on laptop..." : "Launch AI Code Studio"}
+                  </span>
+                </button>
+
+                {/* Windows Terminal */}
+                <button
+                  type="button"
+                  onClick={() => handleLaunchDesktopApp("terminal")}
+                  disabled={launchingApp !== null}
+                  className={cn(
+                    "flex flex-col items-start gap-1 p-3.5 rounded-xl border text-left transition-all active:scale-[0.98] cursor-pointer",
+                    launchingApp === "terminal"
+                      ? "border-emerald-500 bg-emerald-500/15 ring-1 ring-emerald-500"
+                      : "border-ops-line bg-ops-surface/80 hover:bg-ops-surface hover:border-ops-line-bright"
+                  )}
+                >
+                  <div className="flex items-center justify-between w-full">
+                    <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-500/15 text-emerald-400">
+                      <Terminal size={14} />
+                    </div>
+                    <span className="text-[10px] text-emerald-400 font-semibold px-1.5 py-0.5 rounded bg-emerald-500/10">WT</span>
+                  </div>
+                  <span className="text-xs font-semibold text-ink mt-1">Windows Terminal</span>
+                  <span className="text-[10px] text-ink-faint leading-tight">
+                    {launchingApp === "terminal" ? "Opening on laptop..." : "Open PowerShell Window"}
+                  </span>
+                </button>
+
+                {/* VS Code */}
+                <button
+                  type="button"
+                  onClick={() => handleLaunchDesktopApp("vscode")}
+                  disabled={launchingApp !== null}
+                  className={cn(
+                    "flex flex-col items-start gap-1 p-3.5 rounded-xl border text-left transition-all active:scale-[0.98] cursor-pointer",
+                    launchingApp === "vscode"
+                      ? "border-sky-500 bg-sky-500/15 ring-1 ring-sky-500"
+                      : "border-ops-line bg-ops-surface/80 hover:bg-ops-surface hover:border-ops-line-bright"
+                  )}
+                >
+                  <div className="flex items-center justify-between w-full">
+                    <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-sky-500/15 text-sky-400">
+                      <Code2 size={14} />
+                    </div>
+                    <span className="text-[10px] text-sky-400 font-semibold px-1.5 py-0.5 rounded bg-sky-500/10">Code</span>
+                  </div>
+                  <span className="text-xs font-semibold text-ink mt-1">VS Code</span>
+                  <span className="text-[10px] text-ink-faint leading-tight">
+                    {launchingApp === "vscode" ? "Opening on laptop..." : "Open IRIS Workspace"}
+                  </span>
+                </button>
+
+                {/* File Explorer */}
+                <button
+                  type="button"
+                  onClick={() => handleLaunchDesktopApp("explorer")}
+                  disabled={launchingApp !== null}
+                  className={cn(
+                    "flex flex-col items-start gap-1 p-3.5 rounded-xl border text-left transition-all active:scale-[0.98] cursor-pointer",
+                    launchingApp === "explorer"
+                      ? "border-amber-500 bg-amber-500/15 ring-1 ring-amber-500"
+                      : "border-ops-line bg-ops-surface/80 hover:bg-ops-surface hover:border-ops-line-bright"
+                  )}
+                >
+                  <div className="flex items-center justify-between w-full">
+                    <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-amber-500/15 text-amber-400">
+                      <FolderOpen size={14} />
+                    </div>
+                    <span className="text-[10px] text-amber-400 font-semibold px-1.5 py-0.5 rounded bg-amber-500/10">Files</span>
+                  </div>
+                  <span className="text-xs font-semibold text-ink mt-1">File Explorer</span>
+                  <span className="text-[10px] text-ink-faint leading-tight">
+                    {launchingApp === "explorer" ? "Opening on laptop..." : "Open IRIS Root Folder"}
+                  </span>
+                </button>
+              </div>
+            </div>
+          </Panel>
+
+          {/* Quick Command Chips */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs">
+            <span className="text-[11px] text-ink-faint shrink-0 font-medium mr-1">Quick Run:</span>
+            {[
+              "antigravity",
+              "agy --version",
+              "git status",
+              "git log -n 3 --oneline",
+              "python --version",
+              "dir",
+              "ipconfig",
+            ].map((chip) => (
+              <button
+                key={chip}
+                type="button"
+                onClick={() => handleExecuteCommand(chip)}
+                disabled={isExecutingCmd}
+                className="shrink-0 rounded-lg border border-ops-line bg-ops-surface px-2.5 py-1 font-mono text-[11px] text-ink-dim hover:border-ops-accent hover:text-ink active:scale-95 transition-all cursor-pointer"
+              >
+                {chip}
+              </button>
+            ))}
+          </div>
+
+          {/* Terminal Monospace Output Log Window */}
+          <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4 font-mono text-xs shadow-2xl overflow-hidden min-h-[350px] max-h-[580px] flex flex-col">
+            <div className="flex items-center justify-between pb-3 mb-3 border-b border-zinc-800 text-[11px] text-zinc-500">
+              <div className="flex items-center gap-2">
+                <span className="h-2.5 w-2.5 rounded-full bg-red-500/70 inline-block" />
+                <span className="h-2.5 w-2.5 rounded-full bg-amber-500/70 inline-block" />
+                <span className="h-2.5 w-2.5 rounded-full bg-emerald-500/70 inline-block" />
+                <span className="ml-2 font-medium text-zinc-400">PowerShell 7.x · Sovereign Mesh Session</span>
+              </div>
+              <span className="text-[10px] text-zinc-500">{terminalHistory.length} events</span>
+            </div>
+
+            <div className="flex-1 overflow-y-auto space-y-4 pr-1">
+              {terminalHistory.map((item) => (
+                <div key={item.id} className="space-y-1">
+                  <div className="flex items-center justify-between text-[11px] text-zinc-500">
+                    <div className="flex items-center gap-1.5 truncate">
+                      <span className="text-emerald-400 font-bold">PS</span>
+                      <span className="text-zinc-600">&gt;</span>
+                      <span className="text-zinc-200 font-semibold truncate">{item.command}</span>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0 ml-2">
+                      {item.elapsed_ms !== undefined && (
+                        <span className="text-[10px] text-zinc-500">{item.elapsed_ms}ms</span>
+                      )}
+                      <span
+                        className={cn(
+                          "rounded px-1.5 py-0.5 text-[9px] font-bold",
+                          item.returncode === 0
+                            ? "bg-emerald-500/20 text-emerald-400"
+                            : "bg-red-500/20 text-red-400"
+                        )}
+                      >
+                        {item.returncode === 0 ? "EXIT 0" : `ERR ${item.returncode}`}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const txt = item.stdout || item.stderr || item.command;
+                          navigator.clipboard.writeText(txt);
+                          setCopiedId(item.id);
+                          setTimeout(() => setCopiedId(null), 1500);
+                        }}
+                        title="Copy output"
+                        className="text-zinc-500 hover:text-zinc-300 transition-colors cursor-pointer"
+                      >
+                        {copiedId === item.id ? (
+                          <Check size={11} className="text-emerald-400" />
+                        ) : (
+                          <Copy size={11} />
+                        )}
+                      </button>
+                    </div>
+                  </div>
+
+                  {item.stdout && (
+                    <pre className="whitespace-pre-wrap break-all rounded-lg bg-zinc-900/60 p-2.5 text-zinc-300 text-[11px] leading-relaxed border border-zinc-800/40">
+                      {item.stdout}
+                    </pre>
+                  )}
+
+                  {item.stderr && (
+                    <pre className="whitespace-pre-wrap break-all rounded-lg bg-red-950/30 p-2.5 text-red-400 text-[11px] leading-relaxed border border-red-900/30">
+                      {item.stderr}
+                    </pre>
+                  )}
+                </div>
+              ))}
+
+              {isExecutingCmd && (
+                <div className="flex items-center gap-2 text-zinc-400 py-2 animate-pulse">
+                  <span className="h-2 w-2 rounded-full bg-ops-accent animate-ping" />
+                  <span className="text-xs">Executing on Windows laptop...</span>
+                </div>
+              )}
+            </div>
+
+            {/* Terminal Input Bar */}
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleExecuteCommand();
+              }}
+              className="mt-3 pt-3 border-t border-zinc-800 flex items-center gap-2"
+            >
+              <span className="text-emerald-400 font-bold shrink-0">PS &gt;</span>
+              <input
+                type="text"
+                value={terminalInput}
+                onChange={(e) => setTerminalInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "ArrowUp") {
+                    e.preventDefault();
+                    if (commandHistory.length > 0) {
+                      const nextIdx = Math.min(historyPointer + 1, commandHistory.length - 1);
+                      setHistoryPointer(nextIdx);
+                      setTerminalInput(commandHistory[nextIdx]);
+                    }
+                  } else if (e.key === "ArrowDown") {
+                    e.preventDefault();
+                    if (historyPointer > 0) {
+                      const nextIdx = historyPointer - 1;
+                      setHistoryPointer(nextIdx);
+                      setTerminalInput(commandHistory[nextIdx]);
+                    } else if (historyPointer === 0) {
+                      setHistoryPointer(-1);
+                      setTerminalInput("");
+                    }
+                  }
+                }}
+                placeholder="Type command or app (e.g. antigravity, dir)..."
+                disabled={isExecutingCmd}
+                className="flex-1 bg-transparent text-zinc-100 placeholder:text-zinc-600 focus:outline-none font-mono text-xs"
+              />
+              <Button
+                type="submit"
+                disabled={isExecutingCmd || !terminalInput.trim()}
+                size="sm"
+                className="bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg px-3 h-8 text-xs font-mono font-medium shadow-sm shrink-0 cursor-pointer"
+              >
+                {isExecutingCmd ? (
+                  <RefreshCw size={12} className="animate-spin" />
+                ) : (
+                  <>
+                    <Play size={11} className="mr-1 fill-white" /> Run
+                  </>
+                )}
+              </Button>
+            </form>
+          </div>
         </div>
       )}
 
