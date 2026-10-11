@@ -367,21 +367,26 @@ def is_local_windows_host() -> bool:
 
 def update_host_heartbeat(db: Session, user_id: int = 1) -> None:
     """Records the laptop host heartbeat in the database so the mesh knows it is online."""
-    pairing = db.query(MeshPairing).filter(MeshPairing.device_id == LAPTOP_HOST_DEVICE_ID).first()
-    if not pairing:
-        pairing = MeshPairing(
-            user_id=user_id,
-            device_id=LAPTOP_HOST_DEVICE_ID,
-            device_name="Windows Workstation",
-            device_type="laptop_windows",
-            is_active=True,
-            last_seen_at=datetime.now(UTC),
-        )
-        db.add(pairing)
-    else:
-        pairing.last_seen_at = datetime.now(UTC)
-        pairing.is_active = True
-    db.commit()
+    try:
+        pairing = db.query(MeshPairing).filter(MeshPairing.device_id == LAPTOP_HOST_DEVICE_ID).first()
+        if not pairing:
+            pairing = MeshPairing(
+                user_id=user_id,
+                device_id=LAPTOP_HOST_DEVICE_ID,
+                device_name="Windows Workstation",
+                device_type="laptop_windows",
+                pairing_token="token_laptop_host_primary",
+                is_active=True,
+                last_seen_at=datetime.now(UTC),
+            )
+            db.add(pairing)
+        else:
+            pairing.last_seen_at = datetime.now(UTC)
+            pairing.is_active = True
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        logger.debug("Host heartbeat update error: %s", exc)
 
 
 def is_host_laptop_online(db: Session, user_id: int = 1) -> bool:
