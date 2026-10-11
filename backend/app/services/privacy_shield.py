@@ -48,6 +48,24 @@ def verify_pwd(pwd: str) -> bool:
     return attempt == h
 
 
+def attach_to_interactive_desktop() -> bool:
+    """Attaches thread to the interactive Windows input desktop (WinSta0\\Default)."""
+    if os.name != "nt":
+        return False
+    try:
+        import ctypes
+        u = ctypes.windll.user32
+        h_desk = u.OpenInputDesktop(0, False, 0x01FF)
+        if not h_desk:
+            h_desk = u.OpenDesktopW("Default", 0, False, 0x01FF)
+        if h_desk:
+            u.SetThreadDesktop(h_desk)
+            return True
+    except Exception:
+        pass
+    return False
+
+
 class PrivacyShieldApp:
     def __init__(self, root: tk.Tk):
         self.root = root
@@ -62,6 +80,20 @@ class PrivacyShieldApp:
         self.root.bind("<Escape>", lambda e: None)
 
         self._build_ui()
+
+        # Lift window and force input focus
+        self.root.lift()
+        self.root.focus_force()
+        if os.name == "nt":
+            try:
+                import ctypes
+                hwnd = ctypes.windll.user32.FindWindowW(None, "IRIS Sovereign Shield")
+                if hwnd:
+                    ctypes.windll.user32.SetForegroundWindow(hwnd)
+                    ctypes.windll.user32.BringWindowToTop(hwnd)
+            except Exception:
+                pass
+
         try:
             st = {}
             if STATE_FILE.exists():
@@ -217,6 +249,7 @@ class PrivacyShieldApp:
 
 
 def main():
+    attach_to_interactive_desktop()
     root = tk.Tk()
     PrivacyShieldApp(root)
     root.mainloop()

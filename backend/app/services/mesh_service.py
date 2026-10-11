@@ -209,9 +209,15 @@ def lock_privacy_shield(password: str | None = None) -> bool:
         }
         SHIELD_STATE_FILE.write_text(json.dumps(locked_payload), encoding="utf-8")
 
+        si = None
+        if os.name == "nt":
+            si = subprocess.STARTUPINFO()
+            si.lpDesktop = r"WinSta0\Default"
+
         proc = subprocess.Popen(
             [exe_to_use, str(SHIELD_SCRIPT_PATH)],
             cwd=str(Path(__file__).resolve().parent.parent.parent),
+            startupinfo=si,
             close_fds=True,
         )
 
