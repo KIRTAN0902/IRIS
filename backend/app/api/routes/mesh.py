@@ -570,3 +570,36 @@ async def trigger_remote_command(
         payload={"command": req.command, **req.parameters},
     )
     return {"command": req.command, "broadcast": True, "target": req.target_device or "all"}
+
+
+# --- Terminal & Remote CLI Execution ---
+
+
+class TerminalExecRequest(BaseModel):
+    command: str = Field(..., description="PowerShell or shell command to execute on laptop")
+    working_dir: str | None = Field(default=r"C:\kirtan\IRIS", description="Working directory")
+    timeout: int = Field(default=30, ge=1, le=120, description="Execution timeout in seconds")
+
+
+@router.post("/terminal/exec")
+def execute_laptop_terminal(
+    req: TerminalExecRequest,
+    user: User = Depends(current_user),
+):
+    """Executes a terminal / PowerShell command on the Windows laptop remotely and returns output."""
+    result = ms.execute_terminal_command(
+        command=req.command,
+        cwd=req.working_dir,
+        timeout=req.timeout,
+    )
+    return result
+
+
+@router.post("/terminal/open")
+def open_laptop_terminal(
+    argument: str | None = Query(None, description="Optional directory path"),
+    user: User = Depends(current_user),
+):
+    """Opens an interactive Windows Terminal / PowerShell window on the laptop desktop."""
+    return ms.launch_windows_app(app_name="terminal", argument=argument)
+

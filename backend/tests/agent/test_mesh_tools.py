@@ -111,3 +111,27 @@ async def test_launch_laptop_app_tool(db: Session):
         result = await tool.execute(db, user, app="antigravity")
         assert result.success
         assert "Launched antigravity" in result.summary
+
+
+@pytest.mark.asyncio
+async def test_run_laptop_terminal_command_tool(db: Session):
+    from app.agent.tools.mesh import RunLaptopTerminalCommandTool
+
+    user = get_current_user(db)
+    tool = RunLaptopTerminalCommandTool()
+
+    fake_res = {
+        "success": True,
+        "returncode": 0,
+        "stdout": "On branch main\nnothing to commit",
+        "stderr": "",
+        "command": "git status",
+        "cwd": r"C:\kirtan\IRIS",
+    }
+    with patch("app.services.mesh_service.execute_terminal_command", return_value=fake_res):
+        with patch.object(ms.hub, "broadcast", new_callable=AsyncMock):
+            result = await tool.execute(db, user, command="git status")
+            assert result.success
+            assert "On branch main" in result.summary
+            assert result.data["returncode"] == 0
+

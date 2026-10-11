@@ -202,8 +202,14 @@ def launch_windows_app(app_name: str = "antigravity", argument: str | None = Non
             cmd = [antigravity_cmd, target]
     elif "vscode" in app_clean or "code" in app_clean:
         cmd = ["code", argument or default_workspace]
-    elif "terminal" in app_clean or "powershell" in app_clean:
-        cmd = ["powershell.exe"]
+    elif any(k in app_clean for k in ["terminal", "powershell", "wt", "cmd", "console"]):
+        import shutil
+        wt_path = shutil.which("wt.exe") or shutil.which("wt")
+        target_dir = argument or default_workspace
+        if wt_path:
+            cmd = ["wt.exe", "-d", target_dir]
+        else:
+            cmd = ["powershell.exe", "-NoExit", "-Command", f"Set-Location '{target_dir}'"]
     elif "chrome" in app_clean or "browser" in app_clean:
         cmd = ["explorer.exe", argument or "http://localhost:5173"]
     else:
@@ -229,3 +235,75 @@ def launch_windows_app(app_name: str = "antigravity", argument: str | None = Non
             "error": str(exc),
             "message": f"Could not launch {app_name}: {exc}",
         }
+
+
+def execute_terminal_command(
+    command: str,
+    cwd: str | None = None,
+    timeout: int = 30,
+) -> dict[str, Any]:
+    """Executes a PowerShell or shell CLI command on the Windows laptop remotely.
+
+    Returns stdout, stderr, return code, and execution metadata.
+    """
+    import subprocess
+    from pathlib import Path
+
+    clean_cmd = command.strip()
+    if not clean_cmd:
+        return {
+            "success": False,
+            "returncode": 1,
+            "stdout": "",
+            "stderr": "Empty command provided.",
+            "command": "",
+            "cwd": "",
+        }
+
+    default_workspace = r"C:\kirtan\IRIS"
+    work_dir = cwd.strip() if cwd and cwd.strip() else default_workspace
+    if not os.path.exists(work_dir):
+        work_dir = str(Path.home())
+
+    logger.info("Executing remote terminal command: %s (cwd=%s)", clean_cmd, work_dir)
+
+    try:
+        # Run command via PowerShell with utf-8 encoding and bounded execution timeout
+        res = subprocess.run(
+            ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", clean_cmd],
+            cwd=work_dir,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            encoding="utf-8",
+            errors="replace",
+        )
+        return {
+            "success": res.returncode == 0,
+            "returncode": res.returncode,
+            "stdout": res.stdout,
+            "stderr": res.stderr,
+            "command": clean_cmd,
+            "cwd": work_dir,
+        }
+    except subprocess.TimeoutExpired:
+        logger.warning("Terminal command timed out after %ss: %s", timeout, clean_cmd)
+        return {
+            "success": False,
+            "returncode": -1,
+            "stdout": "",
+            "stderr": f"Command timed out after {timeout} seconds.",
+            "command": clean_cmd,
+            "cwd": work_dir,
+        }
+    except Exception as exc:
+        logger.error("Terminal execution error for '%s': %s", clean_cmd, exc)
+        return {
+            "success": False,
+            "returncode": -1,
+            "stdout": "",
+            "stderr": str(exc),
+            "command": clean_cmd,
+            "cwd": work_dir,
+        }
+

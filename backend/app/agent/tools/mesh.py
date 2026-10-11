@@ -151,6 +151,57 @@ class LaunchLaptopAppTool(Tool):
         )
 
 
+class RunTerminalCommandParams(BaseModel):
+    command: str = Field(
+        ...,
+        description="PowerShell or shell CLI command to execute on the laptop (e.g. 'git status', 'dir', 'npm test', 'tasklist', 'python script.py')",
+    )
+    working_dir: str | None = Field(
+        default=r"C:\kirtan\IRIS",
+        description="Working directory on the laptop to run the command in (defaults to 'C:\\kirtan\\IRIS')",
+    )
+
+
+class RunLaptopTerminalCommandTool(Tool):
+    name = "run_laptop_terminal_command"
+    description = (
+        "Execute a terminal command or script on your Windows laptop remotely and receive the output. "
+        "Use when the user asks via voice or chat to run a terminal/CLI command, check git status, "
+        "run tests, build a project, list directory files, or inspect system processes on their laptop."
+    )
+    parameters_schema = RunTerminalCommandParams
+    read_only = False
+
+    async def run(self, db: Session, user: User, **kwargs: Any) -> ToolResult:
+        cmd = kwargs["command"]
+        cwd = kwargs.get("working_dir")
+        res = ms.execute_terminal_command(command=cmd, cwd=cwd)
+
+        # Broadcast remote command notification across mesh
+        msg = ms.MeshMessage(
+            type="REMOTE_COMMAND",
+            sender_device="iris_agent",
+            payload={"command": "TERMINAL_EXEC", "cli": cmd, "success": res["success"]},
+        )
+        await ms.hub.broadcast(msg, exclude_sender=False)
+
+        output = (res.get("stdout") or res.get("stderr") or "Command completed with no output.").strip()
+        truncated_output = output[:2000] + ("\n... [output truncated]" if len(output) > 2000 else "")
+
+        summary = (
+            f"Executed `{cmd}` on laptop (Exit {res.get('returncode', 0)}):\n```\n{truncated_output}\n```"
+            if res.get("success")
+            else f"Command `{cmd}` failed (Exit {res.get('returncode', 0)}):\n{res.get('stderr')}"
+        )
+
+        return ToolResult(
+            tool_name=self.name,
+            success=res.get("success", False),
+            data=res,
+            summary=summary,
+        )
+
+
 def mesh_tools() -> list[Tool]:
     """Factory returning all IRIS Mesh continuity tools."""
     return [
@@ -159,4 +210,6 @@ def mesh_tools() -> list[Tool]:
         SyncClipboardTool(),
         GetDeviceMeshStatusTool(),
         LaunchLaptopAppTool(),
+        RunLaptopTerminalCommandTool(),
     ]
+

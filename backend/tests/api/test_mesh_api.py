@@ -293,3 +293,18 @@ def test_phone_pin_displayed_and_laptop_verifies(client: TestClient):
     # Clean up
     client.delete(f"/api/mesh/pair/{phone_device_id}")
 
+
+def test_terminal_exec_and_open_api(client: TestClient):
+    with patch("app.services.mesh_service.execute_terminal_command", return_value={"success": True, "returncode": 0, "stdout": "hello from powershell", "stderr": "", "command": "echo hello", "cwd": "C:\\kirtan\\IRIS"}):
+        res = client.post("/api/mesh/terminal/exec", json={"command": "echo hello"})
+        assert res.status_code == 200
+        data = res.json()
+        assert data["success"] is True
+        assert data["stdout"] == "hello from powershell"
+
+    with patch("app.services.mesh_service.launch_windows_app", return_value={"success": True, "message": "Successfully launched terminal on Windows laptop."}):
+        res_open = client.post("/api/mesh/terminal/open")
+        assert res_open.status_code == 200
+        assert res_open.json()["success"] is True
+
+

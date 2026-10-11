@@ -10,6 +10,7 @@ import {
   Laptop,
   Lock,
   Maximize2,
+  Mic,
   Minimize2,
   MousePointer,
   Pause,
@@ -18,6 +19,8 @@ import {
   Send,
   Settings,
   Smartphone,
+  Terminal,
+  Trash2,
   Upload,
   Zap,
 } from "lucide-react";
@@ -100,6 +103,23 @@ export function ContinuityPage({ initialView }: ContinuityPageProps) {
   // Keyboard state
   const [keyInput, setKeyInput] = useState("");
   const [showKeyboardDrawer, setShowKeyboardDrawer] = useState(false);
+
+  // Terminal state
+  const [terminalCmd, setTerminalCmd] = useState("");
+  const [terminalHistory, setTerminalHistory] = useState<
+    { cmd: string; stdout: string; stderr: string; returncode: number; timestamp: string }[]
+  >([
+    {
+      cmd: "Get-Location",
+      stdout: "Path\n----\nC:\\kirtan\\IRIS",
+      stderr: "",
+      returncode: 0,
+      timestamp: new Date().toLocaleTimeString(),
+    },
+  ]);
+  const [isExecutingCmd, setIsExecutingCmd] = useState(false);
+  const [isListeningVoice, setIsListeningVoice] = useState(false);
+  const terminalBottomRef = useRef<HTMLDivElement>(null);
 
   // Polling data
   const loadData = async () => {
@@ -259,6 +279,95 @@ export function ContinuityPage({ initialView }: ContinuityPageProps) {
       setTimeout(() => setStatusMsg(""), 3000);
     } catch {
       setStatusMsg("Failed to upload file");
+    }
+  };
+
+  // Remote Terminal execution
+  const handleExecuteTerminal = async (cmdToRun?: string) => {
+    const cmd = (cmdToRun || terminalCmd).trim();
+    if (!cmd || isExecutingCmd) return;
+    setIsExecutingCmd(true);
+    try {
+      const res = await api.post<{
+        success: boolean;
+        returncode: number;
+        stdout: string;
+        stderr: string;
+        command: string;
+        cwd: string;
+      }>("/mesh/terminal/exec", { command: cmd, working_dir: "C:\\kirtan\\IRIS" });
+
+      setTerminalHistory((prev) => [
+        ...prev,
+        {
+          cmd,
+          stdout: res.stdout,
+          stderr: res.stderr,
+          returncode: res.returncode,
+          timestamp: new Date().toLocaleTimeString(),
+        },
+      ]);
+      setTerminalCmd("");
+      setTimeout(() => {
+        terminalBottomRef.current?.scrollIntoView({ behavior: "smooth" });
+      }, 100);
+    } catch (err: any) {
+      setTerminalHistory((prev) => [
+        ...prev,
+        {
+          cmd,
+          stdout: "",
+          stderr: err?.message || "Execution error",
+          returncode: 1,
+          timestamp: new Date().toLocaleTimeString(),
+        },
+      ]);
+    } finally {
+      setIsExecutingCmd(false);
+    }
+  };
+
+  const handleOpenLaptopTerminalGui = async () => {
+    try {
+      await api.post("/mesh/terminal/open");
+      setStatusMsg("💻 Opened Windows Terminal on laptop desktop.");
+      setTimeout(() => setStatusMsg(""), 3000);
+    } catch {
+      setStatusMsg("Failed to open terminal window.");
+    }
+  };
+
+  const handleToggleVoiceTerminal = () => {
+    const SpeechRecognition =
+      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      alert("Speech recognition is not supported in this browser. You can type commands directly.");
+      return;
+    }
+    if (isListeningVoice) {
+      setIsListeningVoice(false);
+      return;
+    }
+
+    try {
+      const recognition = new SpeechRecognition();
+      recognition.continuous = false;
+      recognition.interimResults = false;
+      recognition.lang = "en-US";
+
+      recognition.onstart = () => setIsListeningVoice(true);
+      recognition.onend = () => setIsListeningVoice(false);
+      recognition.onerror = () => setIsListeningVoice(false);
+      recognition.onresult = (event: any) => {
+        const transcript = event.results[0][0].transcript;
+        if (transcript) {
+          setTerminalCmd(transcript);
+          handleExecuteTerminal(transcript);
+        }
+      };
+      recognition.start();
+    } catch {
+      setIsListeningVoice(false);
     }
   };
 
@@ -547,6 +656,136 @@ export function ContinuityPage({ initialView }: ContinuityPageProps) {
                   </form>
                 )}
               </div>
+            </div>
+          </Panel>
+
+          {/* Windows Terminal / PowerShell CLI */}
+          <Panel
+            title="Windows Terminal (PowerShell)"
+            lamp={<Lamp tone="go" pulse={isExecutingCmd} />}
+            actions={
+              <div className="flex items-center gap-1.5">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleOpenLaptopTerminalGui}
+                  className="h-7 text-[11px] gap-1"
+                  title="Open physical terminal window on laptop desktop"
+                >
+                  <Terminal size={12} /> Launch Desktop GUI
+                </Button>
+                <button
+                  onClick={() => setTerminalHistory([])}
+                  className="rounded p-1 text-ink-dim hover:text-ink hover:bg-ops-raised"
+                  title="Clear Console Output"
+                >
+                  <Trash2 size={13} />
+                </button>
+              </div>
+            }
+          >
+            <div className="space-y-3 pt-2">
+              <p className="text-[12px] text-ink-dim">
+                Direct CLI and PowerShell execution on your Windows workstation. Speak or type commands from your phone.
+              </p>
+
+              {/* Quick Presets */}
+              <div className="flex flex-wrap gap-1.5 items-center">
+                <span className="text-[11px] uppercase tracking-wider text-ink-faint font-semibold mr-1">
+                  Presets:
+                </span>
+                {["git status", "dir", "tasklist", "ipconfig", "whoami", "npm test"].map((preset) => (
+                  <button
+                    key={preset}
+                    onClick={() => {
+                      setTerminalCmd(preset);
+                      handleExecuteTerminal(preset);
+                    }}
+                    disabled={isExecutingCmd}
+                    className="rounded-md border border-ops-line-bright bg-ops-raised/40 px-2 py-0.5 font-mono text-[11px] text-ink hover:bg-ops-raised hover:border-ai transition-colors cursor-pointer"
+                  >
+                    {preset}
+                  </button>
+                ))}
+              </div>
+
+              {/* Terminal Screen Output Window */}
+              <div className="relative rounded-xl border border-slate-800 bg-slate-950 p-3.5 font-mono text-[12px] shadow-inner">
+                <div className="flex items-center justify-between pb-2 border-b border-slate-800/80 text-[11px] text-slate-500">
+                  <span className="flex items-center gap-1.5">
+                    <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+                    PowerShell Core · C:\kirtan\IRIS
+                  </span>
+                  <span>{isExecutingCmd ? "Executing..." : "Ready"}</span>
+                </div>
+
+                <div className="max-h-56 overflow-y-auto space-y-3 py-2 pr-1 select-text">
+                  {terminalHistory.map((entry, idx) => (
+                    <div key={idx} className="space-y-1">
+                      <div className="flex items-center justify-between text-slate-400">
+                        <span className="font-semibold text-emerald-400">
+                          PS &gt; <span className="text-white">{entry.cmd}</span>
+                        </span>
+                        <span className="text-[10px] text-slate-500">{entry.timestamp}</span>
+                      </div>
+                      {entry.stdout && (
+                        <pre className="whitespace-pre-wrap text-slate-300 pl-2 border-l border-slate-800 text-[11px]">
+                          {entry.stdout}
+                        </pre>
+                      )}
+                      {entry.stderr && (
+                        <pre className="whitespace-pre-wrap text-rose-400 pl-2 border-l border-rose-900/60 text-[11px]">
+                          {entry.stderr}
+                        </pre>
+                      )}
+                      <div className="text-[10px] text-slate-600">
+                        [Exit: {entry.returncode}]
+                      </div>
+                    </div>
+                  ))}
+                  <div ref={terminalBottomRef} />
+                </div>
+              </div>
+
+              {/* Terminal Command Input & Voice Mic */}
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  handleExecuteTerminal();
+                }}
+                className="flex gap-2 items-center"
+              >
+                <div className="flex-1 relative flex items-center">
+                  <span className="absolute left-3 font-mono text-[12px] text-emerald-400 select-none">
+                    PS &gt;
+                  </span>
+                  <input
+                    type="text"
+                    value={terminalCmd}
+                    onChange={(e) => setTerminalCmd(e.target.value)}
+                    placeholder="Type or speak command (e.g. git status, dir, npm test)..."
+                    disabled={isExecutingCmd}
+                    className="w-full rounded-md border border-ops-line-bright bg-ops-raised/30 pl-14 pr-10 py-2 font-mono text-[13px] text-ink outline-none focus:border-ai"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleToggleVoiceTerminal}
+                    className={cn(
+                      "absolute right-2 rounded p-1.5 transition-colors cursor-pointer",
+                      isListeningVoice
+                        ? "bg-rose-500 text-white animate-pulse"
+                        : "text-ink-faint hover:text-ink hover:bg-ops-raised",
+                    )}
+                    title="Speak command"
+                  >
+                    <Mic size={14} />
+                  </button>
+                </div>
+
+                <Button type="submit" size="sm" disabled={!terminalCmd.trim() || isExecutingCmd}>
+                  {isExecutingCmd ? "Running..." : "Run ↵"}
+                </Button>
+              </form>
             </div>
           </Panel>
 
