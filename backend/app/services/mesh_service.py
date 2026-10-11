@@ -199,22 +199,24 @@ def lock_privacy_shield(password: str | None = None) -> bool:
         pythonw = Path(python_exe).parent / "pythonw.exe"
         exe_to_use = str(pythonw) if pythonw.exists() else python_exe
 
+        # Write locked state BEFORE launching process so shield process never reads stale locked=False
+        locked_payload = {
+            "locked": True,
+            "pid": None,
+            "password_hash": stored_hash,
+            "salt": stored_salt,
+            "locked_at": datetime.now(UTC).isoformat(),
+        }
+        SHIELD_STATE_FILE.write_text(json.dumps(locked_payload), encoding="utf-8")
+
         proc = subprocess.Popen(
             [exe_to_use, str(SHIELD_SCRIPT_PATH)],
             cwd=str(Path(__file__).resolve().parent.parent.parent),
             close_fds=True,
         )
 
-        SHIELD_STATE_FILE.write_text(
-            json.dumps({
-                "locked": True,
-                "pid": proc.pid,
-                "password_hash": stored_hash,
-                "salt": stored_salt,
-                "locked_at": datetime.now(UTC).isoformat(),
-            }),
-            encoding="utf-8",
-        )
+        locked_payload["pid"] = proc.pid
+        SHIELD_STATE_FILE.write_text(json.dumps(locked_payload), encoding="utf-8")
 
         logger.info("Sovereign Privacy Shield launched successfully (PID: %s)", proc.pid)
         return True

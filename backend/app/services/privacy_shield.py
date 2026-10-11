@@ -62,6 +62,15 @@ class PrivacyShieldApp:
         self.root.bind("<Escape>", lambda e: None)
 
         self._build_ui()
+        try:
+            st = {}
+            if STATE_FILE.exists():
+                st = json.loads(STATE_FILE.read_text(encoding="utf-8"))
+            st["locked"] = True
+            st["pid"] = os.getpid()
+            STATE_FILE.write_text(json.dumps(st), encoding="utf-8")
+        except Exception:
+            pass
         self._poll_ipc_state()
 
     def _build_ui(self):
