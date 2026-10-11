@@ -559,6 +559,10 @@ class LaptopRelayDaemon:
             if cmd == "LOCK_PC":
                 locked = ms.lock_windows_pc()
                 logger.info("Remote LOCK_PC executed: success=%s", locked)
+            elif cmd == "UNLOCK_PC":
+                pin = payload.get("pin")
+                unlocked = ms.unlock_windows_pc(pin=pin)
+                logger.info("Remote UNLOCK_PC executed: success=%s", unlocked)
             elif cmd in ["PING_ALERT", "PING_LAPTOP"]:
                 try:
                     import winsound

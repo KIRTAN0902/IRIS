@@ -148,6 +148,41 @@ def lock_windows_pc() -> bool:
         return False
 
 
+def unlock_windows_pc(pin: str | None = None) -> bool:
+    """Wakes the Windows workstation and optionally types the PIN to unlock."""
+    try:
+        import ctypes
+        import time
+        import win32api
+        import win32con
+
+        # 1. Wake the display monitor using mouse movement
+        ctypes.windll.user32.mouse_event(0x0001, 1, 1, 0, 0)
+        time.sleep(0.1)
+
+        # 2. Press Space to dismiss lock screen wallpaper and reveal PIN input box
+        win32api.keybd_event(win32con.VK_SPACE, 0, 0, 0)
+        win32api.keybd_event(win32con.VK_SPACE, 0, win32con.KEYEVENTF_KEYUP, 0)
+
+        # 3. If PIN provided, type the PIN digits and press Enter
+        if pin:
+            time.sleep(0.4)
+            for char in str(pin):
+                vk = ord(char.upper()) if char.isalnum() else win32con.VK_SPACE
+                win32api.keybd_event(vk, 0, 0, 0)
+                win32api.keybd_event(vk, 0, win32con.KEYEVENTF_KEYUP, 0)
+                time.sleep(0.05)
+
+            time.sleep(0.1)
+            win32api.keybd_event(win32con.VK_RETURN, 0, 0, 0)
+            win32api.keybd_event(win32con.VK_RETURN, 0, win32con.KEYEVENTF_KEYUP, 0)
+
+        return True
+    except Exception as exc:
+        logger.error("Failed to unlock Windows workstation: %s", exc)
+        return False
+
+
 def get_windows_battery() -> dict[str, Any] | None:
     """Reads laptop battery and AC status on Windows."""
     try:

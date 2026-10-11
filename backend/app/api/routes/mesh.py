@@ -634,6 +634,10 @@ async def trigger_remote_command(
         locked = ms.lock_windows_pc()
         return {"command": "LOCK_PC", "executed": locked}
 
+    if req.command == "UNLOCK_PC" and mrs.is_local_windows_host():
+        unlocked = ms.unlock_windows_pc(pin=req.parameters.get("pin"))
+        return {"command": "UNLOCK_PC", "executed": unlocked}
+
     if req.command in ["PING_LAPTOP", "PING_ALERT"] and mrs.is_local_windows_host():
         try:
             import winsound
@@ -644,7 +648,7 @@ async def trigger_remote_command(
 
     # Broadcast remote command locally and across cloud relay
     target = req.target_device or (
-        mrs.LAPTOP_HOST_DEVICE_ID if req.command in ["LOCK_PC", "PING_LAPTOP", "PING_ALERT", "LAUNCH_APP", "TRIGGER_CODER"] else None
+        mrs.LAPTOP_HOST_DEVICE_ID if req.command in ["LOCK_PC", "UNLOCK_PC", "PING_LAPTOP", "PING_ALERT", "LAUNCH_APP", "TRIGGER_CODER"] else None
     )
     msg = ms.MeshMessage(
         type="REMOTE_COMMAND",

@@ -124,6 +124,12 @@ export function ContinuityPage({ initialView }: ContinuityPageProps) {
   const [quickNote, setQuickNote] = useState("");
   const [receivedNotes, setReceivedNotes] = useState<string[]>([]);
   const [isPhoneLocked, setIsPhoneLocked] = useState(false);
+  const [isLaptopLocked, setIsLaptopLocked] = useState(false);
+  const [isPhoneRemotelyLocked, setIsPhoneRemotelyLocked] = useState(false);
+  const [laptopPin, setLaptopPin] = useState(() => {
+    return (typeof window !== "undefined" && localStorage.getItem("iris_laptop_pin")) || "";
+  });
+  const [showPinInput, setShowPinInput] = useState(false);
   const [pairingCode, setPairingCode] = useState<string | null>(null);
   const [isGeneratingCode, setIsGeneratingCode] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -186,7 +192,7 @@ export function ContinuityPage({ initialView }: ContinuityPageProps) {
     }
   };
 
-  // 3. Poll for incoming remote commands (PING, LOCK, etc.)
+  // 3. Poll for incoming remote commands (PING, LOCK, UNLOCK, etc.)
   const pollIncomingRelay = async () => {
     try {
       const res = await api.get<{
@@ -211,6 +217,12 @@ export function ContinuityPage({ initialView }: ContinuityPageProps) {
               setTimeout(() => setStatusMsg(""), 5000);
             } else if (cmd === "LOCK_PHONE") {
               setIsPhoneLocked(true);
+              setStatusMsg("🔒 Screen locked remotely by Laptop.");
+            } else if (cmd === "UNLOCK_PHONE") {
+              setIsPhoneLocked(false);
+              playChime(1050);
+              setStatusMsg("🔓 Phone unlocked remotely by Laptop!");
+              setTimeout(() => setStatusMsg(""), 4000);
             }
           } else if (msg.msg_type === "CLIPBOARD_SYNC") {
             const text = String(msg.payload?.text || "");
@@ -249,10 +261,29 @@ export function ContinuityPage({ initialView }: ContinuityPageProps) {
     setIsLoading(true);
     try {
       await api.post("/mesh/command", { command: "LOCK_PC" });
+      setIsLaptopLocked(true);
       setStatusMsg("🔒 Signal sent: Windows Laptop locked!");
       setTimeout(() => setStatusMsg(""), 4000);
     } catch {
       setStatusMsg("Failed to send lock command.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Action: Unlock Windows Laptop
+  const handleUnlockLaptop = async () => {
+    setIsLoading(true);
+    try {
+      await api.post("/mesh/command", {
+        command: "UNLOCK_PC",
+        parameters: { pin: laptopPin.trim() || undefined },
+      });
+      setIsLaptopLocked(false);
+      setStatusMsg("🔓 Signal sent: Waking and unlocking Laptop!");
+      setTimeout(() => setStatusMsg(""), 4000);
+    } catch {
+      setStatusMsg("Failed to send unlock command.");
     } finally {
       setIsLoading(false);
     }
@@ -297,10 +328,29 @@ export function ContinuityPage({ initialView }: ContinuityPageProps) {
         command: "LOCK_PHONE",
         target_device: primaryPhone?.device_id || null,
       });
+      setIsPhoneRemotelyLocked(true);
       setStatusMsg("🔒 Lock signal sent to phone!");
       setTimeout(() => setStatusMsg(""), 4000);
     } catch {
       setStatusMsg("Failed to lock phone.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Action: Unlock Phone Screen
+  const handleUnlockPhone = async () => {
+    setIsLoading(true);
+    try {
+      await api.post("/mesh/command", {
+        command: "UNLOCK_PHONE",
+        target_device: primaryPhone?.device_id || null,
+      });
+      setIsPhoneRemotelyLocked(false);
+      setStatusMsg("🔓 Unlock signal sent to phone!");
+      setTimeout(() => setStatusMsg(""), 4000);
+    } catch {
+      setStatusMsg("Failed to unlock phone.");
     } finally {
       setIsLoading(false);
     }
@@ -533,18 +583,77 @@ export function ContinuityPage({ initialView }: ContinuityPageProps) {
 
             {/* Laptop Remote Controls */}
             <div className="mt-6">
-              <p className="text-[11px] uppercase tracking-wider text-ink-faint font-semibold mb-3">
-                Remote Controls
-              </p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <Button
-                  onClick={handleLockLaptop}
-                  disabled={isLoading}
-                  className="w-full justify-center bg-ops-raised hover:bg-ops-surface text-ink border border-ops-line py-3 rounded-xl font-medium"
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-[11px] uppercase tracking-wider text-ink-faint font-semibold">
+                  Remote Controls
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setShowPinInput((p) => !p)}
+                  className="text-[11px] text-ops-accent hover:underline font-medium"
                 >
-                  <Lock size={16} className="mr-2 text-amber-400" />
-                  Lock Laptop Screen
-                </Button>
+                  {showPinInput ? "Close PIN Settings" : "Configure Windows PIN"}
+                </button>
+              </div>
+
+              {/* Optional Windows PIN config */}
+              {showPinInput && (
+                <div className="mb-3 rounded-xl border border-ops-line bg-ops-surface p-3 animate-slide-down">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="text-[11px] font-medium text-ink">
+                      Windows Login PIN (stored locally on this phone):
+                    </label>
+                  </div>
+                  <div className="flex gap-2">
+                    <input
+                      type="password"
+                      value={laptopPin}
+                      onChange={(e) => {
+                        setLaptopPin(e.target.value);
+                        localStorage.setItem("iris_laptop_pin", e.target.value);
+                      }}
+                      placeholder="e.g. 1234 (optional for auto-unlock)"
+                      className="flex-1 rounded-lg border border-ops-line bg-ops-ground px-3 py-1.5 text-xs text-ink placeholder:text-ink-faint focus:border-ops-accent focus:outline-none"
+                    />
+                    {laptopPin && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setLaptopPin("");
+                          localStorage.removeItem("iris_laptop_pin");
+                        }}
+                        className="rounded-lg px-2 text-xs text-red-400 hover:bg-ops-raised"
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
+                  <p className="mt-1.5 text-[10px] text-ink-faint">
+                    When you tap Unlock, IRIS automatically wakes your laptop display, presses Space, and enters your PIN.
+                  </p>
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {isLaptopLocked ? (
+                  <Button
+                    onClick={handleUnlockLaptop}
+                    disabled={isLoading}
+                    className="w-full justify-center bg-emerald-600 hover:bg-emerald-500 text-white py-3 rounded-xl font-medium shadow-md"
+                  >
+                    <Unlock size={16} className="mr-2" />
+                    Unlock Laptop (Wake & PIN)
+                  </Button>
+                ) : (
+                  <Button
+                    onClick={handleLockLaptop}
+                    disabled={isLoading}
+                    className="w-full justify-center bg-ops-raised hover:bg-ops-surface text-ink border border-ops-line py-3 rounded-xl font-medium"
+                  >
+                    <Lock size={16} className="mr-2 text-amber-400" />
+                    Lock Laptop Screen
+                  </Button>
+                )}
 
                 <Button
                   onClick={handlePingLaptop}
@@ -674,14 +783,25 @@ export function ContinuityPage({ initialView }: ContinuityPageProps) {
                     Ring / Ping Phone
                   </Button>
 
-                  <Button
-                    onClick={handleLockPhone}
-                    disabled={isLoading}
-                    className="w-full justify-center bg-ops-raised hover:bg-ops-surface text-ink border border-ops-line py-3 rounded-xl font-medium"
-                  >
-                    <Lock size={16} className="mr-2 text-amber-400" />
-                    Lock Phone Screen
-                  </Button>
+                  {isPhoneRemotelyLocked ? (
+                    <Button
+                      onClick={handleUnlockPhone}
+                      disabled={isLoading}
+                      className="w-full justify-center bg-emerald-600 hover:bg-emerald-500 text-white py-3 rounded-xl font-medium shadow-md"
+                    >
+                      <Unlock size={16} className="mr-2" />
+                      Unlock Phone Screen
+                    </Button>
+                  ) : (
+                    <Button
+                      onClick={handleLockPhone}
+                      disabled={isLoading}
+                      className="w-full justify-center bg-ops-raised hover:bg-ops-surface text-ink border border-ops-line py-3 rounded-xl font-medium"
+                    >
+                      <Lock size={16} className="mr-2 text-amber-400" />
+                      Lock Phone Screen
+                    </Button>
+                  )}
                 </div>
               </div>
             )}
