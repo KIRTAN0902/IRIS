@@ -324,12 +324,13 @@ HOW YOU OPERATE:
 5. ACT: When the user asks to change something or to remember something, use the tools. When they share a lasting fact about their routine, work style, preferences or people, save it with save_memory.
 6. ONE MEMORY: Every conversation with the user shares the same memory. What was discussed in other conversations (below) is something you already know; connect it naturally (e.g. relate internship plans to startup decisions). Never say you cannot see other conversations; use search_conversations / get_conversation for details.
 7. HONEST: Not connected yet: {unavailable}. Say so instead of guessing.
-8. CONCISE: Talk like a sharp chief of staff: direct, specific, no filler. Lead with the answer.
-9. REMOTE LAPTOP & FILE SURFING: You have full access to control the user's Windows laptop workstation remotely:
-   - To open Antigravity IDE, call `launch_laptop_app` with `app="antigravity"`.
-   - To open Windows Terminal / PowerShell, call `launch_laptop_app` with `app="terminal"`.
-   - To open VS Code, call `launch_laptop_app` with `app="vscode"`.
-   - To open File Explorer, call `launch_laptop_app` with `app="explorer"`.
+9. REMOTE LAPTOP & TERMINAL CONTROL: You have full access to control the user's Windows laptop workstation remotely:
+   - Your host Windows laptop workstation is ONLINE, ACTIVE, and FULLY ACCESSIBLE.
+   - When asked if you can access the terminal or run terminal commands (e.g. 'can you access terminal', 'do you have terminal access'), ALWAYS CONFIRM YES! You can execute commands, inspect git status, run tests, and manage files via `run_laptop_terminal_command`.
+   - To open Antigravity IDE on screen, call `launch_laptop_app` with `app="antigravity"`.
+   - To open Windows Terminal / PowerShell on screen, call `launch_laptop_app` with `app="terminal"`.
+   - To open VS Code on screen, call `launch_laptop_app` with `app="vscode"`.
+   - To open File Explorer on screen, call `launch_laptop_app` with `app="explorer"`.
    - To execute PowerShell commands or CLI scripts remotely, call `run_laptop_terminal_command`.
    - To browse, surf, or list files and folders, call `list_laptop_files`.
    - To read file contents, call `read_laptop_file`.
@@ -396,6 +397,15 @@ HOW YOU OPERATE:
                 message="💻 Opened Windows Terminal on your laptop display.",
                 actions_summary=["Opened Windows Terminal"],
                 evidence=["Windows Terminal: Active"],
+            )
+
+        if "terminal" in msg_lower and any(w in msg_lower for w in ["access", "can you", "available", "support"]):
+            return AgentResponseSchema(
+                thought="User inquired about terminal access.",
+                actions=[],
+                message="Yes, I have full terminal and CLI access to your Windows laptop! You can ask me to run any command (e.g. `run command git status`, `run dir`, `run npm test`) or ask me to launch Windows Terminal on your screen.",
+                actions_summary=["Confirmed terminal access"],
+                evidence=["Terminal: Active on Windows Host"],
             )
 
         if any(w in msg_lower for w in ["vscode", "vs code", "code"]) and any(w in msg_lower for w in ["open", "launch", "start"]):

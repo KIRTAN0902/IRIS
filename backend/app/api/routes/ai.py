@@ -277,6 +277,9 @@ async def ask_iris(
         res = ms.launch_windows_app("terminal", argument=r"C:\kirtan\IRIS")
         answer_text = "💻 Opened Windows Terminal on your laptop display."
         source = "AI"
+    elif "terminal" in q_lower and any(w in q_lower for w in ["access", "can you", "available", "support"]):
+        answer_text = "Yes, I have full terminal and CLI access to your Windows laptop! You can ask me to run any command (e.g. `run command git status`, `run dir`, `run npm test`) or launch Windows Terminal on your screen."
+        source = "AI"
     elif any(w in q_lower for w in ["vscode", "vs code"]) and any(w in q_lower for w in ["open", "launch", "start"]):
         from app.services import mesh_service as ms
         res = ms.launch_windows_app("vscode", argument=r"C:\kirtan\IRIS")

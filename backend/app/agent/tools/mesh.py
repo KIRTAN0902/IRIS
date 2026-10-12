@@ -85,6 +85,22 @@ class GetDeviceMeshStatusTool(Tool):
         from app.services import mesh_relay_service as mrs
 
         active_devices = [d.model_dump(mode="json") for d in ms.hub.devices.values()]
+        host_info = mrs.get_laptop_host_info(db, user.id)
+        is_host_online = host_info.get("is_online", False) or mrs.is_local_windows_host()
+
+        # Ensure the Windows host laptop is explicitly listed as active and online
+        if is_host_online:
+            active_devices.append({
+                "device_id": mrs.LAPTOP_HOST_DEVICE_ID,
+                "device_name": host_info.get("device_name", "Windows Workstation"),
+                "device_type": "laptop_windows",
+                "battery_level": host_info.get("battery_level"),
+                "is_charging": host_info.get("is_charging"),
+                "is_online": True,
+                "status": "online",
+                "capabilities": ["terminal_command", "antigravity", "file_surfing", "desktop_control"],
+            })
+
         paired_devices = [
             {
                 "id": p.id,
@@ -96,16 +112,32 @@ class GetDeviceMeshStatusTool(Tool):
             }
             for p in mrs.list_paired_devices(db, user.id)
         ]
-        battery = ms.get_windows_battery()
-        summary = f"{len(active_devices)} device(s) connected to IRIS Mesh."
+        battery = ms.get_windows_battery() or {"percent": host_info.get("battery_level"), "is_charging": host_info.get("is_charging")}
+
+        summary_parts = []
+        if is_host_online:
+            bat_pct = host_info.get("battery_level") or (battery.get("percent") if isinstance(battery, dict) else None)
+            bat_txt = f" (Battery: {bat_pct}%)" if bat_pct is not None else ""
+            summary_parts.append(f"Windows Laptop workstation is ONLINE and ACTIVE{bat_txt} with full terminal & filesystem access.")
+        else:
+            summary_parts.append("Windows Laptop is currently offline.")
+
+        other_count = len(ms.hub.devices.values())
+        if other_count:
+            summary_parts.append(f"{other_count} companion device(s) connected.")
+
+        summary = " ".join(summary_parts)
         return ToolResult(
             tool_name=self.name,
             success=True,
             data={
+                "laptop_online": is_host_online,
+                "terminal_access_available": is_host_online,
                 "devices": active_devices,
                 "active_devices": active_devices,
                 "paired_devices": paired_devices,
                 "host_battery": battery,
+                "laptop_host": host_info,
             },
             summary=summary,
         )
