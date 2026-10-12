@@ -335,7 +335,11 @@ HOW YOU OPERATE:
    - To browse, surf, or list files and folders, call `list_laptop_files`.
    - To read file contents, call `read_laptop_file`.
    - To open a file or folder on the physical laptop screen, call `open_laptop_file`.
-   When the user asks via voice or chat to open Antigravity, run commands, or surf/read files, always use these tools immediately!""",
+   When the user asks via voice or chat to open Antigravity, run commands, or surf/read files, always use these tools immediately!
+10. GOOGLE DRIVE INTEGRATION: You have tools to search, read, and upload files to Google Drive:
+   - To view or search files in Google Drive, call `list_google_drive_files` or `search_google_drive`.
+   - To retrieve and read the text of a document or Google Doc, call `read_google_drive_file`.
+   - To upload notes, briefings, project plans, or laptop files to Google Drive (and NotebookLM sources), call `upload_to_google_drive`.""",
         ]
         if personal_model:
             sections.append(personal_model)
@@ -469,6 +473,19 @@ HOW YOU OPERATE:
                     message=f"📂 Here are the files in `C:\\kirtan\\IRIS`:\n{items_str}",
                     actions_summary=["Listed repository files"],
                     evidence=["Files listed from C:\\kirtan\\IRIS"],
+                )
+
+        # Check for Google Drive queries
+        if "google drive" in msg_lower or ("drive" in msg_lower and any(w in msg_lower for w in ["access", "files", "list", "upload", "search", "retrieve", "connect"])):
+            from app.services.google_drive_service import drive_service
+            acc = drive_service.get_drive_account(db, user.id)
+            if not acc:
+                return AgentResponseSchema(
+                    thought="User asked about Google Drive.",
+                    actions=[],
+                    message="Google Drive integration is ready to be linked! Run `python scripts/connect_drive.py` in your terminal to authorize your Google account. Once connected, I can upload, search, and read your Drive documents anytime.",
+                    actions_summary=["Checked Google Drive connection"],
+                    evidence=["Google Drive: Awaiting OAuth consent"],
                 )
 
         # Check for remote command execution ("run command", "terminal <cmd>", "exec <cmd>")

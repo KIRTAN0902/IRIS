@@ -17,6 +17,7 @@ from app.agent.tools.awareness import (
 from app.agent.tools.actions import action_tools
 from app.agent.tools.base import Tool
 from app.agent.tools.coding import coding_tools
+from app.agent.tools.drive import drive_tools
 from app.agent.tools.email import email_tools
 from app.agent.tools.finance import finance_tools
 from app.agent.tools.habits import habit_tools
@@ -179,6 +180,10 @@ def create_default_registry() -> ToolRegistry:
 
     # Autonomous Antigravity Coding
     for tool in coding_tools():
+        registry.register(tool)
+
+    # Google Drive document retrieval & uploads
+    for tool in drive_tools():
         registry.register(tool)
 
     # IRIS Mesh Continuity Ecosystem

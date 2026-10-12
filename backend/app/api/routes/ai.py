@@ -310,6 +310,14 @@ async def ask_iris(
         out_str = (res.get("stdout") or res.get("stderr") or "Command completed with no output.").strip()
         answer_text = f"💻 Output for `{clean_cmd}` (Exit {res.get('returncode', 0)}):\n```\n{out_str[:2000]}\n```"
         source = "AI"
+    elif "google drive" in q_lower or ("drive" in q_lower and any(w in q_lower for w in ["access", "files", "list", "upload", "search", "retrieve", "connect"])):
+        from app.services.google_drive_service import drive_service
+        acc = drive_service.get_drive_account(db, user.id)
+        if not acc:
+            answer_text = "Google Drive integration is ready to be linked! Run `python scripts/connect_drive.py` in your terminal to authorize your Google account. Once connected, I can upload, search, and read your Drive documents anytime."
+        else:
+            answer_text = f"Google Drive is connected to `{acc.email_address}`! You can ask me to search Drive, read specific documents, or upload files directly."
+        source = "AI"
 
     if answer_text is None and provider.enabled:
         try:

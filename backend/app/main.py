@@ -87,6 +87,7 @@ def create_app() -> FastAPI:
         assistant,
         chat,
         coding,
+        drive,
         email,
         finance,
         habits,
@@ -122,6 +123,7 @@ def create_app() -> FastAPI:
     app.include_router(assistant.router, prefix=api)
     app.include_router(voice.router, prefix=api)
     app.include_router(email.router, prefix=api)
+    app.include_router(drive.router, prefix=api)
     app.include_router(coding.router, prefix=api)
     app.include_router(mesh.router, prefix=api)
     app.include_router(finance.router, prefix=api)

@@ -97,6 +97,11 @@ class Settings(BaseSettings):
     gmail_client_secret: str | None = None
     gmail_redirect_uri: str = "http://localhost:8000/api/email/auth/callback"
 
+    # --- Google Drive Integration ---
+    google_drive_client_id: str | None = None
+    google_drive_client_secret: str | None = None
+    google_drive_redirect_uri: str = "http://localhost:8085/"
+
     @property
     def is_development(self) -> bool:
         return self.environment.lower() == "development"
