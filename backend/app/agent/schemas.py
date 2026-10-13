@@ -72,7 +72,7 @@ class AgentResponseSchema(BaseModel):
 class ChatMessageIn(BaseModel):
     """User input payload for a chat message."""
 
-    content: str = Field(..., min_length=1, max_length=4000, description="User's input")
+    content: str = Field(..., min_length=1, max_length=120_000, description="User's input")
     voice: bool = Field(False, description="Spoken by voice; the reply will be read aloud")
     defer_memory: bool = Field(
         False, description="Reply first; the client then calls POST /chat/messages/{id}/remember"

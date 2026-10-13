@@ -94,7 +94,7 @@ export function AskIrisConsole() {
                 value={question}
                 onChange={(e) => setQuestion(e.target.value)}
                 placeholder="Ask IRIS anything about your life…"
-                maxLength={2000}
+                maxLength={120000}
                 aria-label="Ask IRIS"
                 className="flex-1 bg-transparent text-[15px] text-ink placeholder:text-ink-faint focus:outline-none"
               />

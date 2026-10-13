@@ -37,7 +37,7 @@ def _ai_meta(source: str) -> dict:
 
 
 class AskIn(BaseModel):
-    question: str = Field(..., min_length=3, max_length=2000)
+    question: str = Field(..., min_length=3, max_length=120_000)
     conversation_id: int | None = None
 
 
