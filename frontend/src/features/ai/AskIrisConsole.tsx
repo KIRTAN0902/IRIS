@@ -81,11 +81,12 @@ export function AskIrisConsole() {
         >
           <div className="w-full max-w-2xl border border-ops-line-bright bg-ops-panel">
             <form
+              onClick={() => inputRef.current?.focus()}
               onSubmit={(e) => {
                 e.preventDefault();
                 submit(question);
               }}
-              className="flex items-center gap-3 border-b border-ops-line px-4 py-3"
+              className="flex items-center gap-3 border-b border-ops-line px-4 py-3 cursor-text"
             >
               <Lamp tone="ai" pulse />
               <input
@@ -94,11 +95,10 @@ export function AskIrisConsole() {
                 onChange={(e) => setQuestion(e.target.value)}
                 placeholder="Ask IRIS anything about your life…"
                 maxLength={2000}
-                minLength={3}
                 aria-label="Ask IRIS"
                 className="flex-1 bg-transparent text-[15px] text-ink placeholder:text-ink-faint focus:outline-none"
               />
-              <kbd className="border border-ops-line px-1.5 text-[10px] text-ink-faint">
+              <kbd className="border border-ops-line px-1.5 text-[10px] text-ink-faint select-none">
                 esc
               </kbd>
             </form>

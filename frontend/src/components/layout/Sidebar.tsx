@@ -380,8 +380,7 @@ function ConversationList() {
   const navigate = useNavigate();
   const del = useDeleteConversation();
 
-  const remove = (id: number, title: string) => {
-    if (!window.confirm(`Delete "${title}"? This can't be undone.`)) return;
+  const remove = (id: number) => {
     del.mutate(id, {
       onSuccess: () => {
         if (onHome && activeId === id) navigate("/");
@@ -418,7 +417,7 @@ function ConversationList() {
               </NavLink>
               {/* Always shown in the phone drawer; on hover in the desktop sidebar. */}
               <button
-                onClick={() => remove(c.id, title)}
+                onClick={() => remove(c.id)}
                 disabled={del.isPending && del.variables === c.id}
                 aria-label={`Delete conversation "${title}"`}
                 title="Delete conversation"

@@ -129,7 +129,7 @@ function Conversation({
         <div className="flex-1">
           <TodayDashboard />
         </div>
-        <div className="sticky bottom-14 md:bottom-0 bg-gradient-to-t from-ops-ground from-75% to-transparent pb-4 pt-6">
+        <div className="sticky bottom-14 md:bottom-0 z-20 relative bg-gradient-to-t from-ops-ground from-75% to-transparent pb-4 pt-6">
           {composer}
         </div>
       </div>
@@ -170,7 +170,7 @@ function Conversation({
         <div ref={endRef} />
       </div>
 
-      <div className="sticky bottom-14 md:bottom-0 bg-gradient-to-t from-ops-ground from-75% to-transparent pb-4 pt-6">
+      <div className="sticky bottom-14 md:bottom-0 z-20 relative bg-gradient-to-t from-ops-ground from-75% to-transparent pb-4 pt-6">
         {composer}
       </div>
     </div>
@@ -183,7 +183,7 @@ function Composer({
   onSend,
   onVoice,
   disabled,
-  autoFocus,
+  autoFocus = true,
 }: {
   value: string;
   onChange: (v: string) => void;
@@ -201,14 +201,15 @@ function Composer({
     el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
   }, [value]);
 
-  const ready = value.trim() && !disabled;
+  const ready = Boolean(value.trim()) && !disabled;
   return (
     <form
+      onClick={() => ref.current?.focus()}
       onSubmit={(e) => {
         e.preventDefault();
-        onSend();
+        if (ready) onSend();
       }}
-      className="flex items-end gap-2 rounded-3xl border border-ops-line-bright bg-ops-void px-4 py-2.5 focus-within:border-ink-faint"
+      className="flex items-end gap-2 rounded-3xl border border-ops-line-bright bg-ops-void px-4 py-2.5 focus-within:border-ink-faint cursor-text relative z-10"
     >
       <textarea
         ref={ref}
@@ -218,17 +219,19 @@ function Composer({
         onKeyDown={(e) => {
           if (e.key === "Enter" && !e.shiftKey) {
             e.preventDefault();
-            onSend();
+            if (ready) onSend();
           }
         }}
         placeholder="Ask IRIS anything"
         rows={1}
-        disabled={disabled}
         className="min-h-[28px] max-h-52 flex-1 resize-none bg-transparent py-1 text-[15px] leading-relaxed text-ink placeholder:text-ink-faint focus:outline-none"
       />
       <button
         type="button"
-        onClick={onVoice}
+        onClick={(e) => {
+          e.stopPropagation();
+          onVoice();
+        }}
         disabled={disabled}
         aria-label="Talk to IRIS"
         title="Talk to IRIS"
@@ -239,6 +242,7 @@ function Composer({
       <button
         type="submit"
         disabled={!ready}
+        onClick={(e) => e.stopPropagation()}
         aria-label="Send"
         className={cn(
           "mb-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-opacity",
