@@ -349,11 +349,112 @@ def get_windows_battery() -> dict[str, Any] | None:
     return None
 
 
+def _bring_app_window_to_foreground(pid: int | None, app_name: str, keywords: list[str]) -> None:
+    """Finds the desktop window created by the launched application and brings it to the top.
+
+    Bypasses Windows Foreground Lock Timeout (Focus Stealing Prevention) by attaching
+    thread input and synthesizing menu key events so the window pops in front of
+    fullscreen or maximized applications (e.g. Chrome / YouTube).
+    """
+    import os
+    import time
+
+    if os.name != "nt":
+        return
+
+    import ctypes
+    from ctypes import wintypes
+
+    user32 = ctypes.windll.user32
+    kernel32 = ctypes.windll.kernel32
+
+    # Give the application process time to initialize its top-level window
+    time.sleep(0.35)
+
+    # Attach to interactive window station and default desktop
+    try:
+        h_winsta0 = user32.OpenWindowStationW("WinSta0", False, 0x037F)
+        if h_winsta0:
+            user32.SetProcessWindowStation(h_winsta0)
+        h_default = user32.OpenDesktopW("default", 0, False, 0x01FF)
+        if h_default:
+            user32.SetThreadDesktop(h_default)
+    except Exception:
+        pass
+
+    target_keywords = [k.lower() for k in keywords if k]
+    if app_name:
+        target_keywords.append(app_name.lower())
+
+    for _ in range(8):
+        matched_hwnds: list[int] = []
+
+        def enum_cb(hwnd: int, lparam: int) -> bool:
+            if user32.IsWindowVisible(hwnd):
+                wpid = wintypes.DWORD()
+                user32.GetWindowThreadProcessId(hwnd, ctypes.byref(wpid))
+                if pid and wpid.value == pid:
+                    matched_hwnds.append(hwnd)
+                    return True
+
+                title_buf = ctypes.create_unicode_buffer(256)
+                user32.GetWindowTextW(hwnd, title_buf, 256)
+                cls_buf = ctypes.create_unicode_buffer(256)
+                user32.GetClassNameW(hwnd, cls_buf, 256)
+
+                combined = f"{title_buf.value} {cls_buf.value}".lower()
+                for kw in target_keywords:
+                    if kw in combined:
+                        matched_hwnds.append(hwnd)
+                        break
+            return True
+
+        WNDENUMPROC = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p)
+        try:
+            h_desk = user32.GetThreadDesktop(kernel32.GetCurrentThreadId())
+            user32.EnumDesktopWindows(h_desk, WNDENUMPROC(enum_cb), 0)
+        except Exception:
+            pass
+
+        if matched_hwnds:
+            for hwnd in matched_hwnds:
+                try:
+                    # 1. Restore if minimized
+                    user32.ShowWindow(hwnd, 9)  # SW_RESTORE
+
+                    # 2. Bypass foreground lock via Alt key injection
+                    VK_MENU = 0x12
+                    KEYEVENTF_KEYUP = 0x0002
+                    user32.keybd_event(VK_MENU, 0, 0, 0)
+                    user32.SetForegroundWindow(hwnd)
+                    user32.BringWindowToTop(hwnd)
+                    user32.keybd_event(VK_MENU, 0, KEYEVENTF_KEYUP, 0)
+
+                    # 3. AttachThreadInput fallback to guarantee top z-order
+                    fg_hwnd = user32.GetForegroundWindow()
+                    if fg_hwnd != hwnd:
+                        fg_thread = user32.GetWindowThreadProcessId(fg_hwnd, None)
+                        target_thread = user32.GetWindowThreadProcessId(hwnd, None)
+                        cur_thread = kernel32.GetCurrentThreadId()
+                        user32.AttachThreadInput(cur_thread, fg_thread, True)
+                        user32.AttachThreadInput(target_thread, fg_thread, True)
+                        user32.SetForegroundWindow(hwnd)
+                        user32.BringWindowToTop(hwnd)
+                        user32.AttachThreadInput(cur_thread, fg_thread, False)
+                        user32.AttachThreadInput(target_thread, fg_thread, False)
+                except Exception:
+                    pass
+            break
+
+        time.sleep(0.3)
+
+
 def launch_windows_app(app_name: str = "antigravity", argument: str | None = None) -> dict[str, Any]:
     """Launches or focuses a desktop application on the Windows laptop."""
     import os
     import shutil
     import subprocess
+    import threading
     from pathlib import Path
 
     app_clean = app_name.strip().lower().replace("-", "").replace(" ", "").replace("_", "")
@@ -362,9 +463,11 @@ def launch_windows_app(app_name: str = "antigravity", argument: str | None = Non
 
     cmd: list[str] = []
     target_dir = argument or default_workspace
+    keywords: list[str] = [app_clean]
 
     # 1. Antigravity IDE / Antigravity
     if any(k in app_clean for k in ["antigravity", "agy"]):
+        keywords = ["antigravity", "agy"]
         antigravity_candidates = [
             user_home / r"AppData\Local\Programs\Antigravity IDE\Antigravity IDE.exe",
             user_home / r"AppData\Local\Programs\Antigravity\Antigravity.exe",
@@ -390,6 +493,7 @@ def launch_windows_app(app_name: str = "antigravity", argument: str | None = Non
 
     # 2. VS Code
     elif "vscode" in app_clean or "code" in app_clean:
+        keywords = ["visual studio code", "code"]
         code_path = shutil.which("code.cmd") or shutil.which("code.exe") or shutil.which("code")
         if not code_path:
             cand = user_home / r"AppData\Local\Programs\Microsoft VS Code\Code.exe"
@@ -402,31 +506,27 @@ def launch_windows_app(app_name: str = "antigravity", argument: str | None = Non
 
     # 3. Terminal / PowerShell
     elif any(k in app_clean for k in ["terminal", "powershell", "pwsh", "wt", "cmd", "console"]):
-        wt_candidates = [
-            shutil.which("wt.exe"),
-            shutil.which("wt"),
-            user_home / r"AppData\Local\Microsoft\WindowsApps\wt.exe",
-            Path(r"C:\Users\shahk\AppData\Local\Microsoft\WindowsApps\wt.exe"),
-        ]
-        wt_available = any(c and Path(c).exists() for c in wt_candidates)
+        keywords = ["cascadia", "cmd", "powershell", "terminal", "pwsh"]
+        sys_root = os.environ.get("SystemRoot", r"C:\Windows")
+        ps_path = Path(sys_root) / r"System32\WindowsPowerShell\v1.0\powershell.exe"
+        ps_bin = str(ps_path) if ps_path.exists() else "powershell.exe"
 
-        # On Windows, launching an interactive terminal from a background daemon requires 'cmd.exe /c start'
-        # so the Windows Shell (Explorer) opens a real, visible foreground window on the active desktop.
-        if wt_available and "powershell" not in app_clean and "cmd" not in app_clean:
-            # Force a brand new window with '-w -1' so it never hides inside an invisible background tab
+        if "wt" in app_clean or "windowsterminal" in app_clean:
             cmd = ["cmd.exe", "/c", "start", "wt.exe", "-w", "-1", "-d", target_dir]
+        elif "cmd" in app_clean:
+            cmd = ["cmd.exe", "/c", "start", "cmd.exe", "/k", f"cd /d {target_dir}"]
         else:
-            sys_root = os.environ.get("SystemRoot", r"C:\Windows")
-            ps_path = Path(sys_root) / r"System32\WindowsPowerShell\v1.0\powershell.exe"
-            ps_bin = str(ps_path) if ps_path.exists() else "powershell.exe"
+            # Standard interactive PowerShell launcher
             cmd = ["cmd.exe", "/c", "start", ps_bin, "-NoExit", "-Command", f"Set-Location '{target_dir}'"]
 
     # 4. Chrome / Web Browser
     elif "chrome" in app_clean or "browser" in app_clean:
+        keywords = ["chrome"]
         cmd = ["explorer.exe", argument or "http://localhost:5173"]
 
     # 5. Explorer / Files
     elif "explorer" in app_clean or "files" in app_clean:
+        keywords = ["cabinetwclass", "explorer"]
         cmd = ["explorer.exe", target_dir]
 
     # 6. Generic executable fallback
@@ -447,6 +547,14 @@ def launch_windows_app(app_name: str = "antigravity", argument: str | None = Non
         proc = subprocess.Popen(cmd, shell=False)
         app_label = cmd[0] if cmd else app_name
         logger.info("Launched desktop application: %s (PID: %s)", app_label, proc.pid)
+
+        # Trigger background window bring-to-top to bypass Windows foreground locks
+        threading.Thread(
+            target=_bring_app_window_to_foreground,
+            args=(proc.pid, app_name, keywords),
+            daemon=True,
+        ).start()
+
         return {
             "success": True,
             "app": app_name,
@@ -462,6 +570,7 @@ def launch_windows_app(app_name: str = "antigravity", argument: str | None = Non
             "error": str(exc),
             "message": f"Could not launch {app_name}: {exc}",
         }
+
 
 
 def execute_terminal_command(
