@@ -170,6 +170,12 @@ class LaunchLaptopAppTool(Tool):
         app_name = kwargs.get("app", "antigravity")
         arg = kwargs.get("argument")
 
+        # Default terminal to user's home directory if not explicitly specified
+        if any(k in app_name.lower() for k in ["terminal", "powershell", "cmd", "console", "wt"]):
+            if not arg or arg.strip().lower() in ["home", "~", "default", ""]:
+                from pathlib import Path
+                arg = str(Path.home())
+
         if mrs.is_local_windows_host():
             res = ms.launch_windows_app(app_name=app_name, argument=arg)
         else:

@@ -391,14 +391,16 @@ HOW YOU OPERATE:
             )
 
         if "terminal" in msg_lower and any(w in msg_lower for w in ["open", "launch", "start", "wt"]):
+            from pathlib import Path
             from app.services import mesh_service as ms
-            res = ms.launch_windows_app("terminal", argument=r"C:\kirtan\IRIS")
+            home_dir = str(Path.home())
+            res = ms.launch_windows_app("terminal", argument=home_dir)
             return AgentResponseSchema(
-                thought="User commanded to open Windows Terminal.",
+                thought="User commanded to open Terminal in home directory.",
                 actions=[],
-                message="💻 Opened Windows Terminal on your laptop display.",
-                actions_summary=["Opened Windows Terminal"],
-                evidence=["Windows Terminal: Active"],
+                message="💻 Opened Terminal in your home directory on your laptop display.",
+                actions_summary=["Opened Terminal in home directory"],
+                evidence=["Terminal: Active in Home Directory"],
             )
 
         if "terminal" in msg_lower and any(w in msg_lower for w in ["access", "can you", "available", "support"]):

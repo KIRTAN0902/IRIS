@@ -748,9 +748,11 @@ def open_laptop_terminal(
     db: Session = Depends(get_db),
     user: User = Depends(current_user),
 ):
-    """Opens an interactive Windows Terminal / PowerShell window on the laptop desktop."""
+    """Opens an interactive Windows Terminal / PowerShell window on the laptop desktop in user's home directory."""
+    from pathlib import Path
+    target_arg = argument or str(Path.home())
     if mrs.is_local_windows_host():
-        return ms.launch_windows_app(app_name="terminal", argument=argument)
+        return ms.launch_windows_app(app_name="terminal", argument=target_arg)
 
     mrs.push_relay_message(
         db=db,
@@ -758,7 +760,7 @@ def open_laptop_terminal(
         sender_device_id="mobile_web_client",
         target_device_id=mrs.LAPTOP_HOST_DEVICE_ID,
         msg_type="REMOTE_COMMAND",
-        payload={"command": "LAUNCH_APP", "app": "terminal", "argument": argument},
+        payload={"command": "LAUNCH_APP", "app": "terminal", "argument": target_arg},
     )
     return {"success": True, "message": "Dispatched terminal launch to laptop across Sovereign Relay."}
 

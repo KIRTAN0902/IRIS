@@ -511,13 +511,21 @@ def launch_windows_app(app_name: str = "antigravity", argument: str | None = Non
         ps_path = Path(sys_root) / r"System32\WindowsPowerShell\v1.0\powershell.exe"
         ps_bin = str(ps_path) if ps_path.exists() else "powershell.exe"
 
-        if "wt" in app_clean or "windowsterminal" in app_clean:
-            cmd = ["cmd.exe", "/c", "start", "wt.exe", "-w", "-1", "-d", target_dir]
-        elif "cmd" in app_clean:
-            cmd = ["cmd.exe", "/c", "start", "cmd.exe", "/k", f"cd /d {target_dir}"]
+        # By default, open the terminal in the user's home directory (e.g. C:\Users\shahk)
+        home_path = str(user_home)
+        if argument and argument.strip().lower() not in ["home", "~", "default", ""] and argument != default_workspace:
+            expanded = os.path.expanduser(argument.strip())
+            term_dir = str(Path(expanded).resolve()) if os.path.exists(expanded) else home_path
         else:
-            # Standard interactive PowerShell launcher
-            cmd = ["cmd.exe", "/c", "start", ps_bin, "-NoExit", "-Command", f"Set-Location '{target_dir}'"]
+            term_dir = home_path
+
+        if "wt" in app_clean or "windowsterminal" in app_clean:
+            cmd = ["cmd.exe", "/c", "start", "wt.exe", "-w", "-1", "-d", term_dir]
+        elif "cmd" in app_clean:
+            cmd = ["cmd.exe", "/c", "start", "cmd.exe", "/k", f"cd /d {term_dir}"]
+        else:
+            # Standard interactive PowerShell launcher in user's home directory
+            cmd = ["cmd.exe", "/c", "start", ps_bin, "-NoExit", "-Command", f"Set-Location '{term_dir}'"]
 
     # 4. Chrome / Web Browser
     elif "chrome" in app_clean or "browser" in app_clean:
