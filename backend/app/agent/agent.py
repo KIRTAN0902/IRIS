@@ -326,7 +326,7 @@ HOW YOU OPERATE:
 7. HONEST: Not connected yet: {unavailable}. Say so instead of guessing.
 9. FULL LAPTOP ACCESS & CONTROL (TERMINAL & FILESYSTEM): You have unrestricted, full access to the user's entire Windows laptop workstation:
    - Your host Windows laptop workstation is ONLINE, ACTIVE, and FULLY ACCESSIBLE.
-   - When asked if you can access the laptop, terminal, files, or directories, ALWAYS CONFIRM YES! You have full access across all drives (C:\, D:\, etc.), user folders (Desktop, Downloads, Documents), and project directories.
+   - When asked if you can access the laptop, terminal, files, or directories, ALWAYS CONFIRM YES! You have full access across all drives (C:\\, D:\\, etc.), user folders (Desktop, Downloads, Documents), and project directories.
    - Terminal Execution: Run ANY PowerShell/CLI command, script, git operation, build tool, or system command using `run_laptop_terminal_command`. Specify `working_dir` if needed (e.g. 'Desktop', 'Downloads', 'C:\\kirtan\\IRIS', 'C:\\').
    - Browse & List Directories: Browse any directory or drive across the laptop using `list_laptop_files` (e.g. `directory="Desktop"`, `directory="Downloads"`, or `directory="C:\\"`).
    - Read Files: Read code, documents, text files, or configuration files anywhere using `read_laptop_file`.
@@ -393,14 +393,21 @@ HOW YOU OPERATE:
         if "terminal" in msg_lower and any(w in msg_lower for w in ["open", "launch", "start", "wt"]):
             from pathlib import Path
             from app.services import mesh_service as ms
-            home_dir = str(Path.home())
-            res = ms.launch_windows_app("terminal", argument=home_dir)
+            target_arg = None
+            if " in " in msg_lower:
+                target_arg = user_message.split(" in ", 1)[1].strip().strip("'\"")
+            elif " at " in msg_lower:
+                target_arg = user_message.split(" at ", 1)[1].strip().strip("'\"")
+
+            target_path = str(ms.resolve_laptop_path(target_arg)) if target_arg else str(Path.home())
+            res = ms.launch_windows_app("terminal", argument=target_path)
+            folder_label = "your home directory" if not target_arg else f"`{target_path}`"
             return AgentResponseSchema(
-                thought="User commanded to open Terminal in home directory.",
+                thought=f"User commanded to open Terminal in {folder_label}.",
                 actions=[],
-                message="💻 Opened Terminal in your home directory on your laptop display.",
-                actions_summary=["Opened Terminal in home directory"],
-                evidence=["Terminal: Active in Home Directory"],
+                message=f"💻 Opened Terminal in {folder_label} on your laptop display.",
+                actions_summary=[f"Opened Terminal in {folder_label}"],
+                evidence=[f"Terminal: Active ({target_path})"],
             )
 
         if "terminal" in msg_lower and any(w in msg_lower for w in ["access", "can you", "available", "support"]):
@@ -460,20 +467,35 @@ HOW YOU OPERATE:
                         evidence=[],
                     )
 
-        # Check for file listing / surfing project files
-        if any(w in msg_lower for w in ["surf files", "list files", "show files", "what files", "browse files"]):
-            from pathlib import Path
-            root = Path(r"C:\kirtan\IRIS")
-            if root.exists():
-                items = sorted(root.iterdir())[:25]
-                items_str = "\n".join(f"- 📁 `{i.name}/`" if i.is_dir() else f"- 📄 `{i.name}`" for i in items)
-                return AgentResponseSchema(
-                    thought="List files in C:\\kirtan\\IRIS",
-                    actions=[],
-                    message=f"📂 Here are the files in `C:\\kirtan\\IRIS`:\n{items_str}",
-                    actions_summary=["Listed repository files"],
-                    evidence=["Files listed from C:\\kirtan\\IRIS"],
-                )
+        # Check for file listing / surfing laptop files and directories
+        if any(w in msg_lower for w in ["surf files", "list files", "show files", "what files", "browse files", "browse folder", "list dir", "browse directory"]):
+            from app.services import mesh_service as ms
+            folder_arg = None
+            if " in " in msg_lower:
+                folder_arg = user_message.split(" in ", 1)[1].strip().strip("'\"")
+            elif " of " in msg_lower:
+                folder_arg = user_message.split(" of ", 1)[1].strip().strip("'\"")
+
+            target_dir = ms.resolve_laptop_path(folder_arg)
+            if target_dir.exists() and target_dir.is_dir():
+                try:
+                    items = sorted(target_dir.iterdir(), key=lambda x: (not x.is_dir(), x.name.lower()))[:30]
+                    items_str = "\n".join(f"- 📁 `{i.name}/`" if i.is_dir() else f"- 📄 `{i.name}`" for i in items)
+                    return AgentResponseSchema(
+                        thought=f"List files in {target_dir}",
+                        actions=[],
+                        message=f"📂 Files in `{target_dir}` ({len(items)} items):\n{items_str}",
+                        actions_summary=[f"Listed files in {target_dir.name}"],
+                        evidence=[f"Files listed from {target_dir}"],
+                    )
+                except Exception as exc:
+                    return AgentResponseSchema(
+                        thought=f"Error reading directory {target_dir}",
+                        actions=[],
+                        message=f"Could not browse `{target_dir}`: {exc}",
+                        actions_summary=[],
+                        evidence=[],
+                    )
 
         # Check for Google Drive queries
         if "google drive" in msg_lower or ("drive" in msg_lower and any(w in msg_lower for w in ["access", "files", "list", "upload", "search", "retrieve", "connect"])):

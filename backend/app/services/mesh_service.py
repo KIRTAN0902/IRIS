@@ -512,10 +512,11 @@ def launch_windows_app(app_name: str = "antigravity", argument: str | None = Non
         ps_bin = str(ps_path) if ps_path.exists() else "powershell.exe"
 
         # By default, open the terminal in the user's home directory (e.g. C:\Users\shahk)
+        # or in any requested directory (Desktop, Downloads, C:\kirtan, etc.)
         home_path = str(user_home)
         if argument and argument.strip().lower() not in ["home", "~", "default", ""] and argument != default_workspace:
-            expanded = os.path.expanduser(argument.strip())
-            term_dir = str(Path(expanded).resolve()) if os.path.exists(expanded) else home_path
+            resolved = resolve_laptop_path(argument.strip())
+            term_dir = str(resolved) if resolved.exists() else home_path
         else:
             term_dir = home_path
 
