@@ -41,11 +41,18 @@ if (!gotTheLock) {
   process.exit(0);
 }
 
-app.on('second-instance', () => {
+app.on('second-instance', async () => {
   if (mainWindow) {
     if (mainWindow.isMinimized()) mainWindow.restore();
     if (!mainWindow.isVisible()) mainWindow.show();
     mainWindow.focus();
+    await ensureServices();
+    try {
+      const ok = await checkUrl(BACKEND_URL);
+      if (ok) {
+        mainWindow.webContents.reloadIgnoringCache();
+      }
+    } catch {}
   }
 });
 
@@ -81,10 +88,19 @@ async function ensureServices() {
   // 1. Ensure backend is running
   const backendUp = await checkUrl(BACKEND_URL);
   if (!backendUp) {
-    const vbs = path.join(REPO_ROOT, 'start-mesh-silent.vbs');
-    if (fs.existsSync(vbs)) {
-      console.log('Starting IRIS backend daemon...');
-      spawn('wscript.exe', [vbs], { detached: true, stdio: 'ignore' }).unref();
+    log('Backend offline; starting IRIS backend daemon...');
+    const pythonExe = path.join(REPO_ROOT, 'backend', '.venv', 'Scripts', 'pythonw.exe');
+    const fallbackExe = path.join(REPO_ROOT, 'backend', '.venv', 'Scripts', 'python.exe');
+    const daemonScript = path.join(REPO_ROOT, 'backend', 'run_daemon.py');
+    const targetExe = fs.existsSync(pythonExe) ? pythonExe : fallbackExe;
+    if (fs.existsSync(targetExe)) {
+      spawn(targetExe, [daemonScript], {
+        cwd: path.join(REPO_ROOT, 'backend'),
+        detached: true,
+        stdio: 'ignore',
+        windowsHide: true,
+      }).unref();
+      log(`Spawned backend via ${targetExe}`);
     }
   }
 
@@ -93,7 +109,7 @@ async function ensureServices() {
   if (!frontendUp) {
     const frontendDir = path.join(REPO_ROOT, 'frontend');
     if (fs.existsSync(frontendDir)) {
-      console.log('Starting IRIS frontend Vite dev server...');
+      log('Starting IRIS frontend Vite dev server...');
       spawn('cmd.exe', ['/c', 'npm', 'run', 'dev', '--', '--host', '0.0.0.0', '--port', '5173'], {
         cwd: frontendDir,
         detached: true,
@@ -103,6 +119,15 @@ async function ensureServices() {
     }
   }
 }
+
+// Watchdog: automatically restart backend if it goes down while IRIS desktop runs
+setInterval(async () => {
+  const backendUp = await checkUrl(BACKEND_URL);
+  if (!backendUp) {
+    log('Watchdog: Backend offline on port 8000, resurrecting...');
+    await ensureServices();
+  }
+}, 15000);
 
 function createWindow() {
   mainWindow = new BrowserWindow({

@@ -13,10 +13,13 @@ try:
     log(f"sys.executable: {sys.executable}")
     log(f"cwd: {os.getcwd()}")
     
-    # Ensure stdout/stderr
+    # Ensure stdout/stderr/stdin
     log_fp = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "uvicorn.log"), "a", encoding="utf-8", buffering=1)
     sys.stdout = log_fp
     sys.stderr = log_fp
+    if sys.stdin is None:
+        import io
+        sys.stdin = io.StringIO()
 
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     
