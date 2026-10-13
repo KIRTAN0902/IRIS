@@ -630,3 +630,130 @@ def execute_terminal_command(
             "elapsed_ms": elapsed_ms,
         }
 
+
+def resolve_laptop_path(path_str: str | None = None) -> Path:
+    """Resolves arbitrary Windows paths, home directories (~), user folder aliases (Desktop, Downloads, etc.), and repo paths."""
+    from pathlib import Path
+    import os
+
+    if not path_str or not path_str.strip():
+        return Path(r"C:\kirtan\IRIS")
+
+    clean = path_str.strip().replace("/", "\\")
+    home = Path.home()
+
+    onedrive_desktop = home / "OneDrive" / "Desktop"
+    desktop = onedrive_desktop if onedrive_desktop.exists() else home / "Desktop"
+
+    onedrive_docs = home / "OneDrive" / "Documents"
+    docs = onedrive_docs if onedrive_docs.exists() else home / "Documents"
+
+    aliases = {
+        "desktop": desktop,
+        "downloads": home / "Downloads",
+        "documents": docs,
+        "pictures": home / "Pictures",
+        "videos": home / "Videos",
+        "home": home,
+        "~": home,
+        "c:": Path("C:\\"),
+        "c:\\": Path("C:\\"),
+        "root": Path("C:\\"),
+    }
+
+    low = clean.lower()
+    for k, v in aliases.items():
+        if low == k:
+            return v
+        if low.startswith(k + "\\"):
+            return v / clean[len(k) + 1 :]
+
+    if clean.startswith("~"):
+        return Path(os.path.expanduser(clean))
+
+    p = Path(clean)
+    if p.is_absolute():
+        return p
+
+    repo_target = Path(r"C:\kirtan\IRIS") / clean
+    if repo_target.exists():
+        return repo_target
+
+    home_target = home / clean
+    if home_target.exists():
+        return home_target
+
+    return repo_target
+
+
+def write_laptop_file(file_path: str, content: str, mode: str = "overwrite") -> dict[str, Any]:
+    """Writes or appends text/code to a file anywhere on the Windows laptop."""
+    target = resolve_laptop_path(file_path)
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        file_mode = "a" if mode.lower() == "append" else "w"
+        with open(target, file_mode, encoding="utf-8") as f:
+            f.write(content)
+
+        logger.info("Wrote laptop file: %s (mode=%s, %d bytes)", target, mode, len(content.encode("utf-8")))
+        return {
+            "success": True,
+            "file_path": str(target),
+            "bytes_written": len(content.encode("utf-8")),
+            "mode": mode,
+            "message": f"Successfully wrote {len(content)} characters to {target}.",
+        }
+    except Exception as exc:
+        logger.error("Failed to write laptop file '%s': %s", target, exc)
+        return {
+            "success": False,
+            "file_path": str(target),
+            "error": str(exc),
+            "message": f"Could not write to '{target}': {exc}",
+        }
+
+
+def search_laptop_files(query: str, directory: str | None = None, max_results: int = 30) -> dict[str, Any]:
+    """Recursively searches for files matching a pattern or name across any directory or drive on the laptop."""
+    import fnmatch
+    import os
+
+    root = resolve_laptop_path(directory)
+    if not root.exists():
+        return {"success": False, "error": f"Directory '{root}' does not exist.", "matches": [], "count": 0}
+
+    clean_query = query.strip()
+    pattern = clean_query if any(c in clean_query for c in ["*", "?", "["]) else f"*{clean_query}*"
+
+    matches: list[dict[str, Any]] = []
+    skip_dirs = {".git", "node_modules", ".venv", "__pycache__", "$Recycle.Bin", "WinSxS"}
+
+    for dirpath, dirnames, filenames in os.walk(str(root)):
+        dirnames[:] = [d for d in dirnames if d not in skip_dirs]
+        for f in filenames:
+            if fnmatch.fnmatch(f.lower(), pattern.lower()):
+                full_p = Path(dirpath) / f
+                try:
+                    size = full_p.stat().st_size
+                except Exception:
+                    size = None
+                matches.append({
+                    "name": f,
+                    "path": str(full_p),
+                    "size_bytes": size,
+                    "directory": dirpath,
+                })
+                if len(matches) >= max_results:
+                    break
+        if len(matches) >= max_results:
+            break
+
+    return {
+        "success": True,
+        "query": query,
+        "root": str(root),
+        "matches": matches,
+        "count": len(matches),
+    }
+
+

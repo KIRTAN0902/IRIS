@@ -628,6 +628,40 @@ class LaptopRelayDaemon:
                 payload={"req_id": req_id, "result": res},
             )
 
+        elif msg_type == "WRITE_FILE":
+            req_id = payload.get("req_id")
+            fpath = payload.get("file_path", "")
+            content = payload.get("content", "")
+            mode = payload.get("mode", "overwrite")
+            res = ms.write_laptop_file(file_path=fpath, content=content, mode=mode)
+            logger.info("Laptop write file executed: %s", res.get("message"))
+            if req_id and sender and sender != "system":
+                push_relay_message(
+                    db=db,
+                    user_id=1,
+                    sender_device_id=LAPTOP_HOST_DEVICE_ID,
+                    target_device_id=sender,
+                    msg_type="COMMAND_RESULT",
+                    payload={"req_id": req_id, "command": "WRITE_FILE", "result": res},
+                )
+
+        elif msg_type == "SEARCH_FILES":
+            req_id = payload.get("req_id")
+            query = payload.get("query", "")
+            directory = payload.get("directory")
+            max_results = payload.get("max_results", 30)
+            res = ms.search_laptop_files(query=query, directory=directory, max_results=max_results)
+            logger.info("Laptop search files executed: %d matches", res.get("count", 0))
+            if req_id and sender and sender != "system":
+                push_relay_message(
+                    db=db,
+                    user_id=1,
+                    sender_device_id=LAPTOP_HOST_DEVICE_ID,
+                    target_device_id=sender,
+                    msg_type="COMMAND_RESULT",
+                    payload={"req_id": req_id, "command": "SEARCH_FILES", "result": res},
+                )
+
         elif msg_type == "HANDOFF":
             state_type = payload.get("type", "UNKNOWN")
             data = payload.get("data", {})

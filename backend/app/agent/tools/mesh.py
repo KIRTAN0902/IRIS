@@ -213,20 +213,19 @@ class LaunchLaptopAppTool(Tool):
 class RunTerminalCommandParams(BaseModel):
     command: str = Field(
         ...,
-        description="PowerShell or shell CLI command to execute on the laptop (e.g. 'git status', 'dir', 'npm test', 'tasklist', 'python script.py')",
+        description="PowerShell or shell CLI command to execute on the laptop (e.g. 'git status', 'dir', 'npm test', 'tasklist', 'python script.py', 'pip install')",
     )
     working_dir: str | None = Field(
-        default=r"C:\kirtan\IRIS",
-        description="Working directory on the laptop to run the command in (defaults to 'C:\\kirtan\\IRIS')",
+        default=None,
+        description="Working directory or drive on the laptop to run the command in (e.g. 'Desktop', 'Downloads', 'C:\\kirtan\\IRIS', 'C:\\', or null for default repo)",
     )
 
 
 class RunLaptopTerminalCommandTool(Tool):
     name = "run_laptop_terminal_command"
     description = (
-        "Execute a terminal command or script on your Windows laptop remotely and receive the output. "
-        "Use when the user asks via voice or chat to run a terminal/CLI command, check git status, "
-        "run tests, build a project, list directory files, or inspect system processes on their laptop."
+        "Execute any terminal or PowerShell command on your Windows laptop with full system access and receive output. "
+        "Use when user asks to run CLI commands, git operations, install packages, run scripts, check processes, or execute system tasks."
     )
     parameters_schema = RunTerminalCommandParams
     read_only = False
@@ -236,7 +235,8 @@ class RunLaptopTerminalCommandTool(Tool):
         import secrets
 
         cmd = kwargs["command"]
-        cwd = kwargs.get("working_dir")
+        raw_cwd = kwargs.get("working_dir")
+        cwd = str(ms.resolve_laptop_path(raw_cwd)) if raw_cwd and raw_cwd.strip() else r"C:\kirtan\IRIS"
 
         if mrs.is_local_windows_host():
             res = ms.execute_terminal_command(command=cmd, cwd=cwd)
@@ -263,7 +263,7 @@ class RunLaptopTerminalCommandTool(Tool):
                     "stdout": "",
                     "stderr": "Laptop did not respond. Ensure the backend daemon is running on your Windows laptop.",
                     "command": cmd,
-                    "cwd": cwd or r"C:\kirtan\IRIS",
+                    "cwd": cwd,
                 }
 
         output = (res.get("stdout") or res.get("stderr") or "Command completed with no output.").strip()
@@ -285,8 +285,8 @@ class RunLaptopTerminalCommandTool(Tool):
 
 class ListLaptopFilesParams(BaseModel):
     directory: str | None = Field(
-        default=r"C:\kirtan\IRIS",
-        description="Path of folder to list on laptop (defaults to 'C:\\kirtan\\IRIS')",
+        default=None,
+        description="Path of folder to list on laptop (e.g. 'Desktop', 'Downloads', 'Documents', 'C:\\', 'C:\\kirtan', or null for repo)",
     )
     max_items: int = Field(default=40, ge=1, le=150, description="Max entries to return")
 
@@ -294,28 +294,23 @@ class ListLaptopFilesParams(BaseModel):
 class ListLaptopFilesTool(Tool):
     name = "list_laptop_files"
     description = (
-        "List files and directories on your Windows laptop. Use when user asks via voice or chat "
-        "to list, surf, or browse files in a folder or repo (e.g. 'what files are in the project', 'surf files in backend', 'list files')."
+        "List files and folders in any directory or drive across your Windows laptop. "
+        "Use when user asks to list, surf, or browse files on Desktop, Downloads, project folders, or any drive."
     )
     parameters_schema = ListLaptopFilesParams
     read_only = True
 
     async def run(self, db: Session, user: User, **kwargs: Any) -> ToolResult:
-        import os
-        from pathlib import Path
         from app.services import mesh_relay_service as mrs
 
-        folder = kwargs.get("directory") or r"C:\kirtan\IRIS"
+        folder = kwargs.get("directory")
+        target = ms.resolve_laptop_path(folder)
         max_items = kwargs.get("max_items", 40)
-
-        target = Path(folder)
-        if not target.is_absolute():
-            target = Path(r"C:\kirtan\IRIS") / folder
 
         if mrs.is_local_windows_host():
             if not target.exists():
                 return ToolResult(tool_name=self.name, success=False, error=f"Directory '{target}' not found.", summary=f"Directory '{target}' does not exist.")
-            
+
             entries = []
             try:
                 for item in sorted(target.iterdir()):
@@ -328,7 +323,7 @@ class ListLaptopFilesTool(Tool):
                         break
             except Exception as exc:
                 return ToolResult(tool_name=self.name, success=False, error=str(exc), summary=f"Error reading directory: {exc}")
-            
+
             file_names = [f"📁 {e['name']}/" if e["type"] == "directory" else f"📄 {e['name']}" for e in entries]
             summary = f"Found {len(entries)} items in `{target}`:\n" + "\n".join(file_names[:30])
             return ToolResult(tool_name=self.name, success=True, data={"directory": str(target), "entries": entries, "count": len(entries)}, summary=summary)
@@ -358,35 +353,31 @@ class ListLaptopFilesTool(Tool):
 class ReadLaptopFileParams(BaseModel):
     file_path: str = Field(
         ...,
-        description="Path of file to read (relative to 'C:\\kirtan\\IRIS' or absolute path, e.g. 'main.py' or 'backend/app/main.py')",
+        description="Path of file to read anywhere on the laptop (e.g. 'Desktop/todo.txt', 'main.py', 'C:\\notes.txt', 'Downloads/file.csv')",
     )
-    max_lines: int = Field(default=120, ge=1, le=500, description="Max lines to read")
+    max_lines: int = Field(default=150, ge=1, le=500, description="Max lines to read")
 
 
 class ReadLaptopFileTool(Tool):
     name = "read_laptop_file"
     description = (
-        "Read and surf the text content of a file on your Windows laptop. "
-        "Use when user asks to read, check, or surf a specific file (e.g. 'read main.py', 'surf requirements.txt', 'what is in README.md')."
+        "Read and surf the text content of any file on your Windows laptop. "
+        "Use when user asks to read, inspect, or surf a file on Desktop, in projects, in Downloads, or anywhere on the laptop."
     )
     parameters_schema = ReadLaptopFileParams
     read_only = True
 
     async def run(self, db: Session, user: User, **kwargs: Any) -> ToolResult:
-        from pathlib import Path
         from app.services import mesh_relay_service as mrs
 
         fpath = kwargs["file_path"].strip()
-        max_lines = kwargs.get("max_lines", 120)
-
-        target = Path(fpath)
-        if not target.is_absolute():
-            target = Path(r"C:\kirtan\IRIS") / fpath
+        max_lines = kwargs.get("max_lines", 150)
+        target = ms.resolve_laptop_path(fpath)
 
         if mrs.is_local_windows_host():
             if not target.exists() or not target.is_file():
                 return ToolResult(tool_name=self.name, success=False, error=f"File '{target}' not found.", summary=f"File '{target}' was not found.")
-            
+
             try:
                 lines = target.read_text(encoding="utf-8", errors="replace").splitlines()
                 preview = "\n".join(lines[:max_lines])
@@ -418,6 +409,129 @@ class ReadLaptopFileTool(Tool):
             return ToolResult(tool_name=self.name, success=res.get("success", False), data=res, summary=res.get("stdout") or res.get("stderr") or "No content.")
 
 
+class WriteLaptopFileParams(BaseModel):
+    file_path: str = Field(
+        ...,
+        description="Path of file to create or write anywhere on the laptop (e.g. 'Desktop/todo.txt', 'C:\\notes.md', 'scripts/test.py', 'Downloads/summary.txt')",
+    )
+    content: str = Field(
+        ...,
+        description="Text content or code to write into the file",
+    )
+    mode: str = Field(
+        default="overwrite",
+        description="'overwrite' to replace file content, or 'append' to add to existing file",
+    )
+
+
+class WriteLaptopFileTool(Tool):
+    name = "write_laptop_file"
+    description = (
+        "Create, write, or append text or code to any file across your entire Windows laptop. "
+        "Use when user asks to save notes, write code, create files, or modify files anywhere on their laptop."
+    )
+    parameters_schema = WriteLaptopFileParams
+    read_only = False
+
+    async def run(self, db: Session, user: User, **kwargs: Any) -> ToolResult:
+        from app.services import mesh_relay_service as mrs
+        import secrets
+
+        fpath = kwargs["file_path"].strip()
+        content = kwargs["content"]
+        mode = kwargs.get("mode", "overwrite")
+
+        if mrs.is_local_windows_host():
+            res = ms.write_laptop_file(file_path=fpath, content=content, mode=mode)
+        else:
+            req_id = secrets.token_hex(6)
+            mrs.push_relay_message(
+                db=db,
+                user_id=user.id,
+                sender_device_id="iris_voice_agent",
+                target_device_id=mrs.LAPTOP_HOST_DEVICE_ID,
+                msg_type="WRITE_FILE",
+                payload={"req_id": req_id, "file_path": fpath, "content": content, "mode": mode},
+            )
+            res = await mrs.wait_for_relay_response(
+                db=db,
+                user_id=user.id,
+                req_id=req_id,
+                timeout_seconds=20.0,
+            )
+            if res is None:
+                res = {
+                    "success": False,
+                    "error": "Laptop did not respond. Ensure the backend daemon is running on your Windows laptop.",
+                }
+
+        summary = res.get("message") or ("Successfully wrote file." if res.get("success") else res.get("error", "Write failed."))
+        return ToolResult(tool_name=self.name, success=res.get("success", False), data=res, summary=summary)
+
+
+class SearchLaptopFilesParams(BaseModel):
+    query: str = Field(
+        ...,
+        description="Filename or search pattern to locate on the laptop (e.g. '*.pdf', 'budget*', 'notes.txt', '*.py')",
+    )
+    directory: str | None = Field(
+        default=None,
+        description="Root folder or drive to search in (e.g. 'Desktop', 'Downloads', 'C:\\kirtan', 'C:\\', or null for repo)",
+    )
+    max_results: int = Field(default=25, ge=1, le=100, description="Max matches to return")
+
+
+class SearchLaptopFilesTool(Tool):
+    name = "search_laptop_files"
+    description = (
+        "Search and locate files across your entire Windows laptop by name or wildcard pattern (*.ext). "
+        "Use when user asks to locate documents, find files on Desktop, in Downloads, or across drives."
+    )
+    parameters_schema = SearchLaptopFilesParams
+    read_only = True
+
+    async def run(self, db: Session, user: User, **kwargs: Any) -> ToolResult:
+        from app.services import mesh_relay_service as mrs
+        import secrets
+
+        query = kwargs["query"].strip()
+        directory = kwargs.get("directory")
+        max_results = kwargs.get("max_results", 25)
+
+        if mrs.is_local_windows_host():
+            res = ms.search_laptop_files(query=query, directory=directory, max_results=max_results)
+        else:
+            req_id = secrets.token_hex(6)
+            mrs.push_relay_message(
+                db=db,
+                user_id=user.id,
+                sender_device_id="iris_voice_agent",
+                target_device_id=mrs.LAPTOP_HOST_DEVICE_ID,
+                msg_type="SEARCH_FILES",
+                payload={"req_id": req_id, "query": query, "directory": directory, "max_results": max_results},
+            )
+            res = await mrs.wait_for_relay_response(
+                db=db,
+                user_id=user.id,
+                req_id=req_id,
+                timeout_seconds=20.0,
+            )
+            if res is None:
+                res = {
+                    "success": False,
+                    "error": "Laptop did not respond. Ensure the backend daemon is running on your Windows laptop.",
+                }
+
+        matches = res.get("matches", [])
+        if matches:
+            file_list = [f"• `{m['name']}` ({m['path']})" for m in matches[:20]]
+            summary = f"Found {len(matches)} matches for '{query}':\n" + "\n".join(file_list)
+        else:
+            summary = f"No files matching '{query}' found."
+
+        return ToolResult(tool_name=self.name, success=res.get("success", False), data=res, summary=summary)
+
+
 class OpenLaptopFileParams(BaseModel):
     file_path: str = Field(
         ...,
@@ -442,7 +556,8 @@ class OpenLaptopFileTool(Tool):
         from app.services import mesh_relay_service as mrs
         import secrets
 
-        fpath = kwargs["file_path"].strip()
+        raw_fpath = kwargs["file_path"].strip()
+        fpath = str(ms.resolve_laptop_path(raw_fpath))
         app = (kwargs.get("application") or "antigravity").lower()
 
         if mrs.is_local_windows_host():
@@ -483,6 +598,9 @@ def mesh_tools() -> list[Tool]:
         RunLaptopTerminalCommandTool(),
         ListLaptopFilesTool(),
         ReadLaptopFileTool(),
+        WriteLaptopFileTool(),
+        SearchLaptopFilesTool(),
         OpenLaptopFileTool(),
     ]
+
 
