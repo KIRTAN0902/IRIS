@@ -1,6 +1,24 @@
 const { app, BrowserWindow, Tray, Menu, globalShortcut, ipcMain, shell, Notification } = require('electron');
 const path = require('path');
 const http = require('http');
+const { spawn } = require('child_process');
+const fs = require('fs');
+
+const REPO_ROOT = 'C:\\kirtan\\IRIS';
+const logFile = path.join(REPO_ROOT, 'desktop', 'iris-desktop.log');
+function log(msg) {
+  try {
+    fs.appendFileSync(logFile, `[${new Date().toISOString()}] ${msg}\n`);
+  } catch (e) {}
+}
+
+log('=== main.cjs loaded ===');
+app.name = 'IRIS';
+try {
+  app.setPath('userData', path.join(app.getPath('appData'), 'IRIS-Desktop'));
+} catch (e) {
+  log('Failed to set userData path: ' + e);
+}
 
 let mainWindow = null;
 let tray = null;
@@ -9,13 +27,16 @@ let hasNotifiedTray = false;
 
 const FRONTEND_URL = 'http://localhost:5173';
 const BACKEND_URL = 'http://localhost:8000/health';
+
 const ICON_PATH = path.join(__dirname, 'assets', 'icon.ico');
 const PNG_ICON_PATH = path.join(__dirname, 'assets', 'icon.png');
 const LOADING_HTML = path.join(__dirname, 'loading.html');
 
 // Ensure single instance
 const gotTheLock = app.requestSingleInstanceLock();
+log('requestSingleInstanceLock: ' + gotTheLock);
 if (!gotTheLock) {
+  log('Another instance is running. Exiting...');
   app.quit();
   process.exit(0);
 }
@@ -23,7 +44,7 @@ if (!gotTheLock) {
 app.on('second-instance', () => {
   if (mainWindow) {
     if (mainWindow.isMinimized()) mainWindow.restore();
-    mainWindow.show();
+    if (!mainWindow.isVisible()) mainWindow.show();
     mainWindow.focus();
   }
 });
@@ -56,6 +77,33 @@ function checkUrl(url) {
   });
 }
 
+async function ensureServices() {
+  // 1. Ensure backend is running
+  const backendUp = await checkUrl(BACKEND_URL);
+  if (!backendUp) {
+    const vbs = path.join(REPO_ROOT, 'start-mesh-silent.vbs');
+    if (fs.existsSync(vbs)) {
+      console.log('Starting IRIS backend daemon...');
+      spawn('wscript.exe', [vbs], { detached: true, stdio: 'ignore' }).unref();
+    }
+  }
+
+  // 2. Ensure frontend Vite is running
+  const frontendUp = await checkUrl(FRONTEND_URL);
+  if (!frontendUp) {
+    const frontendDir = path.join(REPO_ROOT, 'frontend');
+    if (fs.existsSync(frontendDir)) {
+      console.log('Starting IRIS frontend Vite dev server...');
+      spawn('cmd.exe', ['/c', 'npm', 'run', 'dev', '--', '--host', '0.0.0.0', '--port', '5173'], {
+        cwd: frontendDir,
+        detached: true,
+        stdio: 'ignore',
+        windowsHide: true,
+      }).unref();
+    }
+  }
+}
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1320,
@@ -75,31 +123,33 @@ function createWindow() {
     },
   });
 
-  // Hide default menu bar for clean Notion look
   Menu.setApplicationMenu(null);
 
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
+    mainWindow.focus();
   });
 
-  // Intercept close button: minimize to tray instead of quitting
   mainWindow.on('close', (event) => {
     if (!isQuitting) {
       event.preventDefault();
       mainWindow.hide();
 
       if (!hasNotifiedTray && Notification.isSupported()) {
-        new Notification({
-          title: 'IRIS is running in the background',
-          body: 'Press Alt+I or click the tray icon anytime to open IRIS.',
-          icon: PNG_ICON_PATH,
-        }).show();
+        try {
+          new Notification({
+            title: 'IRIS is running in the background',
+            body: 'Press Alt+I or click the tray icon anytime to open IRIS.',
+            icon: PNG_ICON_PATH,
+          }).show();
+        } catch {
+          // Ignore notification errors
+        }
         hasNotifiedTray = true;
       }
     }
   });
 
-  // Open external links in default OS browser
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith('http://localhost') || url.startsWith('http://127.0.0.1')) {
       return { action: 'allow' };
@@ -108,10 +158,8 @@ function createWindow() {
     return { action: 'deny' };
   });
 
-  // Handle connection errors
   mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
     if (validatedURL && validatedURL.includes('5173')) {
-      console.log('Frontend not reachable yet. Showing loading screen...');
       mainWindow.loadFile(LOADING_HTML);
       pollAndConnect();
     }
@@ -128,13 +176,13 @@ function pollAndConnect() {
     if (isReady && mainWindow) {
       clearInterval(pollTimer);
       pollTimer = null;
-      console.log('Vite frontend connected! Loading URL...');
       mainWindow.loadURL(FRONTEND_URL);
     }
   }, 1000);
 }
 
 async function loadApp() {
+  ensureServices();
   const isViteReady = await checkUrl(FRONTEND_URL);
   if (isViteReady) {
     mainWindow.loadURL(FRONTEND_URL);
@@ -151,7 +199,6 @@ function createTray() {
     try {
       tray = new Tray(PNG_ICON_PATH);
     } catch {
-      console.warn('Tray icon could not be created:', err);
       return;
     }
   }
@@ -192,11 +239,13 @@ function createTray() {
       click: async () => {
         const ok = await checkUrl(BACKEND_URL);
         if (Notification.isSupported()) {
-          new Notification({
-            title: 'IRIS Backend Status',
-            body: ok ? 'Backend & Mesh daemon are OPERATIONAL on port 8000.' : 'Backend on port 8000 is not responding.',
-            icon: PNG_ICON_PATH,
-          }).show();
+          try {
+            new Notification({
+              title: 'IRIS Backend Status',
+              body: ok ? 'Backend & Mesh daemon are OPERATIONAL on port 8000.' : 'Backend on port 8000 is not responding.',
+              icon: PNG_ICON_PATH,
+            }).show();
+          } catch {}
         }
       },
     },
@@ -228,7 +277,7 @@ function showWindow() {
     return;
   }
   if (mainWindow.isMinimized()) mainWindow.restore();
-  mainWindow.show();
+  if (!mainWindow.isVisible()) mainWindow.show();
   mainWindow.focus();
 }
 
@@ -244,7 +293,6 @@ function toggleWindow() {
   }
 }
 
-// IPC controls
 ipcMain.on('window-minimize', () => {
   if (mainWindow) mainWindow.minimize();
 });
@@ -264,16 +312,10 @@ app.whenReady().then(() => {
   createWindow();
   createTray();
 
-  // Register global hotkey Alt+I to toggle IRIS from anywhere in Windows
-  const registered = globalShortcut.register('Alt+I', () => {
+  globalShortcut.register('Alt+I', () => {
     toggleWindow();
   });
 
-  if (!registered) {
-    console.warn('Registration of global shortcut Alt+I failed.');
-  }
-
-  // Also register Ctrl+Alt+I as alternative
   globalShortcut.register('CommandOrControl+Alt+I', () => {
     toggleWindow();
   });
@@ -289,6 +331,5 @@ app.on('will-quit', () => {
 });
 
 app.on('window-all-closed', (event) => {
-  // Prevent quitting when all windows are closed on Windows so tray persists
   event.preventDefault();
 });
