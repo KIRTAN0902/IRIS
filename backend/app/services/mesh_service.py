@@ -352,44 +352,110 @@ def get_windows_battery() -> dict[str, Any] | None:
 def launch_windows_app(app_name: str = "antigravity", argument: str | None = None) -> dict[str, Any]:
     """Launches or focuses a desktop application on the Windows laptop."""
     import os
+    import shutil
     import subprocess
     from pathlib import Path
 
-    app_clean = app_name.strip().lower()
+    app_clean = app_name.strip().lower().replace("-", "").replace(" ", "").replace("_", "")
     default_workspace = r"C:\kirtan\IRIS"
-
-    antigravity_ide = r"C:\Users\shahk\AppData\Local\Programs\Antigravity IDE\Antigravity IDE.exe"
-    antigravity_app = r"C:\Users\shahk\AppData\Local\Programs\Antigravity\Antigravity.exe"
-    antigravity_cmd = r"C:\Users\shahk\AppData\Local\Programs\Antigravity IDE\bin\antigravity-ide.cmd"
+    user_home = Path.home()
 
     cmd: list[str] = []
+    target_dir = argument or default_workspace
 
-    if any(k in app_clean for k in ["antigravity", "agy", "anti-gravity"]):
-        target = argument or default_workspace
-        if os.path.exists(antigravity_ide):
-            cmd = [antigravity_ide, target]
-        elif os.path.exists(antigravity_app):
-            cmd = [antigravity_app]
-        elif os.path.exists(antigravity_cmd):
-            cmd = [antigravity_cmd, target]
-    elif "vscode" in app_clean or "code" in app_clean:
-        cmd = ["code", argument or default_workspace]
-    elif any(k in app_clean for k in ["terminal", "powershell", "wt", "cmd", "console"]):
-        import shutil
-        wt_path = shutil.which("wt.exe") or shutil.which("wt")
-        target_dir = argument or default_workspace
-        if wt_path:
-            cmd = ["wt.exe", "-d", target_dir]
+    # 1. Antigravity IDE / Antigravity
+    if any(k in app_clean for k in ["antigravity", "agy"]):
+        antigravity_candidates = [
+            user_home / r"AppData\Local\Programs\Antigravity IDE\Antigravity IDE.exe",
+            user_home / r"AppData\Local\Programs\Antigravity\Antigravity.exe",
+            user_home / r"AppData\Local\Programs\Antigravity IDE\bin\antigravity-ide.cmd",
+            Path(r"C:\Users\shahk\AppData\Local\Programs\Antigravity IDE\Antigravity IDE.exe"),
+            Path(r"C:\Users\shahk\AppData\Local\Programs\Antigravity\Antigravity.exe"),
+            Path(r"C:\Users\shahk\AppData\Local\Programs\Antigravity IDE\bin\antigravity-ide.cmd"),
+        ]
+        chosen = None
+        for cand in antigravity_candidates:
+            if cand.exists():
+                chosen = str(cand)
+                break
+
+        if not chosen:
+            chosen = shutil.which("antigravity.exe") or shutil.which("antigravity") or shutil.which("agy")
+
+        if chosen:
+            cmd = [chosen, target_dir]
         else:
-            cmd = ["powershell.exe", "-NoExit", "-Command", f"Set-Location '{target_dir}'"]
+            # Fallback to shell start
+            cmd = ["cmd.exe", "/c", "start", "antigravity", target_dir]
+
+    # 2. VS Code
+    elif "vscode" in app_clean or "code" in app_clean:
+        code_path = shutil.which("code.cmd") or shutil.which("code.exe") or shutil.which("code")
+        if not code_path:
+            cand = user_home / r"AppData\Local\Programs\Microsoft VS Code\Code.exe"
+            if cand.exists():
+                code_path = str(cand)
+        if code_path:
+            cmd = [code_path, target_dir]
+        else:
+            cmd = ["cmd.exe", "/c", "start", "code", target_dir]
+
+    # 3. Terminal / PowerShell
+    elif any(k in app_clean for k in ["terminal", "powershell", "pwsh", "wt", "cmd", "console"]):
+        wt_candidates = [
+            shutil.which("wt.exe"),
+            shutil.which("wt"),
+            user_home / r"AppData\Local\Microsoft\WindowsApps\wt.exe",
+            Path(r"C:\Users\shahk\AppData\Local\Microsoft\WindowsApps\wt.exe"),
+        ]
+        wt_path = None
+        for cand in wt_candidates:
+            if cand and Path(cand).exists():
+                wt_path = str(cand)
+                break
+
+        if wt_path:
+            cmd = [wt_path, "-d", target_dir]
+        else:
+            sys_root = os.environ.get("SystemRoot", r"C:\Windows")
+            ps_candidates = [
+                shutil.which("pwsh.exe"),
+                shutil.which("powershell.exe"),
+                Path(sys_root) / r"System32\WindowsPowerShell\v1.0\powershell.exe",
+                Path(r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"),
+            ]
+            ps_path = None
+            for cand in ps_candidates:
+                if cand and Path(cand).exists():
+                    ps_path = str(cand)
+                    break
+
+            if ps_path:
+                cmd = [ps_path, "-NoExit", "-Command", f"Set-Location '{target_dir}'"]
+            else:
+                cmd = ["cmd.exe", "/c", "start", "powershell.exe", "-NoExit", "-Command", f"Set-Location '{target_dir}'"]
+
+    # 4. Chrome / Web Browser
     elif "chrome" in app_clean or "browser" in app_clean:
         cmd = ["explorer.exe", argument or "http://localhost:5173"]
+
+    # 5. Explorer / Files
     elif "explorer" in app_clean or "files" in app_clean:
-        cmd = ["explorer.exe", argument or default_workspace]
+        cmd = ["explorer.exe", target_dir]
+
+    # 6. Generic executable fallback
     else:
-        cmd = [app_name]
+        cmd = ["cmd.exe", "/c", "start", app_name]
         if argument:
             cmd.append(argument)
+
+    if not cmd:
+        return {
+            "success": False,
+            "app": app_name,
+            "error": f"No command could be resolved for '{app_name}'",
+            "message": f"Could not resolve executable for '{app_name}'.",
+        }
 
     si = None
     if os.name == "nt":
@@ -398,7 +464,8 @@ def launch_windows_app(app_name: str = "antigravity", argument: str | None = Non
 
     try:
         proc = subprocess.Popen(cmd, startupinfo=si, shell=False)
-        logger.info("Launched desktop application: %s (PID: %s)", cmd[0], proc.pid)
+        app_label = cmd[0] if cmd else app_name
+        logger.info("Launched desktop application: %s (PID: %s)", app_label, proc.pid)
         return {
             "success": True,
             "app": app_name,

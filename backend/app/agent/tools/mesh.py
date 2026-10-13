@@ -164,11 +164,38 @@ class LaunchLaptopAppTool(Tool):
     read_only = False
 
     async def run(self, db: Session, user: User, **kwargs: Any) -> ToolResult:
+        from app.services import mesh_relay_service as mrs
+        import secrets
+
         app_name = kwargs.get("app", "antigravity")
         arg = kwargs.get("argument")
-        res = ms.launch_windows_app(app_name=app_name, argument=arg)
 
-        # Broadcast remote command
+        if mrs.is_local_windows_host():
+            res = ms.launch_windows_app(app_name=app_name, argument=arg)
+        else:
+            req_id = secrets.token_hex(6)
+            mrs.push_relay_message(
+                db=db,
+                user_id=user.id,
+                sender_device_id="iris_voice_agent",
+                target_device_id=mrs.LAPTOP_HOST_DEVICE_ID,
+                msg_type="REMOTE_COMMAND",
+                payload={"command": "LAUNCH_APP", "app": app_name, "argument": arg, "req_id": req_id},
+            )
+            res = await mrs.wait_for_relay_response(
+                db=db,
+                user_id=user.id,
+                req_id=req_id,
+                timeout_seconds=20.0,
+            )
+            if res is None:
+                res = {
+                    "success": False,
+                    "error": "Laptop workstation did not respond. Ensure the IRIS background daemon is running on your Windows laptop.",
+                    "message": "Laptop workstation did not respond to the launch command.",
+                }
+
+        # Broadcast remote command to any connected WebSocket clients
         msg = ms.MeshMessage(
             type="REMOTE_COMMAND",
             sender_device="iris_agent",
@@ -306,9 +333,26 @@ class ListLaptopFilesTool(Tool):
             summary = f"Found {len(entries)} items in `{target}`:\n" + "\n".join(file_names[:30])
             return ToolResult(tool_name=self.name, success=True, data={"directory": str(target), "entries": entries, "count": len(entries)}, summary=summary)
         else:
+            import secrets
+            req_id = secrets.token_hex(6)
             ps_cmd = f"Get-ChildItem -Path '{target}' | Select-Object -First {max_items} Name, Mode, Length | Format-Table -AutoSize | Out-String"
-            res = ms.execute_terminal_command(ps_cmd)
-            return ToolResult(tool_name=self.name, success=res.get("success", False), data=res, summary=res.get("stdout") or "No files found.")
+            mrs.push_relay_message(
+                db=db,
+                user_id=user.id,
+                sender_device_id="iris_voice_agent",
+                target_device_id=mrs.LAPTOP_HOST_DEVICE_ID,
+                msg_type="TERMINAL_EXEC",
+                payload={"req_id": req_id, "command": ps_cmd, "working_dir": r"C:\kirtan\IRIS", "timeout": 20},
+            )
+            res = await mrs.wait_for_relay_response(
+                db=db,
+                user_id=user.id,
+                req_id=req_id,
+                timeout_seconds=20.0,
+            )
+            if res is None:
+                return ToolResult(tool_name=self.name, success=False, error="Laptop did not respond", summary="Laptop did not respond. Ensure the backend daemon is running on your Windows laptop.")
+            return ToolResult(tool_name=self.name, success=res.get("success", False), data=res, summary=res.get("stdout") or res.get("stderr") or "No files found.")
 
 
 class ReadLaptopFileParams(BaseModel):
@@ -352,8 +396,26 @@ class ReadLaptopFileTool(Tool):
             except Exception as exc:
                 return ToolResult(tool_name=self.name, success=False, error=str(exc), summary=f"Failed to read file: {exc}")
         else:
-            res = ms.execute_terminal_command(f"Get-Content -Path '{target}' -Head {max_lines} | Out-String")
-            return ToolResult(tool_name=self.name, success=res.get("success", False), data=res, summary=res.get("stdout") or res.get("stderr"))
+            import secrets
+            req_id = secrets.token_hex(6)
+            ps_cmd = f"Get-Content -Path '{target}' -Head {max_lines} | Out-String"
+            mrs.push_relay_message(
+                db=db,
+                user_id=user.id,
+                sender_device_id="iris_voice_agent",
+                target_device_id=mrs.LAPTOP_HOST_DEVICE_ID,
+                msg_type="TERMINAL_EXEC",
+                payload={"req_id": req_id, "command": ps_cmd, "working_dir": r"C:\kirtan\IRIS", "timeout": 20},
+            )
+            res = await mrs.wait_for_relay_response(
+                db=db,
+                user_id=user.id,
+                req_id=req_id,
+                timeout_seconds=20.0,
+            )
+            if res is None:
+                return ToolResult(tool_name=self.name, success=False, error="Laptop did not respond", summary="Laptop did not respond. Ensure the backend daemon is running on your Windows laptop.")
+            return ToolResult(tool_name=self.name, success=res.get("success", False), data=res, summary=res.get("stdout") or res.get("stderr") or "No content.")
 
 
 class OpenLaptopFileParams(BaseModel):
@@ -377,9 +439,36 @@ class OpenLaptopFileTool(Tool):
     read_only = False
 
     async def run(self, db: Session, user: User, **kwargs: Any) -> ToolResult:
+        from app.services import mesh_relay_service as mrs
+        import secrets
+
         fpath = kwargs["file_path"].strip()
         app = (kwargs.get("application") or "antigravity").lower()
-        res = ms.launch_windows_app(app_name=app, argument=fpath)
+
+        if mrs.is_local_windows_host():
+            res = ms.launch_windows_app(app_name=app, argument=fpath)
+        else:
+            req_id = secrets.token_hex(6)
+            mrs.push_relay_message(
+                db=db,
+                user_id=user.id,
+                sender_device_id="iris_voice_agent",
+                target_device_id=mrs.LAPTOP_HOST_DEVICE_ID,
+                msg_type="REMOTE_COMMAND",
+                payload={"command": "LAUNCH_APP", "app": app, "argument": fpath, "req_id": req_id},
+            )
+            res = await mrs.wait_for_relay_response(
+                db=db,
+                user_id=user.id,
+                req_id=req_id,
+                timeout_seconds=20.0,
+            )
+            if res is None:
+                res = {
+                    "success": False,
+                    "error": "Laptop did not respond. Ensure the IRIS background daemon is running on your Windows laptop.",
+                }
+
         return ToolResult(tool_name=self.name, success=res.get("success", False), data=res, summary=res.get("message", f"Opened {fpath} in {app}."))
 
 
