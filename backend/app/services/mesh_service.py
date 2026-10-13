@@ -408,32 +408,18 @@ def launch_windows_app(app_name: str = "antigravity", argument: str | None = Non
             user_home / r"AppData\Local\Microsoft\WindowsApps\wt.exe",
             Path(r"C:\Users\shahk\AppData\Local\Microsoft\WindowsApps\wt.exe"),
         ]
-        wt_path = None
-        for cand in wt_candidates:
-            if cand and Path(cand).exists():
-                wt_path = str(cand)
-                break
+        wt_available = any(c and Path(c).exists() for c in wt_candidates)
 
-        if wt_path:
-            cmd = [wt_path, "-d", target_dir]
+        # On Windows, launching an interactive terminal from a background daemon requires 'cmd.exe /c start'
+        # so the Windows Shell (Explorer) opens a real, visible foreground window on the active desktop.
+        if wt_available and "powershell" not in app_clean and "cmd" not in app_clean:
+            # Force a brand new window with '-w -1' so it never hides inside an invisible background tab
+            cmd = ["cmd.exe", "/c", "start", "wt.exe", "-w", "-1", "-d", target_dir]
         else:
             sys_root = os.environ.get("SystemRoot", r"C:\Windows")
-            ps_candidates = [
-                shutil.which("pwsh.exe"),
-                shutil.which("powershell.exe"),
-                Path(sys_root) / r"System32\WindowsPowerShell\v1.0\powershell.exe",
-                Path(r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"),
-            ]
-            ps_path = None
-            for cand in ps_candidates:
-                if cand and Path(cand).exists():
-                    ps_path = str(cand)
-                    break
-
-            if ps_path:
-                cmd = [ps_path, "-NoExit", "-Command", f"Set-Location '{target_dir}'"]
-            else:
-                cmd = ["cmd.exe", "/c", "start", "powershell.exe", "-NoExit", "-Command", f"Set-Location '{target_dir}'"]
+            ps_path = Path(sys_root) / r"System32\WindowsPowerShell\v1.0\powershell.exe"
+            ps_bin = str(ps_path) if ps_path.exists() else "powershell.exe"
+            cmd = ["cmd.exe", "/c", "start", ps_bin, "-NoExit", "-Command", f"Set-Location '{target_dir}'"]
 
     # 4. Chrome / Web Browser
     elif "chrome" in app_clean or "browser" in app_clean:
@@ -457,13 +443,8 @@ def launch_windows_app(app_name: str = "antigravity", argument: str | None = Non
             "message": f"Could not resolve executable for '{app_name}'.",
         }
 
-    si = None
-    if os.name == "nt":
-        si = subprocess.STARTUPINFO()
-        si.lpDesktop = r"WinSta0\Default"
-
     try:
-        proc = subprocess.Popen(cmd, startupinfo=si, shell=False)
+        proc = subprocess.Popen(cmd, shell=False)
         app_label = cmd[0] if cmd else app_name
         logger.info("Launched desktop application: %s (PID: %s)", app_label, proc.pid)
         return {
