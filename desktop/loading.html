@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>IRIS Desktop</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: radial-gradient(circle at 50% 30%, #111827 0%, #030712 100%);
+      color: #F9FAFB;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      user-select: none;
+      overflow: hidden;
+    }
+    .container {
+      text-align: center;
+      max-width: 420px;
+      padding: 32px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .pulse-ring {
+      width: 72px;
+      height: 72px;
+      border-radius: 50%;
+      border: 3px solid rgba(59, 130, 246, 0.2);
+      border-top-color: #3B82F6;
+      border-right-color: #60A5FA;
+      animation: spin 1s cubic-bezier(0.55, 0.25, 0.25, 0.7) infinite;
+      margin-bottom: 24px;
+      box-shadow: 0 0 25px rgba(59, 130, 246, 0.35);
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    h1 {
+      font-size: 20px;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      margin-bottom: 8px;
+      background: linear-gradient(135deg, #FFFFFF 0%, #93C5FD 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    p {
+      font-size: 13px;
+      color: #9CA3AF;
+      line-height: 1.5;
+      margin-bottom: 20px;
+    }
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 14px;
+      border-radius: 999px;
+      background: rgba(31, 41, 55, 0.7);
+      border: 1px solid rgba(75, 85, 99, 0.4);
+      font-size: 12px;
+      color: #E5E7EB;
+    }
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #F59E0B;
+      animation: blink 1.2s ease-in-out infinite alternate;
+    }
+    @keyframes blink {
+      from { opacity: 0.3; }
+      to { opacity: 1; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="pulse-ring"></div>
+    <h1>Connecting to IRIS...</h1>
+    <p>Connecting to live development services. Changes in your repository will appear automatically.</p>
+    <div class="status-badge">
+      <span class="dot"></span>
+      <span id="status-text">Connecting to http://localhost:5173</span>
+    </div>
+  </div>
+  <script>
+    let dots = 0;
+    setInterval(() => {
+      dots = (dots + 1) % 4;
+      document.getElementById('status-text').innerText = 'Connecting to http://localhost:5173' + '.'.repeat(dots);
+    }, 400);
+  </script>
+</body>
+</html>
