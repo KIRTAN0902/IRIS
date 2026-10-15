@@ -312,6 +312,11 @@ class IrisAgent:
         bottlenecks = (context.get("startup_state", {}) or {}).get("bottlenecks") or []
         attention = [a["title"] for a in context.get("attention_items", [])[:4]]
         unavailable = ", ".join(context.get("unavailable_domains", []) or []) or "none"
+        email_accounts = context.get("connected_email_accounts") or []
+        if email_accounts:
+            email_summary = ", ".join(f"{a['email_address']} ({a['alias']})" for a in email_accounts)
+        else:
+            email_summary = "None (run `python scripts/connect_gmail.py` to link Gmail)"
 
         sections = [
             f"""You are IRIS, {context.get("user_name") or "the user"}'s personal intelligence assistant, in the spirit of JARVIS: always aware of their situation, deeply familiar with how they live and work, and one step ahead.
@@ -346,7 +351,16 @@ HOW YOU OPERATE:
 10. GOOGLE DRIVE INTEGRATION: You have tools to search, read, and upload files to Google Drive:
    - To view or search files in Google Drive, call `list_google_drive_files` or `search_google_drive`.
    - To retrieve and read the text of a document or Google Doc, call `read_google_drive_file`.
-   - To upload notes, briefings, project plans, or laptop files to Google Drive (and NotebookLM sources), call `upload_to_google_drive`.""",
+   - To upload notes, briefings, project plans, or laptop files to Google Drive (and NotebookLM sources), call `upload_to_google_drive`.
+11. GMAIL & EMAIL INTEGRATION:
+   - Connected email inboxes: {email_summary}.
+   - You have tools to check, search, and draft emails:
+     * `list_unread_emails`: Check unread emails across accounts or for a specific alias.
+     * `search_emails`: Search messages using Gmail search syntax (`from:`, `subject:`, `is:unread`, etc.).
+     * `get_email_details`: Fetch full body text and headers for an email message.
+     * `create_email_draft`: Create a draft email in Gmail for the user to review and approve before sending.
+     * `send_email`: Send an email directly (only when explicitly asked by user).
+   - If user asks to check emails or about their inbox, NEVER say Gmail is not connected when active inboxes are listed above! Use the tools to retrieve their emails immediately.""",
         ]
         if personal_model:
             sections.append(personal_model)
@@ -615,17 +629,26 @@ HOW YOU OPERATE:
         # Check for Gmail / Email query
 
         if "email" in msg_lower or "gmail" in msg_lower or "inbox" in msg_lower:
-            return AgentResponseSchema(
-                thought="User inquired about emails; Gmail is not connected.",
-                actions=[],
-                message=(
-                    "I can't check your emails right now because Gmail integration "
-                    "is not connected."
-                ),
-                actions_summary=[],
-                evidence=["Gmail integration: Not connected"],
-                missing_information="Gmail integration is planned and not yet active.",
-            )
+            from app.models.email_account import EmailAccount
+            accounts = db.query(EmailAccount).filter(EmailAccount.user_id == user.id, EmailAccount.is_active.is_(True)).all()
+            if accounts:
+                accts_str = ", ".join(f"`{a.email_address}` ({a.alias})" for a in accounts)
+                return AgentResponseSchema(
+                    thought=f"User asked about email; found {len(accounts)} connected accounts.",
+                    actions=[],
+                    message=f"📧 Gmail is connected! Active inboxes: {accts_str}. You can ask me to list your unread emails, search messages, or draft replies.",
+                    actions_summary=[f"Confirmed Gmail connection ({len(accounts)} accounts)"],
+                    evidence=[f"Gmail account: {a.email_address} ({a.alias})" for a in accounts],
+                )
+            else:
+                return AgentResponseSchema(
+                    thought="User inquired about emails; no Gmail accounts connected.",
+                    actions=[],
+                    message="Gmail is not connected yet. You can connect your Gmail account by running `python scripts/connect_gmail.py --alias personal` in your terminal.",
+                    actions_summary=["Gmail not connected"],
+                    evidence=["Gmail integration: Not connected"],
+                    missing_information="No active email accounts found.",
+                )
 
         # Check for completed task signal
         if "finished" in msg_lower or "completed" in msg_lower or "done with" in msg_lower:

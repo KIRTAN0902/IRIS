@@ -291,8 +291,16 @@ class DecisionContextBuilder:
             for m in active_memories
         ]
 
-        # Explicitly declare external domains that are currently not connected
-        unavailable_domains = ["EMAIL", "FINANCE", "DOCUMENTS"]
+        # Dynamically declare external domains based on actual connected accounts
+        from app.models.email_account import EmailAccount
+        email_accounts = (
+            db.query(EmailAccount)
+            .filter(EmailAccount.user_id == user.id, EmailAccount.is_active.is_(True))
+            .all()
+        )
+        unavailable_domains = ["FINANCE", "DOCUMENTS"]
+        if not email_accounts:
+            unavailable_domains.insert(0, "EMAIL")
 
         return {
             "current_time_utc": now_utc.isoformat(),
@@ -337,6 +345,10 @@ class DecisionContextBuilder:
             },
             "domain_signals": domain_signals,
             "attention_items": attention_items,
+            "connected_email_accounts": [
+                {"alias": a.alias, "email_address": a.email_address, "provider": a.provider}
+                for a in email_accounts
+            ],
             "unavailable_domains": unavailable_domains,
         }
 

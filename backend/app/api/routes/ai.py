@@ -341,6 +341,31 @@ async def ask_iris(
         else:
             answer_text = f"Google Drive is connected to `{acc.email_address}`! You can ask me to search Drive, read specific documents, or upload files directly."
         source = "AI"
+    elif any(w in q_lower for w in ["gmail", "email", "inbox"]):
+        from app.models.email_account import EmailAccount
+        from app.services import gmail_service
+        accounts = db.query(EmailAccount).filter(EmailAccount.user_id == user.id, EmailAccount.is_active.is_(True)).all()
+        if not accounts:
+            answer_text = "Gmail is not connected yet. You can link your Google account by running `python scripts/connect_gmail.py --alias personal` in your terminal."
+            source = "AI"
+        elif any(w in q_lower for w in ["unread", "latest", "check", "new", "recent", "list", "fetch"]) and not any(w in q_lower for w in ["how to", "why"]):
+            try:
+                unread = await gmail_service.list_unread_emails(db, user, limit=5)
+                if unread:
+                    items = "\n".join(f"- **{e.sender}**: *{e.subject}* (`{e.account_alias}`)" for e in unread)
+                    answer_text = f"📧 Here are your latest unread emails:\n{items}"
+                else:
+                    accts_str = ", ".join(f"`{a.email_address}`" for a in accounts)
+                    answer_text = f"📧 No unread emails found across your connected accounts ({accts_str}). All caught up!"
+                source = "AI"
+            except Exception as exc:
+                accts_str = ", ".join(f"`{a.email_address}` ({a.alias})" for a in accounts)
+                answer_text = f"📧 Gmail is connected to {accts_str}. Could not fetch emails right now: {exc}"
+                source = "AI"
+        elif any(w in q_lower for w in ["connected", "status", "is ", "available", "access", "support"]):
+            accts_str = ", ".join(f"`{a.email_address}` ({a.alias})" for a in accounts)
+            answer_text = f"📧 Yes! Gmail is connected and active: {accts_str}. You can ask me to list unread emails, search for messages, or draft replies."
+            source = "AI"
 
     if answer_text is None and provider.enabled:
         try:

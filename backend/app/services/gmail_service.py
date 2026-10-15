@@ -144,14 +144,28 @@ async def get_valid_access_token(db: Session, account: EmailAccount) -> str:
 # --- Account Management ---
 
 
+def is_account_gmail_authorized(account: EmailAccount) -> bool:
+    """Checks whether the granted scopes on this account include Gmail scopes."""
+    if not account.scopes:
+        return True  # No custom restriction recorded, assume full default Gmail scopes
+    scopes_list = account.scopes.split()
+    return any("gmail" in s.lower() or "mail.google.com" in s.lower() for s in scopes_list)
+
+
 def list_accounts(
-    db: Session, user_id: int, active_only: bool = True
+    db: Session,
+    user_id: int,
+    active_only: bool = True,
+    gmail_capable_only: bool = False,
 ) -> list[EmailAccount]:
     """List connected email accounts for the user."""
     query = db.query(EmailAccount).filter(EmailAccount.user_id == user_id)
     if active_only:
         query = query.filter(EmailAccount.is_active.is_(True))
-    return query.order_by(EmailAccount.alias.asc()).all()
+    accounts = query.order_by(EmailAccount.alias.asc()).all()
+    if gmail_capable_only:
+        accounts = [a for a in accounts if is_account_gmail_authorized(a)]
+    return accounts
 
 
 def get_account_by_alias(
@@ -347,6 +361,11 @@ async def _fetch_account_messages(
             params={"q": query, "maxResults": limit},
         )
         if list_resp.status_code != 200:
+            if "ACCESS_TOKEN_SCOPE_INSUFFICIENT" in list_resp.text:
+                raise ValidationAppError(
+                    f"Account '{account.alias}' ({account.email_address}) was authorized with Google Drive permissions only. "
+                    f"To grant Gmail permissions, run: python scripts/connect_gmail.py --alias {account.alias}"
+                )
             raise ValidationAppError(
                 f"Gmail API error for '{account.alias}': {list_resp.text}"
             )
@@ -376,14 +395,14 @@ async def list_unread_emails(
     limit: int = 10,
 ) -> list[EmailMessageSummary]:
     """Fetch unread emails. If account_alias is None, aggregates across all connected accounts."""
-    accounts = list_accounts(db, user.id, active_only=True)
+    accounts = list_accounts(db, user.id, active_only=True, gmail_capable_only=True)
     if not accounts:
         return []
 
     if account_alias:
         target = next((a for a in accounts if a.alias.lower() == account_alias.lower()), None)
         if not target:
-            raise NotFoundError(f"Email account '{account_alias}' is not connected or active.")
+            raise NotFoundError(f"Email account '{account_alias}' is not connected or active for Gmail.")
         return await _fetch_account_messages(db, target, query="is:unread", limit=limit)
 
     # Fan out across all active accounts
@@ -407,7 +426,7 @@ async def search_emails(
     limit: int = 10,
 ) -> list[EmailMessageSummary]:
     """Search emails using Gmail search syntax across specific account or all connected accounts."""
-    accounts = list_accounts(db, user.id, active_only=True)
+    accounts = list_accounts(db, user.id, active_only=True, gmail_capable_only=True)
     if not accounts:
         return []
 
@@ -484,7 +503,7 @@ async def create_draft(
     bcc: str | None = None,
 ) -> dict[str, Any]:
     """Create a draft message in Gmail for review before sending."""
-    accounts = list_accounts(db, user.id, active_only=True)
+    accounts = list_accounts(db, user.id, active_only=True, gmail_capable_only=True)
     if not accounts:
         raise ValidationAppError("No active Gmail accounts connected.")
 
@@ -527,7 +546,7 @@ async def send_email(
     bcc: str | None = None,
 ) -> dict[str, Any]:
     """Send an email directly from the specified account."""
-    accounts = list_accounts(db, user.id, active_only=True)
+    accounts = list_accounts(db, user.id, active_only=True, gmail_capable_only=True)
     if not accounts:
         raise ValidationAppError("No active Gmail accounts connected.")
 

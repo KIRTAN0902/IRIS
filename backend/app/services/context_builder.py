@@ -261,6 +261,17 @@ def build_ask_context(db: Session, user, *, question: str) -> dict:
         for m in memories
     ]
 
+    from app.models.email_account import EmailAccount
+    email_accounts = (
+        db.query(EmailAccount)
+        .filter(EmailAccount.user_id == user.id, EmailAccount.is_active.is_(True))
+        .all()
+    )
+    email_data = [
+        {"alias": a.alias, "email": a.email_address, "is_active": a.is_active}
+        for a in email_accounts
+    ]
+
     return {
         "question": question,
         "current_time_utc": now.isoformat(),
@@ -282,6 +293,7 @@ def build_ask_context(db: Session, user, *, question: str) -> dict:
         ],
         "week_productivity": productivity_week,
         "startup_metrics": startup,
+        "connected_email_accounts": email_data,
     }
 
 
