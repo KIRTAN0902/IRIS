@@ -36,8 +36,8 @@ services:
       # Legacy vendor settings (used when AI_* are unset)
       - NVIDIA_BASE_URL=${NVIDIA_BASE_URL:-https://integrate.api.nvidia.com/v1}
       - NVIDIA_API_KEY=${NVIDIA_API_KEY:-}
-      - NVIDIA_MODEL=${NVIDIA_MODEL:-nvidia/nemotron-3.5-lightning-30b-a3b}
-      - NVIDIA_TIMEOUT_SECONDS=${NVIDIA_TIMEOUT_SECONDS:-45.0}
+      - NVIDIA_MODEL=${NVIDIA_MODEL:-nvidia/nemotron-3-nano-omni-30b-a3b-reasoning}
+      - NVIDIA_TIMEOUT_SECONDS=${NVIDIA_TIMEOUT_SECONDS:-90.0}
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
       - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.5-flash}
       - GEMINI_TIMEOUT_SECONDS=${GEMINI_TIMEOUT_SECONDS:-45.0}

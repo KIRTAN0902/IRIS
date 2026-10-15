@@ -6,7 +6,7 @@ cd /d "%~dp0"
 powershell -NoProfile -Command "if (-not (Get-NetTCPConnection -LocalPort 8000 -ErrorAction SilentlyContinue)) { wscript.exe '%~dp0start-mesh-silent.vbs' }"
 
 :: 2. Check if frontend on port 5173 is listening; start if needed
-powershell -NoProfile -Command "if (-not (Get-NetTCPConnection -LocalPort 5173 -ErrorAction SilentlyContinue)) { Start-Process cmd -ArgumentList '/c cd /d %~dp0frontend && npm run dev' -WindowStyle Hidden }"
+powershell -NoProfile -Command "if (-not (Get-NetTCPConnection -LocalPort 5173 -ErrorAction SilentlyContinue)) { wscript.exe '%~dp0start-vite-silent.vbs' }"
 
 :: 3. Launch Electron Desktop App
 cd /d "%~dp0desktop"

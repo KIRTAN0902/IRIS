@@ -451,7 +451,7 @@ export function SettingsPage() {
                     <Sparkles size={18} className="text-ai" />
                     <div>
                       <p className="font-medium text-ink">Primary Reasoning Engine</p>
-                      <p className="text-[12px] text-ink-faint">NVIDIA Nemotron / Gemini Pro</p>
+                      <p className="text-[12px] text-ink-faint">Nemotron 3 Nano Omni / Gemini</p>
                     </div>
                   </div>
                   <span className="rounded-full bg-ai/10 px-2.5 py-0.5 text-[11px] font-semibold text-ai border border-ai/20">

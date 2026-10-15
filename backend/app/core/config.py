@@ -84,8 +84,8 @@ class Settings(BaseSettings):
     # NVIDIA NIM (OpenAI-compatible API)
     nvidia_base_url: str = "https://integrate.api.nvidia.com/v1"
     nvidia_api_key: str | None = None
-    nvidia_model: str = "nvidia/nemotron-3.5-lightning-30b-a3b"
-    nvidia_timeout_seconds: float = 45.0
+    nvidia_model: str = "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"
+    nvidia_timeout_seconds: float = 90.0
 
     # Gemini
     gemini_api_key: str | None = None

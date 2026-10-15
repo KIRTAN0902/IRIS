@@ -102,8 +102,8 @@ AI_PROVIDER=nvidia
 # NVIDIA NIM Configuration
 NVIDIA_BASE_URL=https://integrate.api.nvidia.com/v1
 NVIDIA_API_KEY=your-nvidia-api-key-here
-NVIDIA_MODEL=nvidia/nemotron-3.5-lightning-30b-a3b
-NVIDIA_TIMEOUT_SECONDS=45.0
+NVIDIA_MODEL=nvidia/nemotron-3-nano-omni-30b-a3b-reasoning
+NVIDIA_TIMEOUT_SECONDS=90.0
 
 # (Optional) Gemini API Key for Fallback
 GEMINI_API_KEY=your-gemini-api-key-if-applicable

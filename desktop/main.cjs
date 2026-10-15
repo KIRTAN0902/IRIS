@@ -56,7 +56,7 @@ app.on('second-instance', async () => {
   }
 });
 
-function checkUrl(url) {
+function checkUrl(url, timeoutMs = 4000) {
   return new Promise((resolve) => {
     try {
       const parsed = new URL(url);
@@ -66,9 +66,10 @@ function checkUrl(url) {
           port: parsed.port,
           path: parsed.pathname,
           method: 'GET',
-          timeout: 1000,
+          timeout: timeoutMs,
         },
         (res) => {
+          res.resume();
           resolve(res.statusCode >= 200 && res.statusCode < 400);
         }
       );
@@ -89,33 +90,31 @@ async function ensureServices() {
   const backendUp = await checkUrl(BACKEND_URL);
   if (!backendUp) {
     log('Backend offline; starting IRIS backend daemon...');
-    const pythonExe = path.join(REPO_ROOT, 'backend', '.venv', 'Scripts', 'pythonw.exe');
-    const fallbackExe = path.join(REPO_ROOT, 'backend', '.venv', 'Scripts', 'python.exe');
-    const daemonScript = path.join(REPO_ROOT, 'backend', 'run_daemon.py');
-    const targetExe = fs.existsSync(pythonExe) ? pythonExe : fallbackExe;
-    if (fs.existsSync(targetExe)) {
-      spawn(targetExe, [daemonScript], {
-        cwd: path.join(REPO_ROOT, 'backend'),
+    const vbsScript = path.join(REPO_ROOT, 'start-mesh-silent.vbs');
+    if (fs.existsSync(vbsScript)) {
+      spawn('wscript.exe', [vbsScript], {
+        cwd: REPO_ROOT,
         detached: true,
         stdio: 'ignore',
         windowsHide: true,
       }).unref();
-      log(`Spawned backend via ${targetExe}`);
+      log('Spawned backend via start-mesh-silent.vbs');
     }
   }
 
   // 2. Ensure frontend Vite is running
   const frontendUp = await checkUrl(FRONTEND_URL);
   if (!frontendUp) {
-    const frontendDir = path.join(REPO_ROOT, 'frontend');
-    if (fs.existsSync(frontendDir)) {
-      log('Starting IRIS frontend Vite dev server...');
-      spawn('cmd.exe', ['/c', 'npm', 'run', 'dev', '--', '--host', '0.0.0.0', '--port', '5173'], {
-        cwd: frontendDir,
+    const vbsScript = path.join(REPO_ROOT, 'start-vite-silent.vbs');
+    if (fs.existsSync(vbsScript)) {
+      log('Starting IRIS frontend Vite dev server silently...');
+      spawn('wscript.exe', [vbsScript], {
+        cwd: REPO_ROOT,
         detached: true,
         stdio: 'ignore',
         windowsHide: true,
       }).unref();
+      log('Spawned frontend via start-vite-silent.vbs');
     }
   }
 }
@@ -127,7 +126,7 @@ setInterval(async () => {
     log('Watchdog: Backend offline on port 8000, resurrecting...');
     await ensureServices();
   }
-}, 15000);
+}, 30000);
 
 function createWindow() {
   mainWindow = new BrowserWindow({

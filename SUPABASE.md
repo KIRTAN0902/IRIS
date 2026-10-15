@@ -97,7 +97,7 @@ This utility:
    | `AI_PROVIDER` | `nvidia` *(or `gemini`)* |
    | `NVIDIA_BASE_URL` | `https://integrate.api.nvidia.com/v1` |
    | `NVIDIA_API_KEY` | *(Your NVIDIA API key from build.nvidia.com)* |
-   | `NVIDIA_MODEL` | `nvidia/nemotron-3.5-lightning-30b-a3b` |
+   | `NVIDIA_MODEL` | `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning` |
    | `CORS_ORIGINS` | `["https://iris-frontend.onrender.com"]` *(Your frontend URL)* |
 
 ### 2. Deploy Frontend (Static Site)

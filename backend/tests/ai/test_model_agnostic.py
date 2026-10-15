@@ -53,6 +53,10 @@ def test_capabilities_profiles_match_vendor_prefixed_ids():
     assert nemotron.reasoning is True
     assert nemotron.json_mode == "none"
 
+    nemotron_nano = resolve_capabilities("nvidia/nemotron-3-nano-omni-30b-a3b-reasoning")
+    assert nemotron_nano.reasoning is True
+    assert nemotron_nano.json_mode == "none"
+
     gpt5 = resolve_capabilities("openai/gpt-5-mini")
     assert gpt5.supports_temperature is False
     assert gpt5.max_tokens_param == "max_completion_tokens"

@@ -15,7 +15,7 @@ from app.ai.providers.openai_compatible import OpenAICompatibleProvider
 from app.ai.structured import _clean_json_markdown  # noqa: F401  (re-exported for compatibility)
 
 NVIDIA_HOSTED_URL = "https://integrate.api.nvidia.com/v1"
-NVIDIA_DEFAULT_MODEL = "nvidia/nemotron-3.5-lightning-30b-a3b"
+NVIDIA_DEFAULT_MODEL = "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"
 
 
 class NvidiaProvider(OpenAICompatibleProvider):

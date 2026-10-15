@@ -250,7 +250,7 @@ def test_nvidia_enabled_property():
     p_enabled = NvidiaProvider(base_url="https://integrate.api.nvidia.com/v1", api_key="nvapi-test")
     assert p_enabled.enabled is True
     assert p_enabled.name == "nvidia"
-    assert p_enabled.model == "nvidia/nemotron-3.5-lightning-30b-a3b"
+    assert p_enabled.model == "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"
 
 
 @pytest.mark.asyncio

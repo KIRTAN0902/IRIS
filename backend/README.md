@@ -96,7 +96,7 @@ LOG_LEVEL=INFO
 
 # AI model: any provider, any model
 AI_PROVIDER=nvidia
-AI_MODEL=nvidia/nemotron-3.5-lightning-30b-a3b
+AI_MODEL=nvidia/nemotron-3-nano-omni-30b-a3b-reasoning
 AI_API_KEY=your-api-key
 ```
 

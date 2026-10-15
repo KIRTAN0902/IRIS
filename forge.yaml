@@ -1,0 +1,74 @@
+version: 1
+project:
+  name: IRIS
+  data_dir: .forge
+limits:
+  max_iterations: 10
+  max_same_failure: 3
+  max_wall_time_s: 3600
+  max_total_tokens: null
+  max_cost_usd: null
+  max_tool_calls_per_task: 150
+policy:
+  approval_threshold: high
+  permissions:
+  - read
+  - write
+  - execute
+  - vcs
+tools:
+  shell: auto
+  command_timeout_s: 300
+  max_output_chars: 30000
+  env_passthrough: []
+  test_command: null
+logging:
+  level: INFO
+  json_file: true
+models:
+  orchestrator_model:
+    provider: nvidia
+    model: nemotron-custom
+    capabilities:
+      tool_calling: true
+      structured_output: true
+      streaming: true
+    detect_capabilities: false
+  planner_model:
+    provider: nvidia
+    model: nvidia/nemotron-3-nano-omni-30b-a3b-reasoning
+    capabilities:
+      tool_calling: true
+      structured_output: true
+      streaming: true
+    detect_capabilities: false
+  executor_model:
+    provider: nvidia
+    model: deepseek-ai/deepseek-v4.1-flash
+    capabilities:
+      tool_calling: true
+      structured_output: true
+      streaming: true
+    detect_capabilities: false
+  qa_model:
+    provider: nvidia
+    model: nvidia/nemotron-3-nano-omni-30b-a3b-reasoning
+    capabilities:
+      tool_calling: true
+      structured_output: true
+      streaming: true
+    detect_capabilities: false
+  default_model:
+    provider: nvidia
+    model: nvidia/nemotron-3-nano-omni-30b-a3b-reasoning
+    capabilities:
+      tool_calling: true
+      structured_output: true
+      streaming: true
+    detect_capabilities: false
+roles:
+  default: default_model
+  orchestrator: default_model
+  planner: default_model
+  executor: default_model
+  qa: default_model
