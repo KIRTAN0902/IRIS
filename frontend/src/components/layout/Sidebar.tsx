@@ -441,7 +441,15 @@ function AIStatusLine() {
 
   const offline = !s.responding || s.status === "NOT_RESPONDING";
   const unconfigured = s.status === "NOT_CONFIGURED";
-  const label = unconfigured ? "AI not set up" : offline ? "AI offline · using offline engine" : s.model.split("/").pop();
+  const rawModel = s.model ? s.model.split("/").pop() || s.model : "Online";
+  const displayModel = rawModel.includes("gemini")
+    ? rawModel.replace("gemini-", "Gemini ").replace("-flash", " Flash").replace("-live", " Live")
+    : rawModel;
+  const label = unconfigured
+    ? "AI not set up"
+    : offline
+    ? "AI offline · using offline engine"
+    : `IRIS Core · ${displayModel}`;
 
   return (
     <div className="flex items-center gap-2 px-2.5 pt-1 text-[11px] text-ink-faint" title={s.message ?? undefined}>

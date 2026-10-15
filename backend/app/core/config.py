@@ -40,12 +40,12 @@ class Settings(BaseSettings):
     # nvidia | openai | openrouter | groq | together | deepseek | mistral |
     # fireworks | anthropic | ollama | lmstudio | vllm | openai_compatible |
     # gemini | mock. See app/ai/factory.py for presets.
-    ai_provider: str = "nvidia"
+    ai_provider: str = "gemini"
     ai_context_max_tasks: int = 25
 
     # Provider-neutral model settings. These win over the legacy per-vendor
     # variables below, so switching models is only ever an .env change.
-    ai_model: str | None = None
+    ai_model: str | None = "gemini-2.5-flash"
     ai_base_url: str | None = None
     ai_api_key: str | None = None
     ai_timeout_seconds: float | None = None

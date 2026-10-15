@@ -39,10 +39,11 @@ In your **Vercel Project Settings → Environment Variables**, configure:
 | `DEFAULT_TIMEZONE` | `Asia/Kolkata` | User timezone |
 | `LOG_LEVEL` | `INFO` | Standard logging |
 | `SECRET_KEY` | `[GENERATE_A_RANDOM_32_CHAR_STRING]` | App secret key |
-| `AI_PROVIDER` | `nvidia` *(or any preset: `openai`, `openrouter`, `groq`, `gemini`, ...)* | Which backend serves the model |
-| `AI_MODEL` | `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning` | Any model id; switching models is config-only |
-| `AI_API_KEY` | `[YOUR_API_KEY]` | Key for that provider (NVIDIA: build.nvidia.com) |
-| `GEMINI_API_KEY` | `[YOUR_GEMINI_KEY]` | Voice conversations: speech recognition and spoken replies (aistudio.google.com/apikey) |
+| `AI_PROVIDER` | `gemini` *(or `nvidia`, `groq`, `openrouter`, ...)* | Front-door Orchestrator AI provider |
+| `AI_MODEL` | `gemini-2.5-flash` | High-throughput Orchestrator model |
+| `GEMINI_API_KEY` | `[YOUR_GEMINI_KEY]` | Key for Gemini Orchestrator & BUBBA (aistudio.google.com) |
+| `GROQ_API_KEY` | `[YOUR_GROQ_KEY]` | Key for Operator, Planner & Scribe sub-agents (console.groq.com) |
+| `NVIDIA_API_KEY` | `[YOUR_NVIDIA_KEY]` | *(optional)* For Vision perception |
 | `AI_STT_MODEL` / `AI_TTS_MODEL` / `AI_TTS_VOICE` | *(optional)* | Defaults: `gemini-3.5-transcribe`, `gemini-3.8-flash-lite-tts`, `Kore` |
 
 ---
