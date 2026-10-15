@@ -40,7 +40,7 @@ In your **Vercel Project Settings → Environment Variables**, configure:
 | `LOG_LEVEL` | `INFO` | Standard logging |
 | `SECRET_KEY` | `[GENERATE_A_RANDOM_32_CHAR_STRING]` | App secret key |
 | `AI_PROVIDER` | `gemini` *(or `nvidia`, `groq`, `openrouter`, ...)* | Front-door Orchestrator AI provider |
-| `AI_MODEL` | `gemini-2.5-flash` | High-throughput Orchestrator model |
+| `AI_MODEL` | `gemini-3.5-flash` | High-throughput Orchestrator model |
 | `GEMINI_API_KEY` | `[YOUR_GEMINI_KEY]` | Key for Gemini Orchestrator & BUBBA (aistudio.google.com) |
 | `GROQ_API_KEY` | `[YOUR_GROQ_KEY]` | Key for Operator, Planner & Scribe sub-agents (console.groq.com) |
 | `NVIDIA_API_KEY` | `[YOUR_NVIDIA_KEY]` | *(optional)* For Vision perception |

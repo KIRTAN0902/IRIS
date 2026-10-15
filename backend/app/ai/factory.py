@@ -95,6 +95,7 @@ def _common_kwargs() -> dict:
 LEGACY_MODEL_MIGRATIONS: dict[str, str] = {
     "nvidia/nemotron-3-super-120b-a12b": NVIDIA_DEFAULT_MODEL,
     "nvidia/nemotron-3-ultra-550b-a55b": NVIDIA_DEFAULT_MODEL,
+    "gemini-2.5-flash": "gemini-3.5-flash",
 }
 
 
@@ -120,7 +121,7 @@ def create_ai_provider(provider_name: str | None = None, model: str | None = Non
     if name == "gemini":
         return GeminiProvider(
             api_key=_first(settings.ai_api_key, settings.gemini_api_key),
-            model=_resolve_model(model, settings.ai_model, settings.gemini_model, default="gemini-2.5-flash"),
+            model=_resolve_model(model, settings.ai_model, settings.gemini_model, default="gemini-3.5-flash"),
             timeout_seconds=settings.ai_timeout_seconds or settings.gemini_timeout_seconds,
             **_common_kwargs(),
         )

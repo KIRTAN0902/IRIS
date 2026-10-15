@@ -45,7 +45,7 @@ class Settings(BaseSettings):
 
     # Provider-neutral model settings. These win over the legacy per-vendor
     # variables below, so switching models is only ever an .env change.
-    ai_model: str | None = "gemini-2.5-flash"
+    ai_model: str | None = "gemini-3.5-flash"
     ai_base_url: str | None = None
     ai_api_key: str | None = None
     ai_timeout_seconds: float | None = None
@@ -89,7 +89,7 @@ class Settings(BaseSettings):
 
     # Gemini
     gemini_api_key: str | None = None
-    gemini_model: str = "gemini-2.5-flash"
+    gemini_model: str = "gemini-3.5-flash"
     gemini_timeout_seconds: float = 45.0
 
     # Groq Cloud (Ultra-fast LPU inference)
@@ -104,7 +104,7 @@ class Settings(BaseSettings):
     ai_operator_model: str = "groq:openai/gpt-oss-120b"
     ai_planner_model: str = "groq:openai/gpt-oss-120b"
     ai_scribe_model: str = "groq:qwen/qwen3.8-27b"
-    ai_bubba_model: str = "gemini:gemini-2.5-flash"
+    ai_bubba_model: str = "gemini:gemini-3.5-flash"
     ai_vision_model: str = "nvidia:nvidia/nemotron-3.5-super-vl-120b-a12b"
 
     # --- Gmail Integration ---
