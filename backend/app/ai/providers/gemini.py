@@ -97,13 +97,39 @@ class GeminiProvider(AIProvider):
                 "Gemini provider is not enabled (missing API key)",
                 provider=self.name,
             )
-        return await self._chat_backend.chat(
-            messages,
-            tools=tools,
-            response_format=response_format,
-            temperature=temperature,
-            max_tokens=max_tokens,
-        )
+        try:
+            return await self._chat_backend.chat(
+                messages,
+                tools=tools,
+                response_format=response_format,
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
+        except AIProviderError as exc:
+            err_msg = str(exc)
+            if ("503" in err_msg or "404" in err_msg or "UNAVAILABLE" in err_msg) and self._model != "gemini-3.5-flash":
+                logger.warning(
+                    "Gemini model '%s' unavailable (%s); falling back to gemini-3.5-flash",
+                    self._model,
+                    err_msg[:100],
+                )
+                fallback_backend = OpenAICompatibleProvider(
+                    name="gemini",
+                    label="Gemini",
+                    base_url=GEMINI_OPENAI_URL,
+                    model="gemini-3.5-flash",
+                    api_key=self._api_key,
+                    timeout_seconds=self._timeout,
+                    capabilities=self._caps,
+                )
+                return await fallback_backend.chat(
+                    messages,
+                    tools=tools,
+                    response_format=response_format,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                )
+            raise
 
     def _get_client(self):
         if self._client is None:
@@ -145,7 +171,7 @@ class GeminiProvider(AIProvider):
             self._model,
         )
 
-        def _call_gemini() -> str:
+        def _call_gemini(model_to_use: str) -> str:
             from google.genai import types
 
             config = types.GenerateContentConfig(
@@ -155,7 +181,7 @@ class GeminiProvider(AIProvider):
                 response_schema=schema,
             )
             response = client.models.generate_content(
-                model=self._model,
+                model=model_to_use,
                 contents=prompt,
                 config=config,
             )
@@ -163,7 +189,7 @@ class GeminiProvider(AIProvider):
 
         try:
             raw_text = await asyncio.wait_for(
-                asyncio.to_thread(_call_gemini),
+                asyncio.to_thread(_call_gemini, self._model),
                 timeout=self._timeout,
             )
         except TimeoutError as exc:
@@ -174,12 +200,28 @@ class GeminiProvider(AIProvider):
                 cause=exc,
             ) from exc
         except Exception as exc:
-            logger.warning("AI Gemini SDK error: provider=%s, error=%s", self.name, exc)
-            raise AIProviderError(
-                f"Gemini API call failed: {exc}",
-                provider=self.name,
-                cause=exc,
-            ) from exc
+            err_msg = str(exc)
+            if ("503" in err_msg or "404" in err_msg or "UNAVAILABLE" in err_msg) and self._model != "gemini-3.5-flash":
+                logger.warning(
+                    "Gemini model '%s' unavailable (%s); falling back to gemini-3.5-flash",
+                    self._model,
+                    err_msg[:100],
+                )
+                try:
+                    raw_text = await asyncio.wait_for(
+                        asyncio.to_thread(_call_gemini, "gemini-3.5-flash"),
+                        timeout=self._timeout,
+                    )
+                except Exception as inner_exc:
+                    logger.warning("Gemini 3.5 fallback also failed: %s", inner_exc)
+                    raise AIProviderError(f"Gemini API call failed: {exc}", provider=self.name, cause=exc) from exc
+            else:
+                logger.warning("AI Gemini SDK error: provider=%s, error=%s", self.name, exc)
+                raise AIProviderError(
+                    f"Gemini API call failed: {exc}",
+                    provider=self.name,
+                    cause=exc,
+                ) from exc
 
         if not raw_text:
             raise AISchemaValidationError(
