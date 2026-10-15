@@ -267,10 +267,33 @@ async def ask_iris(
 
     # Fast intent handling for desktop control and file surfing
     q_lower = data.question.lower().strip()
-    if "antigravity" in q_lower:
+    is_agy_cli = (
+        ("antigravity" in q_lower or "agy" in q_lower) and any(w in q_lower for w in ["cli", "terminal", "console", "resume", "continue", "-c", "--continue"])
+    ) or any(q_lower.startswith(w) for w in ["open agy", "launch agy", "start agy", "agy -c", "agy --continue"]) or q_lower == "agy"
+
+    is_agy_ide = (
+        any(w in q_lower for w in ["antigravity ide", "agy ide"])
+        or ("antigravity" in q_lower and any(w in q_lower for w in ["open", "launch", "start", "run", "ide"]))
+        or q_lower in ["antigravity", "open antigravity", "launch antigravity"]
+    )
+
+    if is_agy_cli:
         from app.services import mesh_service as ms
-        res = ms.launch_windows_app("antigravity", argument=r"C:\kirtan\IRIS")
-        answer_text = "🚀 I've launched Antigravity IDE on your Windows laptop display." if res.get("success") else f"Could not launch Antigravity: {res.get('error')}"
+        target_dir, prompt_text, should_resume = ms.parse_antigravity_cli_intent(data.question, default_dir=r"C:\kirtan\IRIS")
+        res = ms.launch_windows_app("antigravity_cli", directory=target_dir, prompt=prompt_text, resume=should_resume)
+        extra_msg = []
+        if should_resume:
+            extra_msg.append("resuming previous conversation")
+        if prompt_text:
+            extra_msg.append(f"with prompt: '{prompt_text}'")
+        extra_desc = f" ({', '.join(extra_msg)})" if extra_msg else ""
+        answer_text = f"⚡ Opened Antigravity CLI in `{target_dir}`{extra_desc} on your Windows laptop terminal." if res.get("success") else f"Could not launch Antigravity CLI: {res.get('error')}"
+        source = "AI"
+    elif is_agy_ide:
+        from app.services import mesh_service as ms
+        target_dir, _, _ = ms.parse_antigravity_cli_intent(data.question, default_dir=r"C:\kirtan\IRIS")
+        res = ms.launch_windows_app("antigravity_ide", directory=target_dir)
+        answer_text = f"🚀 I've launched Antigravity IDE in `{target_dir}` on your Windows laptop display." if res.get("success") else f"Could not launch Antigravity IDE: {res.get('error')}"
         source = "AI"
     elif "terminal" in q_lower and any(w in q_lower for w in ["open", "launch", "start", "wt"]):
         from app.services import mesh_service as ms

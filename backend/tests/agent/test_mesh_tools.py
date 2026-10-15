@@ -91,13 +91,17 @@ async def test_get_device_mesh_status_tool(db: Session):
     mock_ws = AsyncMock()
     await ms.hub.connect("phone_1", "phone_mobile", "Pixel 8", mock_ws)
 
-    with patch("app.services.mesh_service.get_windows_battery", return_value={"percent": 95, "is_charging": True}):
+    with (
+        patch("app.services.mesh_service.get_windows_battery", return_value={"percent": 95, "is_charging": True}),
+        patch("app.services.mesh_relay_service.is_local_windows_host", return_value=False),
+        patch("app.services.mesh_relay_service.get_laptop_host_info", return_value={"is_online": False}),
+    ):
         result = await tool.execute(db, user)
         assert result.success
         assert len(result.data["devices"]) == 1
         assert result.data["devices"][0]["name"] == "Pixel 8"
         assert result.data["host_battery"]["percent"] == 95
-        assert "1 device(s) connected" in result.summary
+        assert "1 companion device(s) connected" in result.summary
 
 
 @pytest.mark.asyncio
@@ -107,10 +111,45 @@ async def test_launch_laptop_app_tool(db: Session):
     user = get_current_user(db)
     tool = LaunchLaptopAppTool()
 
-    with patch("app.services.mesh_service.launch_windows_app", return_value={"success": True, "message": "Launched antigravity"}):
+    with patch("app.services.mesh_service.launch_windows_app", return_value={"success": True, "message": "Launched antigravity"}) as mock_launch:
         result = await tool.execute(db, user, app="antigravity")
         assert result.success
         assert "Launched antigravity" in result.summary
+        mock_launch.assert_called_once_with(
+            app_name="antigravity_ide",
+            argument=None,
+            directory=None,
+            prompt=None,
+            resume=False,
+            conversation_id=None,
+        )
+
+
+@pytest.mark.asyncio
+async def test_launch_antigravity_cli_tool(db: Session):
+    from app.agent.tools.mesh import LaunchLaptopAppTool
+
+    user = get_current_user(db)
+    tool = LaunchLaptopAppTool()
+
+    with patch("app.services.mesh_service.launch_windows_app", return_value={"success": True, "message": "Launched Antigravity CLI"}) as mock_launch:
+        result = await tool.execute(
+            db,
+            user,
+            app="antigravity_cli",
+            directory=r"C:\kirtan\IRIS",
+            prompt="fix the bug",
+            resume=True,
+        )
+        assert result.success
+        mock_launch.assert_called_once_with(
+            app_name="antigravity_cli",
+            argument=None,
+            directory=r"C:\kirtan\IRIS",
+            prompt="fix the bug",
+            resume=True,
+            conversation_id=None,
+        )
 
 
 @pytest.mark.asyncio

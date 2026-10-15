@@ -332,7 +332,16 @@ HOW YOU OPERATE:
    - Read Files: Read code, documents, text files, or configuration files anywhere using `read_laptop_file`.
    - Write & Create Files: Create new files, write scripts, save notes, or append to files anywhere across the laptop using `write_laptop_file`.
    - Search Files: Recursively search for files across drives or folders matching any pattern (*.pdf, *.py, *.txt) using `search_laptop_files`.
-   - App & File Display: Open files or folders on the physical screen with `open_laptop_file`, or launch apps (Antigravity IDE, Windows Terminal, VS Code, File Explorer) with `launch_laptop_app`.
+   - App & CLI Display: Launch applications or interactive terminals on the physical laptop screen using `launch_laptop_app`:
+     * Antigravity CLI: When user asks for Antigravity CLI, agy, or to open terminal with antigravity:
+       Call `launch_laptop_app(app="antigravity_cli", directory="...", prompt="...", resume=True/False)`.
+       - It opens an interactive terminal in the requested directory and runs `agy`.
+       - If the user asks to resume or continue a conversation: pass `resume=True`.
+       - If the user provides a prompt or instructions: pass `prompt="..."`.
+     * Antigravity IDE: When user asks for Antigravity IDE, the desktop GUI application, or code editor:
+       Call `launch_laptop_app(app="antigravity_ide", directory="...")`.
+     * Terminal: Use `launch_laptop_app(app="terminal", directory="...")` for a general interactive terminal.
+     * VS Code: Use `launch_laptop_app(app="vscode", directory="...")`.
    Whenever the user asks to inspect, run, modify, or search anything on their laptop, act immediately using these tools!
 10. GOOGLE DRIVE INTEGRATION: You have tools to search, read, and upload files to Google Drive:
    - To view or search files in Google Drive, call `list_google_drive_files` or `search_google_drive`.
@@ -377,11 +386,34 @@ HOW YOU OPERATE:
         msg_lower = user_message.lower()
         evidence: list[str] = []
 
-        # Check for remote laptop app launch (Antigravity IDE, WT, VS Code, Explorer)
-        if "antigravity" in msg_lower:
+        is_agy_cli = (
+            ("antigravity" in msg_lower or "agy" in msg_lower) and any(w in msg_lower for w in ["cli", "terminal", "console", "resume", "continue", "-c", "--continue"])
+        ) or any(msg_lower.startswith(w) for w in ["open agy", "launch agy", "start agy", "agy -c", "agy --continue"]) or msg_lower == "agy"
+
+        if is_agy_cli:
             from app.services import mesh_service as ms
-            res = ms.launch_windows_app("antigravity", argument=r"C:\kirtan\IRIS")
-            msg_text = "🚀 I've launched Antigravity IDE on your Windows laptop display." if res.get("success") else f"Could not launch Antigravity: {res.get('error')}"
+            target_dir, prompt_text, should_resume = ms.parse_antigravity_cli_intent(user_message, default_dir=r"C:\kirtan\IRIS")
+            res = ms.launch_windows_app("antigravity_cli", directory=target_dir, prompt=prompt_text, resume=should_resume)
+            extra_msg = []
+            if should_resume:
+                extra_msg.append("resuming previous conversation")
+            if prompt_text:
+                extra_msg.append(f"with prompt: '{prompt_text}'")
+            extra_desc = f" ({', '.join(extra_msg)})" if extra_msg else ""
+            msg_text = f"⚡ Opened Antigravity CLI in `{target_dir}`{extra_desc} on your Windows laptop terminal." if res.get("success") else f"Could not launch Antigravity CLI: {res.get('error')}"
+            return AgentResponseSchema(
+                thought=f"User commanded to open Antigravity CLI in {target_dir}.",
+                actions=[],
+                message=msg_text,
+                actions_summary=[f"Opened Antigravity CLI in {target_dir}"],
+                evidence=[f"Antigravity CLI: Active ({target_dir})"],
+            )
+
+        if "antigravity" in msg_lower or "agy ide" in msg_lower:
+            from app.services import mesh_service as ms
+            target_dir, _, _ = ms.parse_antigravity_cli_intent(user_message, default_dir=r"C:\kirtan\IRIS")
+            res = ms.launch_windows_app("antigravity_ide", directory=target_dir)
+            msg_text = f"🚀 I've launched Antigravity IDE in `{target_dir}` on your Windows laptop display." if res.get("success") else f"Could not launch Antigravity IDE: {res.get('error')}"
             return AgentResponseSchema(
                 thought="User commanded to open Antigravity IDE.",
                 actions=[],

@@ -145,20 +145,46 @@ class GetDeviceMeshStatusTool(Tool):
 
 class LaunchAppParams(BaseModel):
     app: str = Field(
-        default="antigravity",
-        description="Application to launch on the laptop (e.g. 'antigravity', 'antigravity ide', 'vscode', 'terminal', 'chrome')",
+        default="antigravity_ide",
+        description=(
+            "Application or CLI to launch on the laptop. MUST be one of:\n"
+            "- 'antigravity_cli': Launch Antigravity CLI in a terminal (opens terminal in requested directory, runs agy, supports prompt/resume).\n"
+            "- 'antigravity_ide': Launch the full Antigravity IDE desktop GUI application.\n"
+            "- 'terminal': Launch an interactive Windows Terminal / PowerShell window.\n"
+            "- 'vscode': Launch Visual Studio Code.\n"
+            "- 'explorer': Launch File Explorer.\n"
+            "- 'chrome': Launch Google Chrome or web browser."
+        ),
     )
     argument: str | None = Field(
         None,
-        description="Optional folder, workspace path, or URL to open in the app (e.g. 'C:\\kirtan\\IRIS')",
+        description="Optional folder, workspace path, URL, or CLI instruction.",
+    )
+    directory: str | None = Field(
+        None,
+        description="Directory or workspace path on the laptop to open the app or CLI in (e.g. 'C:\\kirtan\\IRIS', 'Desktop', 'Downloads', 'C:\\').",
+    )
+    prompt: str | None = Field(
+        None,
+        description="For Antigravity CLI: optional initial prompt or instruction to execute interactively (e.g. 'fix the auth bug').",
+    )
+    resume: bool = Field(
+        default=False,
+        description="For Antigravity CLI: set True to resume or continue the previous conversation (-c / --continue).",
+    )
+    conversation_id: str | None = Field(
+        None,
+        description="For Antigravity CLI: specific conversation ID to resume (--conversation <id>).",
     )
 
 
 class LaunchLaptopAppTool(Tool):
     name = "launch_laptop_app"
     description = (
-        "Launch or open a desktop application on your Windows laptop remotely "
-        "(e.g. 'open antigravity on laptop', 'launch VS Code', 'open terminal')."
+        "Launch or open a desktop application or interactive CLI on your Windows laptop remotely. "
+        "Use 'antigravity_cli' when user asks for Antigravity CLI, agy, or terminal with antigravity (supports directory, prompt, and resume=True). "
+        "Use 'antigravity_ide' when user asks for the Antigravity IDE GUI desktop app. "
+        "Use 'terminal' for an interactive Windows Terminal/PowerShell window."
     )
     parameters_schema = LaunchAppParams
     read_only = False
@@ -167,17 +193,34 @@ class LaunchLaptopAppTool(Tool):
         from app.services import mesh_relay_service as mrs
         import secrets
 
-        app_name = kwargs.get("app", "antigravity")
+        app_name = kwargs.get("app", "antigravity_ide")
         arg = kwargs.get("argument")
+        directory = kwargs.get("directory")
+        prompt = kwargs.get("prompt")
+        resume = kwargs.get("resume", False)
+        conversation_id = kwargs.get("conversation_id")
+
+        # Normalize app name if user/model asks for 'antigravity cli' or 'agy cli'
+        if any(k in app_name.lower() for k in ["cli", "terminal", "console"]) and any(k in app_name.lower() for k in ["antigravity", "agy"]):
+            app_name = "antigravity_cli"
+        elif app_name.lower().strip() in ["antigravity", "antigravity_ide", "agy_ide", "antigravity ide"]:
+            app_name = "antigravity_ide"
 
         # Default terminal to user's home directory if not explicitly specified
-        if any(k in app_name.lower() for k in ["terminal", "powershell", "cmd", "console", "wt"]):
-            if not arg or arg.strip().lower() in ["home", "~", "default", ""]:
+        if any(k in app_name.lower() for k in ["terminal", "powershell", "cmd", "console", "wt"]) and app_name != "antigravity_cli":
+            if not directory and (not arg or arg.strip().lower() in ["home", "~", "default", ""]):
                 from pathlib import Path
-                arg = str(Path.home())
+                directory = str(Path.home())
 
         if mrs.is_local_windows_host():
-            res = ms.launch_windows_app(app_name=app_name, argument=arg)
+            res = ms.launch_windows_app(
+                app_name=app_name,
+                argument=arg,
+                directory=directory,
+                prompt=prompt,
+                resume=resume,
+                conversation_id=conversation_id,
+            )
         else:
             req_id = secrets.token_hex(6)
             mrs.push_relay_message(
@@ -186,7 +229,16 @@ class LaunchLaptopAppTool(Tool):
                 sender_device_id="iris_voice_agent",
                 target_device_id=mrs.LAPTOP_HOST_DEVICE_ID,
                 msg_type="REMOTE_COMMAND",
-                payload={"command": "LAUNCH_APP", "app": app_name, "argument": arg, "req_id": req_id},
+                payload={
+                    "command": "LAUNCH_APP",
+                    "app": app_name,
+                    "argument": arg,
+                    "directory": directory,
+                    "prompt": prompt,
+                    "resume": resume,
+                    "conversation_id": conversation_id,
+                    "req_id": req_id,
+                },
             )
             res = await mrs.wait_for_relay_response(
                 db=db,
@@ -205,7 +257,15 @@ class LaunchLaptopAppTool(Tool):
         msg = ms.MeshMessage(
             type="REMOTE_COMMAND",
             sender_device="iris_agent",
-            payload={"command": "LAUNCH_APP", "app": app_name, "argument": arg},
+            payload={
+                "command": "LAUNCH_APP",
+                "app": app_name,
+                "argument": arg,
+                "directory": directory,
+                "prompt": prompt,
+                "resume": resume,
+                "conversation_id": conversation_id,
+            },
         )
         await ms.hub.broadcast(msg, exclude_sender=False)
         return ToolResult(

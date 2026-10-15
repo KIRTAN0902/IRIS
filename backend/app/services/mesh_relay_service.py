@@ -596,9 +596,20 @@ class LaptopRelayDaemon:
                     result = await trigger_autonomous_task(prompt)
                     logger.info("Remote Autonomous Coder triggered: %s", result)
             elif cmd == "LAUNCH_APP":
-                app_name = payload.get("app", "antigravity")
+                app_name = payload.get("app", "antigravity_ide")
                 arg = payload.get("argument")
-                res = ms.launch_windows_app(app_name=app_name, argument=arg)
+                directory = payload.get("directory")
+                prompt = payload.get("prompt")
+                resume = payload.get("resume", False)
+                conv_id = payload.get("conversation_id")
+                res = ms.launch_windows_app(
+                    app_name=app_name,
+                    argument=arg,
+                    directory=directory,
+                    prompt=prompt,
+                    resume=resume,
+                    conversation_id=conv_id,
+                )
                 logger.info("Remote LAUNCH_APP executed: %s", res)
                 req_id = payload.get("req_id")
                 if req_id and sender and sender != "system":

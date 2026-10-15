@@ -449,24 +449,120 @@ def _bring_app_window_to_foreground(pid: int | None, app_name: str, keywords: li
         time.sleep(0.3)
 
 
-def launch_windows_app(app_name: str = "antigravity", argument: str | None = None) -> dict[str, Any]:
-    """Launches or focuses a desktop application on the Windows laptop."""
+def parse_antigravity_cli_intent(text: str, default_dir: str = r"C:\kirtan\IRIS") -> tuple[str, str | None, bool]:
+    """Extracts target directory, prompt, and resume flag from natural user phrasing."""
+    import re
+    from pathlib import Path
+
+    t_lower = text.lower()
+    resume = any(w in t_lower for w in ["resume", "continue", "-c", "--continue"])
+
+    # Extract directory (e.g. "in C:\kirtan\IRIS", "in Downloads", "at Desktop")
+    target_dir = default_dir
+    dir_match = re.search(r'\b(?:in|at|into)\s+([a-zA-Z]:\\[^\s"\'`]+|[a-zA-Z]:/[^\s"\'`]+|[a-zA-Z0-9_\-\\.]+)', text, re.IGNORECASE)
+    if dir_match:
+        cand = dir_match.group(1).strip().strip("'\"`")
+        if cand.lower() not in ["terminal", "cli", "powershell", "cmd", "agy", "antigravity", "conversation"]:
+            resolved = resolve_laptop_path(cand)
+            target_dir = str(resolved)
+
+    # Extract prompt (e.g. 'ask it to fix the bug', 'with prompt "do X"', 'prompt do X')
+    prompt = None
+    prompt_match = re.search(r'\b(?:ask it to|with prompt|prompt)\s+["\']?([^"\'\n]+)["\']?', text, re.IGNORECASE)
+    if prompt_match:
+        cand_p = prompt_match.group(1).strip()
+        if cand_p.lower() not in ["resume", "continue", "conversation", "terminal", "cli", "antigravity"]:
+            cand_p = re.sub(r'\s+and\s+(?:resume|continue)(?:\s+conversation)?', '', cand_p, flags=re.IGNORECASE).strip()
+            if cand_p:
+                prompt = cand_p
+
+    return target_dir, prompt, resume
+
+
+def launch_windows_app(
+    app_name: str = "antigravity_ide",
+    argument: str | None = None,
+    directory: str | None = None,
+    prompt: str | None = None,
+    resume: bool = False,
+    conversation_id: str | None = None,
+) -> dict[str, Any]:
+    """Launches or focuses a desktop application or CLI terminal on the Windows laptop."""
     import os
     import shutil
     import subprocess
     import threading
     from pathlib import Path
 
-    app_clean = app_name.strip().lower().replace("-", "").replace(" ", "").replace("_", "")
+    raw_app = (app_name or "").strip().lower()
+    app_clean = raw_app.replace("-", "").replace(" ", "").replace("_", "")
     default_workspace = r"C:\kirtan\IRIS"
     user_home = Path.home()
 
+    # Determine target directory
+    target_dir = default_workspace
+    if directory and directory.strip():
+        resolved = resolve_laptop_path(directory.strip())
+        target_dir = str(resolved)
+    elif argument and argument.strip():
+        candidate_path = resolve_laptop_path(argument.strip())
+        if candidate_path.exists() or any(c in argument for c in [":\\", ":/", "\\", "/"]) or argument.strip().lower() in ["home", "~", "desktop", "downloads", "documents"]:
+            target_dir = str(candidate_path) if candidate_path.exists() else str(user_home)
+        else:
+            # If argument is not a path, treat as prompt if none provided
+            if not prompt and argument.strip().lower() not in ["resume", "continue", "-c", "--continue"]:
+                prompt = argument.strip()
+
+    # Check resume intent in text
+    if not resume:
+        combined_text = f"{raw_app} {argument or ''} {prompt or ''}".lower()
+        if any(w in combined_text for w in ["resume", "continue", "-c", "--continue"]):
+            resume = True
+
     cmd: list[str] = []
-    target_dir = argument or default_workspace
     keywords: list[str] = [app_clean]
 
-    # 1. Antigravity IDE / Antigravity
-    if any(k in app_clean for k in ["antigravity", "agy"]):
+    # --- 1. Antigravity CLI (Terminal with agy) ---
+    is_agy_cli = (
+        any(k in raw_app for k in ["cli", "terminal", "console"]) and any(k in raw_app for k in ["antigravity", "agy"])
+    ) or raw_app in ["agy", "agycli", "antigravitycli", "antigravity_cli", "agy_cli"]
+
+    if is_agy_cli:
+        keywords = ["powershell", "terminal", "cascadia", "agy", "antigravity"]
+        sys_root = os.environ.get("SystemRoot", r"C:\Windows")
+        ps_path = Path(sys_root) / r"System32\WindowsPowerShell\v1.0\powershell.exe"
+        ps_bin = str(ps_path) if ps_path.exists() else "powershell.exe"
+
+        # Resolve agy binary
+        agy_bin = shutil.which("agy.exe") or shutil.which("agy")
+        if not agy_bin:
+            cand = user_home / r"AppData\Local\agy\bin\agy.exe"
+            if cand.exists():
+                agy_bin = str(cand)
+            else:
+                agy_bin = "agy"
+
+        # Construct agy CLI flags
+        flags_list = []
+        if conversation_id:
+            flags_list.append(f"--conversation {conversation_id}")
+        elif resume:
+            flags_list.append("-c")
+
+        if prompt and prompt.strip():
+            # Escape quotes and PowerShell interpolation
+            clean_p = prompt.strip().replace('"', '`"').replace("$", "`$")
+            flags_list.append(f'-i "{clean_p}"')
+
+        agy_invocation = f"& '{agy_bin}' {' '.join(flags_list)}".strip() if flags_list else f"& '{agy_bin}'"
+        ps_command = f"Set-Location '{target_dir}'; {agy_invocation}"
+
+        # Launch interactive PowerShell terminal executing agy in target directory
+        cmd = ["cmd.exe", "/c", "start", ps_bin, "-NoExit", "-Command", ps_command]
+        app_name = "Antigravity CLI"
+
+    # --- 2. Antigravity IDE (Desktop GUI Application) ---
+    elif any(k in app_clean for k in ["antigravity", "agy"]):
         keywords = ["antigravity", "agy"]
         antigravity_candidates = [
             user_home / r"AppData\Local\Programs\Antigravity IDE\Antigravity IDE.exe",
@@ -483,15 +579,16 @@ def launch_windows_app(app_name: str = "antigravity", argument: str | None = Non
                 break
 
         if not chosen:
-            chosen = shutil.which("antigravity.exe") or shutil.which("antigravity") or shutil.which("agy")
+            chosen = shutil.which("antigravity.exe") or shutil.which("antigravity")
 
         if chosen:
             cmd = [chosen, target_dir]
         else:
             # Fallback to shell start
             cmd = ["cmd.exe", "/c", "start", "antigravity", target_dir]
+        app_name = "Antigravity IDE"
 
-    # 2. VS Code
+    # --- 3. VS Code ---
     elif "vscode" in app_clean or "code" in app_clean:
         keywords = ["visual studio code", "code"]
         code_path = shutil.which("code.cmd") or shutil.which("code.exe") or shutil.which("code")
@@ -503,20 +600,18 @@ def launch_windows_app(app_name: str = "antigravity", argument: str | None = Non
             cmd = [code_path, target_dir]
         else:
             cmd = ["cmd.exe", "/c", "start", "code", target_dir]
+        app_name = "VS Code"
 
-    # 3. Terminal / PowerShell
+    # --- 4. Terminal / PowerShell ---
     elif any(k in app_clean for k in ["terminal", "powershell", "pwsh", "wt", "cmd", "console"]):
         keywords = ["cascadia", "cmd", "powershell", "terminal", "pwsh"]
         sys_root = os.environ.get("SystemRoot", r"C:\Windows")
         ps_path = Path(sys_root) / r"System32\WindowsPowerShell\v1.0\powershell.exe"
         ps_bin = str(ps_path) if ps_path.exists() else "powershell.exe"
 
-        # By default, open the terminal in the user's home directory (e.g. C:\Users\shahk)
-        # or in any requested directory (Desktop, Downloads, C:\kirtan, etc.)
         home_path = str(user_home)
-        if argument and argument.strip().lower() not in ["home", "~", "default", ""] and argument != default_workspace:
-            resolved = resolve_laptop_path(argument.strip())
-            term_dir = str(resolved) if resolved.exists() else home_path
+        if (directory and directory.strip()) or (argument and argument.strip().lower() not in ["home", "~", "default", ""] and argument != default_workspace):
+            term_dir = target_dir
         else:
             term_dir = home_path
 
@@ -525,24 +620,26 @@ def launch_windows_app(app_name: str = "antigravity", argument: str | None = Non
         elif "cmd" in app_clean:
             cmd = ["cmd.exe", "/c", "start", "cmd.exe", "/k", f"cd /d {term_dir}"]
         else:
-            # Standard interactive PowerShell launcher in user's home directory
             cmd = ["cmd.exe", "/c", "start", ps_bin, "-NoExit", "-Command", f"Set-Location '{term_dir}'"]
+        app_name = "Terminal"
 
-    # 4. Chrome / Web Browser
+    # --- 5. Chrome / Web Browser ---
     elif "chrome" in app_clean or "browser" in app_clean:
         keywords = ["chrome"]
         cmd = ["explorer.exe", argument or "http://localhost:5173"]
+        app_name = "Chrome"
 
-    # 5. Explorer / Files
+    # --- 6. Explorer / Files ---
     elif "explorer" in app_clean or "files" in app_clean:
         keywords = ["cabinetwclass", "explorer"]
         cmd = ["explorer.exe", target_dir]
+        app_name = "File Explorer"
 
-    # 6. Generic executable fallback
+    # --- 7. Generic executable fallback ---
     else:
         cmd = ["cmd.exe", "/c", "start", app_name]
-        if argument:
-            cmd.append(argument)
+        if target_dir:
+            cmd.append(target_dir)
 
     if not cmd:
         return {
@@ -564,12 +661,21 @@ def launch_windows_app(app_name: str = "antigravity", argument: str | None = Non
             daemon=True,
         ).start()
 
+        action_desc = "Antigravity CLI" if is_agy_cli else app_name
+        extra_info = []
+        if is_agy_cli:
+            if resume:
+                extra_info.append("resuming conversation")
+            if prompt:
+                extra_info.append(f"with prompt: '{prompt}'")
+        extra_str = f" ({', '.join(extra_info)})" if extra_info else ""
         return {
             "success": True,
             "app": app_name,
             "pid": proc.pid,
             "command": cmd,
-            "message": f"Successfully launched {app_name} on your Windows laptop.",
+            "directory": target_dir,
+            "message": f"Successfully launched {action_desc} in '{target_dir}'{extra_str} on your Windows laptop.",
         }
     except Exception as exc:
         logger.error("Failed to launch application %s: %s", app_name, exc)
@@ -615,9 +721,50 @@ def execute_terminal_command(
 
     lower_cmd = clean_cmd.lower().strip()
 
-    # Intercept desktop GUI application launch shortcuts
-    if lower_cmd in ["antigravity", "open antigravity", "launch antigravity", "agy ide", "antigravity ide"]:
-        res = launch_windows_app("antigravity", argument=work_dir)
+    # Intercept desktop GUI application and interactive CLI launch shortcuts
+    is_cli_shortcut = (
+        lower_cmd in [
+            "antigravity cli",
+            "open antigravity cli",
+            "launch antigravity cli",
+            "agy cli",
+            "open agy cli",
+            "open agy",
+            "open antigravity in terminal",
+            "antigravity terminal",
+            "agy terminal",
+            "agy",
+            "agy -c",
+            "agy --continue",
+        ]
+        or lower_cmd.startswith("open agy")
+        or lower_cmd.startswith("open antigravity cli")
+        or lower_cmd.startswith("launch antigravity cli")
+        or lower_cmd.startswith("agy cli")
+    )
+    if is_cli_shortcut:
+        target_dir, prompt, resume = parse_antigravity_cli_intent(clean_cmd, default_dir=work_dir)
+        res = launch_windows_app("antigravity_cli", directory=target_dir, prompt=prompt, resume=resume)
+        return {
+            "success": res.get("success", False),
+            "returncode": 0 if res.get("success") else 1,
+            "stdout": f"⚡ {res.get('message', 'Opened Antigravity CLI in terminal.')}",
+            "stderr": res.get("error", ""),
+            "command": clean_cmd,
+            "cwd": target_dir,
+            "elapsed_ms": 50,
+        }
+
+    if lower_cmd in [
+        "antigravity",
+        "open antigravity",
+        "launch antigravity",
+        "agy ide",
+        "antigravity ide",
+        "open antigravity ide",
+        "launch antigravity ide",
+    ]:
+        res = launch_windows_app("antigravity_ide", directory=work_dir)
         return {
             "success": res.get("success", False),
             "returncode": 0 if res.get("success") else 1,
@@ -664,21 +811,7 @@ def execute_terminal_command(
             "elapsed_ms": 50,
         }
 
-    # If user runs 'agy' alone without arguments, show helpful usage instead of hanging on interactive TUI
-    if lower_cmd == "agy":
-        return {
-            "success": True,
-            "returncode": 0,
-            "stdout": (
-                "⚡ Antigravity CLI (v1.3.3) is active on your Windows laptop!\n"
-                "• Tap 'Open Antigravity IDE' above to open the full IDE on your laptop screen.\n"
-                "• Or run instructions with: agy --help or agy -p \"your task prompt here\""
-            ),
-            "stderr": "",
-            "command": clean_cmd,
-            "cwd": work_dir,
-            "elapsed_ms": 10,
-        }
+    # If user runs 'agy' with -p or other non-interactive flags, let it proceed to execution below
 
     logger.info("Executing remote terminal command: %s (cwd=%s)", clean_cmd, work_dir)
 

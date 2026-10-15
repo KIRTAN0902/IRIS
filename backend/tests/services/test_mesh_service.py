@@ -171,3 +171,67 @@ def test_get_windows_battery_success():
                     assert "percent" in res
                     assert "is_charging" in res
                     assert "ac_status" in res
+
+
+def test_parse_antigravity_cli_intent():
+    # 1. Basic CLI request
+    d, p, r = ms.parse_antigravity_cli_intent("open antigravity CLI")
+    assert d == r"C:\kirtan\IRIS"
+    assert p is None
+    assert r is False
+
+    # 2. Directory extraction
+    d, p, r = ms.parse_antigravity_cli_intent(r"open antigravity CLI in C:\Users\shahk\Desktop")
+    assert d == r"C:\Users\shahk\Desktop"
+    assert p is None
+    assert r is False
+
+    # 3. Prompt extraction
+    d, p, r = ms.parse_antigravity_cli_intent("open antigravity CLI with prompt fix auth bug")
+    assert d == r"C:\kirtan\IRIS"
+    assert p == "fix auth bug"
+    assert r is False
+
+    # 4. Resume intent
+    d, p, r = ms.parse_antigravity_cli_intent(r"open antigravity CLI in C:\kirtan\IRIS and resume conversation")
+    assert d == r"C:\kirtan\IRIS"
+    assert p is None
+    assert r is True
+
+    # 5. Full combined: dir + prompt + resume
+    d, p, r = ms.parse_antigravity_cli_intent(r"open antigravity CLI in C:\kirtan\IRIS with prompt 'run tests' and resume")
+    assert d == r"C:\kirtan\IRIS"
+    assert p == "run tests"
+    assert r is True
+
+
+def test_launch_windows_app_antigravity_cli_vs_ide():
+    with patch("subprocess.Popen") as mock_popen, patch("threading.Thread"):
+        mock_proc = MagicMock()
+        mock_proc.pid = 12345
+        mock_popen.return_value = mock_proc
+
+        # CLI launch
+        res_cli = ms.launch_windows_app(
+            app_name="antigravity_cli",
+            directory=r"C:\kirtan\IRIS",
+            prompt="fix all bugs",
+            resume=True,
+        )
+        assert res_cli["success"] is True
+        assert res_cli["app"] == "Antigravity CLI"
+        cmd_str = " ".join(res_cli["command"])
+        assert "powershell.exe" in cmd_str
+        assert "agy.exe" in cmd_str or "agy" in cmd_str
+        assert "-c" in cmd_str
+        assert '-i "fix all bugs"' in cmd_str
+
+        # IDE launch
+        res_ide = ms.launch_windows_app(
+            app_name="antigravity_ide",
+            directory=r"C:\kirtan\IRIS",
+        )
+        assert res_ide["success"] is True
+        assert res_ide["app"] == "Antigravity IDE"
+        assert any("Antigravity" in part for part in res_ide["command"])
+        assert "powershell.exe" not in " ".join(res_ide["command"])

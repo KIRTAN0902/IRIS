@@ -767,14 +767,25 @@ def open_laptop_terminal(
 
 @router.post("/app/launch")
 async def launch_remote_application(
-    app: str = Query("antigravity", description="Application to launch (antigravity, terminal, vscode, chrome, explorer)"),
-    argument: str | None = Query(None, description="Optional path or URL"),
+    app: str = Query("antigravity", description="Application to launch (antigravity_cli, antigravity_ide, terminal, vscode, chrome, explorer)"),
+    argument: str | None = Query(None, description="Optional path, URL, or argument"),
+    directory: str | None = Query(None, description="Target directory or workspace path"),
+    prompt: str | None = Query(None, description="Initial prompt for Antigravity CLI"),
+    resume: bool = Query(False, description="Resume previous conversation for Antigravity CLI"),
+    conversation_id: str | None = Query(None, description="Specific conversation ID for Antigravity CLI"),
     db: Session = Depends(get_db),
     user: User = Depends(current_user),
 ):
-    """Launches or focuses a desktop application on the Windows laptop."""
+    """Launches or focuses a desktop application or interactive CLI on the Windows laptop."""
     if mrs.is_local_windows_host():
-        return ms.launch_windows_app(app_name=app, argument=argument)
+        return ms.launch_windows_app(
+            app_name=app,
+            argument=argument,
+            directory=directory,
+            prompt=prompt,
+            resume=resume,
+            conversation_id=conversation_id,
+        )
 
     import secrets
 
@@ -785,7 +796,16 @@ async def launch_remote_application(
         sender_device_id="mobile_web_client",
         target_device_id=mrs.LAPTOP_HOST_DEVICE_ID,
         msg_type="REMOTE_COMMAND",
-        payload={"req_id": req_id, "command": "LAUNCH_APP", "app": app, "argument": argument},
+        payload={
+            "req_id": req_id,
+            "command": "LAUNCH_APP",
+            "app": app,
+            "argument": argument,
+            "directory": directory,
+            "prompt": prompt,
+            "resume": resume,
+            "conversation_id": conversation_id,
+        },
     )
 
     res = await mrs.wait_for_relay_response(
