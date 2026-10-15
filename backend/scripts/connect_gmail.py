@@ -177,11 +177,13 @@ def run_flow(
             .first()
         )
 
+        granted_scopes = token_data.get("scope") or " ".join(SCOPES)
         if existing:
             existing.email_address = email_address
             existing.refresh_token = refresh_token
             existing.access_token = access_token
             existing.token_expiry = now + timedelta(seconds=expires_in)
+            existing.scopes = granted_scopes
             if custom_client_id:
                 existing.client_id = custom_client_id
             if custom_client_secret:
@@ -198,6 +200,7 @@ def run_flow(
                 refresh_token=refresh_token,
                 access_token=access_token,
                 token_expiry=now + timedelta(seconds=expires_in),
+                scopes=granted_scopes,
                 client_id=custom_client_id,
                 client_secret=custom_client_secret,
                 is_active=True,
