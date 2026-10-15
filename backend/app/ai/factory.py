@@ -92,17 +92,29 @@ def _common_kwargs() -> dict:
     }
 
 
+LEGACY_MODEL_MIGRATIONS: dict[str, str] = {
+    "nvidia/nemotron-3-super-120b-a12b": NVIDIA_DEFAULT_MODEL,
+    "nvidia/nemotron-3-ultra-550b-a55b": NVIDIA_DEFAULT_MODEL,
+}
+
+
+def _resolve_model(*candidates: str | None, default: str = "") -> str:
+    raw = _first(*candidates) or default
+    clean = raw.strip().strip("\"'")
+    return LEGACY_MODEL_MIGRATIONS.get(clean, clean)
+
+
 def create_ai_provider(provider_name: str | None = None) -> AIProvider:
     """Create a new AIProvider instance based on the specified or configured provider."""
     name = (provider_name or settings.ai_provider).strip().lower().replace("-", "_")
 
     if name == "mock":
-        return MockProvider(name="mock", model=_first(settings.ai_model) or "mock-model")
+        return MockProvider(name="mock", model=_resolve_model(settings.ai_model, default="mock-model"))
 
     if name == "gemini":
         return GeminiProvider(
             api_key=_first(settings.ai_api_key, settings.gemini_api_key),
-            model=_first(settings.ai_model, settings.gemini_model) or "gemini-2.5-flash",
+            model=_resolve_model(settings.ai_model, settings.gemini_model, default="gemini-2.5-flash"),
             timeout_seconds=settings.ai_timeout_seconds or settings.gemini_timeout_seconds,
             **_common_kwargs(),
         )
@@ -116,11 +128,15 @@ def create_ai_provider(provider_name: str | None = None) -> AIProvider:
         )
 
     if name == "nvidia":
+        model = _resolve_model(settings.ai_model, settings.nvidia_model, default=NVIDIA_DEFAULT_MODEL)
+        timeout = settings.ai_timeout_seconds or settings.nvidia_timeout_seconds
+        if model == NVIDIA_DEFAULT_MODEL and (not timeout or timeout < 90.0):
+            timeout = 90.0
         return NvidiaProvider(
             base_url=_first(settings.ai_base_url, settings.nvidia_base_url) or NVIDIA_HOSTED_URL,
             api_key=_first(settings.ai_api_key, settings.nvidia_api_key),
-            model=_first(settings.ai_model, settings.nvidia_model) or NVIDIA_DEFAULT_MODEL,
-            timeout_seconds=settings.ai_timeout_seconds or settings.nvidia_timeout_seconds,
+            model=model,
+            timeout_seconds=timeout,
             **_common_kwargs(),
         )
 
@@ -132,7 +148,7 @@ def create_ai_provider(provider_name: str | None = None) -> AIProvider:
         name=name,
         label=preset.label,
         base_url=_first(settings.ai_base_url, preset.base_url) or "",
-        model=_first(settings.ai_model) or "",
+        model=_resolve_model(settings.ai_model, default=""),
         api_key=api_key,
         timeout_seconds=settings.ai_timeout_seconds or 60.0,
         require_api_key=preset.requires_api_key,

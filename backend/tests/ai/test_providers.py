@@ -304,6 +304,22 @@ def test_factory_creates_nvidia_provider(monkeypatch):
     assert provider.enabled is True
 
 
+def test_factory_migrates_legacy_models(monkeypatch):
+    from app.ai.providers.nvidia import NVIDIA_DEFAULT_MODEL
+
+    monkeypatch.setattr("app.core.config.settings.ai_provider", "nvidia")
+    monkeypatch.setattr("app.core.config.settings.nvidia_api_key", "nvapi-test")
+    monkeypatch.setattr("app.core.config.settings.ai_model", "nvidia/nemotron-3-ultra-550b-a55b")
+
+    provider = create_ai_provider()
+    assert provider.model == NVIDIA_DEFAULT_MODEL
+    assert provider._timeout >= 90.0
+
+    monkeypatch.setattr("app.core.config.settings.ai_model", "nvidia/nemotron-3-super-120b-a12b")
+    provider2 = create_ai_provider()
+    assert provider2.model == NVIDIA_DEFAULT_MODEL
+
+
 def test_factory_creates_gemini_provider(monkeypatch):
     monkeypatch.setattr("app.core.config.settings.ai_provider", "gemini")
     monkeypatch.setattr("app.core.config.settings.gemini_api_key", "secret-key")
