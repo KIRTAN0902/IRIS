@@ -92,6 +92,21 @@ class Settings(BaseSettings):
     gemini_model: str = "gemini-2.5-flash"
     gemini_timeout_seconds: float = 45.0
 
+    # Groq Cloud (Ultra-fast LPU inference)
+    groq_base_url: str = "https://api.groq.com/openai/v1"
+    groq_api_key: str | None = None
+    groq_model: str = "openai/gpt-oss-120b"
+    groq_timeout_seconds: float = 30.0
+
+    # Multi-Agent Routing
+    ai_multi_agent_enabled: bool = True
+    ai_orchestrator_model: str = "gemini-3.8-live"
+    ai_operator_model: str = "groq:openai/gpt-oss-120b"
+    ai_planner_model: str = "groq:openai/gpt-oss-120b"
+    ai_scribe_model: str = "groq:qwen/qwen3.8-27b"
+    ai_bubba_model: str = "gemini:gemini-2.5-flash"
+    ai_vision_model: str = "nvidia:nvidia/nemotron-3.5-super-vl-120b-a12b"
+
     # --- Gmail Integration ---
     gmail_client_id: str | None = None
     gmail_client_secret: str | None = None

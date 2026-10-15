@@ -87,6 +87,7 @@ def create_app() -> FastAPI:
         assistant,
         chat,
         coding,
+        diary,
         drive,
         email,
         finance,
@@ -129,6 +130,7 @@ def create_app() -> FastAPI:
     app.include_router(finance.router, prefix=api)
     app.include_router(habits.router, prefix=api)
     app.include_router(workouts.router, prefix=api)
+    app.include_router(diary.router, prefix=api)
 
     from fastapi.responses import HTMLResponse
 

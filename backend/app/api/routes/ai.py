@@ -366,6 +366,43 @@ async def ask_iris(
             accts_str = ", ".join(f"`{a.email_address}` ({a.alias})" for a in accounts)
             answer_text = f"📧 Yes! Gmail is connected and active: {accts_str}. You can ask me to list unread emails, search for messages, or draft replies."
             source = "AI"
+    elif any(w in q_lower for w in ["in diary", "in my diary", "to diary", "to my diary"]) and any(w in q_lower for w in ["write", "save", "record", "add", "note", "put"]):
+        from app.services import diary_service
+        from app.schemas.diary import DiaryEntryCreate
+
+        raw_text = data.question
+        for pfx in ["write this in my diary:", "write in my diary:", "write to diary:", "save this in my diary:", "save in diary:", "add to diary:", "save idea in diary:", "write this in my diary", "write in my diary", "save this idea in my diary", "save to diary"]:
+            if raw_text.lower().startswith(pfx):
+                raw_text = raw_text[len(pfx):].strip()
+                break
+
+        lines = [ln.strip() for ln in raw_text.splitlines() if ln.strip()]
+        title = lines[0][:80] if lines else "New Diary Entry"
+        content = raw_text
+        category = "IDEA" if "idea" in q_lower else "NOTE"
+
+        created = diary_service.create_diary_entry(
+            db,
+            user.id,
+            DiaryEntryCreate(
+                title=title,
+                content=content,
+                category=category,
+                tags=["iris-captured"],
+            ),
+        )
+        answer_text = f"📖 Saved to your Diary under **{created.category}**: *{created.title}* (ID #{created.id}). You can view and edit it anytime in the **More > Diary** section!"
+        source = "AI"
+    elif ("diary" in q_lower or "notes" in q_lower) and any(w in q_lower for w in ["what did i write", "show my diary", "read my diary", "list diary", "my ideas in diary", "recent ideas", "recent notes"]):
+        from app.services import diary_service
+        cat = "IDEA" if "idea" in q_lower else None
+        entries = diary_service.list_diary_entries(db, user.id, category=cat, limit=5)
+        if entries:
+            items = "\n".join(f"- **[{e.category}] {e.title}**: {e.content[:100]}..." if len(e.content) > 100 else f"- **[{e.category}] {e.title}**: {e.content}" for e in entries)
+            answer_text = f"📖 Here are your recent Diary entries:\n{items}\n\n*View all in More > Diary.*"
+        else:
+            answer_text = "📖 Your Diary notebook is currently empty. You can ask me to write notes or ideas into it anytime!"
+        source = "AI"
 
     if answer_text is None and provider.enabled:
         try:

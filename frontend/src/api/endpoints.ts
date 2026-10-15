@@ -377,3 +377,44 @@ export const workoutsApi = {
   check: (id: number, exerciseId: number, done: boolean) =>
     api.post<WorkoutOut>(`/workouts/${id}/exercises/${exerciseId}/check`, { done }),
 };
+
+// --- Diary & Notes Notebook --------------------------------------------------------
+
+export interface DiaryEntry {
+  id: number;
+  user_id: number;
+  title: string;
+  content: string;
+  category: string;
+  tags?: string[];
+  is_pinned: boolean;
+  mood?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DiaryEntryIn {
+  title: string;
+  content?: string;
+  category?: string;
+  tags?: string[];
+  is_pinned?: boolean;
+  mood?: string | null;
+}
+
+export interface DiarySummary {
+  total: number;
+  categories: string[];
+  all_tags: string[];
+}
+
+export const diaryApi = {
+  entries: (filters: { category?: string; tag?: string; search?: string; is_pinned?: boolean } = {}) =>
+    api.get<DiaryEntry[]>("/diary/entries", filters),
+  summary: () => api.get<DiarySummary>("/diary/summary"),
+  get: (id: number) => api.get<DiaryEntry>(`/diary/entries/${id}`),
+  create: (body: DiaryEntryIn) => api.post<DiaryEntry>("/diary/entries", body),
+  update: (id: number, body: Partial<DiaryEntryIn>) => api.patch<DiaryEntry>(`/diary/entries/${id}`, body),
+  delete: (id: number) => api.delete<void>(`/diary/entries/${id}`),
+};
+

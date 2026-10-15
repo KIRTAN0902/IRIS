@@ -9,6 +9,7 @@ import {
   analyticsApi,
   assistantApi,
   chatApi,
+  diaryApi,
   financeApi,
   habitsApi,
   workoutsApi,
@@ -627,3 +628,54 @@ export const useCheckExercise = () => {
 /** Follow-through patterns IRIS has learned. */
 export const useBehavior = () =>
   useQuery({ queryKey: ["assistant", "behavior"], queryFn: assistantApi.behavior, staleTime: 5 * 60_000 });
+
+// --- Diary & Notes Notebook --------------------------------------------------------
+
+export const useDiaryEntries = (filters: { category?: string; tag?: string; search?: string; is_pinned?: boolean } = {}) =>
+  useQuery({
+    queryKey: qk.diary(filters),
+    queryFn: () => diaryApi.entries(filters),
+    staleTime: 15_000,
+  });
+
+export const useDiarySummary = () =>
+  useQuery({
+    queryKey: qk.diarySummary(),
+    queryFn: diaryApi.summary,
+    staleTime: 30_000,
+  });
+
+export const useCreateDiaryEntry = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: diaryApi.create,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["diary-entries"] });
+      qc.invalidateQueries({ queryKey: qk.diarySummary() });
+    },
+  });
+};
+
+export const useUpdateDiaryEntry = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, data }: { id: number; data: Parameters<typeof diaryApi.update>[1] }) =>
+      diaryApi.update(id, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["diary-entries"] });
+      qc.invalidateQueries({ queryKey: qk.diarySummary() });
+    },
+  });
+};
+
+export const useDeleteDiaryEntry = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: diaryApi.delete,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["diary-entries"] });
+      qc.invalidateQueries({ queryKey: qk.diarySummary() });
+    },
+  });
+};
+

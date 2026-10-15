@@ -140,6 +140,15 @@ MODEL_PROFILES: list[tuple[str, dict[str, Any]]] = [
         },
     ),
     (
+        "*gpt-oss*",
+        {
+            "reasoning": True,
+            "json_mode": "none",
+            "context_window": 131_072,
+            "max_output_tokens": 8_192,
+        },
+    ),
+    (
         "o1*",
         {
             "reasoning": True,

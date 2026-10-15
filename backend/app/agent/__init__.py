@@ -11,10 +11,13 @@ from app.agent.schemas import (
     ToolCall,
     ToolResult,
 )
+from app.agent.supervisor import IrisSupervisor, get_iris_supervisor
 
 __all__ = [
     "IrisAgent",
     "default_agent",
+    "IrisSupervisor",
+    "get_iris_supervisor",
     "ToolRegistry",
     "default_registry",
     "AgentResponseSchema",

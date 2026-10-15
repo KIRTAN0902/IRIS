@@ -10,9 +10,13 @@ from sqlalchemy.orm import Session
 from app.agent.harness import AgentHarness
 from app.agent.registry import ToolRegistry, default_registry
 from app.agent.schemas import AgentResponseSchema, ChatMessageOut
-from app.core.errors import NotFoundError
+from app.agent.supervisor import IrisSupervisor, get_iris_supervisor
 from app.ai.factory import get_ai_provider
 from app.ai.provider import ChatMessage, fast_turn
+from app.ai.providers.mock import MockProvider
+from app.core.config import settings
+from app.core.errors import NotFoundError
+from app.core.logging import get_logger
 from app.intelligence.context import build_decision_context
 from app.intelligence.decision_engine import deterministic_decision
 from app.intelligence.personal_model import build_personal_model, render_personal_model
@@ -28,6 +32,8 @@ from app.models.enums import AIRole
 from app.models.user import User
 from app.services import conversation_memory
 from app.services.memory_service import memory_service
+
+logger = get_logger("iris.agent")
 
 # Appended to the system prompt when the user is talking, not typing.
 _VOICE_MODE = """
@@ -48,6 +54,7 @@ class IrisAgent:
     def __init__(self, registry: ToolRegistry | None = None) -> None:
         self.registry = registry or default_registry
         self.harness = AgentHarness(self.registry)
+        self.supervisor = get_iris_supervisor()
 
     async def run_turn(
         self,
@@ -71,75 +78,114 @@ class IrisAgent:
         context["user_name"] = user.name.split(" ")[0] if user.name else None
         since = last_user_message_at(db, user.id)
 
-        # 3. Retrieve relevant long-term memories for this turn
-        relevant_memories = memory_service.search_relevant_memories(
-            db=db,
-            user_id=user.id,
-            query=user_message,
-            limit=8,
-            mark_accessed=True,
-        )
+        # Fast deterministic path (e.g. "what's my task?", "task done", "gym done")
+        fast_resp, fast_actions = self.supervisor.try_fast_path(db, user, context, user_message)
+        if fast_resp is not None:
+            response_schema = fast_resp
+            actions_executed = fast_actions
+            source = "DETERMINISTIC"
+            harness_meta = {"strategy": "fast_path", "source": "supervisor"}
+            relevant_memories = []
+        else:
+            # 3. Retrieve relevant long-term memories for this turn
+            relevant_memories = memory_service.search_relevant_memories(
+                db=db,
+                user_id=user.id,
+                query=user_message,
+                limit=8,
+                mark_accessed=True,
+            )
 
-        # 4. Generate the reply through the model-agnostic harness, or fall back
-        provider = get_ai_provider()
-        response_schema: AgentResponseSchema | None = None
-        actions_executed: list[dict[str, Any]] = []
-        source = "DETERMINISTIC"
-        harness_meta: dict[str, Any] = {}
+            # 4. Generate the reply through sub-agents, AI harness, or fall back
+            provider = get_ai_provider()
+            response_schema: AgentResponseSchema | None = None
+            actions_executed: list[dict[str, Any]] = []
+            source = "DETERMINISTIC"
+            harness_meta: dict[str, Any] = {}
 
-        # Voice turns trade the model's thinking phase for a faster answer.
-        fast_token = fast_turn.set(voice)
-        if provider.enabled:
-            try:
-                caps = provider.capabilities
-                history = self._history_messages(conversation, caps.history_messages)
-                detail = detail_for_context_window(caps.context_window)
-                personal_model = build_personal_model(db, user)
-                profile_ids = {m["id"] for m in personal_model["stated"]}
-                situation = build_situation(db, user, context, since=since)
-                recent = conversation_memory.recent_conversations(
-                    db, user.id, user.timezone,
-                    exclude_id=conversation.id,
-                    limit={"compact": 3, "standard": 5, "full": 8}[detail],
+            # Voice turns trade the model's thinking phase for a faster answer.
+            fast_token = fast_turn.set(voice)
+            if provider.enabled:
+                # Check specialized sub-agent delegation
+                routed_domains = (
+                    self.supervisor.route_intent(user_message)
+                    if (not isinstance(provider, MockProvider) and settings.ai_multi_agent_enabled)
+                    else []
                 )
-                related = conversation_memory.search_conversations(
-                    db, user.id, user.timezone, user_message,
-                    exclude_id=conversation.id,
-                    exclude_ids={r["conversation_id"] for r in recent},
-                    limit=3,
-                )
-                result = await self.harness.run(
-                    provider=provider,
-                    db=db,
-                    user=user,
-                    system_prompt=self._build_system_prompt(
-                        context,
-                        # Profile memories are already in the personal model.
-                        [m for m in relevant_memories if m.id not in profile_ids],
-                        personal_model=render_personal_model(personal_model, detail),
-                        situation=render_situation(situation, detail),
-                        shared=conversation_memory.render_conversations(recent, related),
-                    )
-                    + (_VOICE_MODE if voice else ""),
-                    history=history,
-                    user_message=user_message,
-                )
-                response_schema = result.response
-                actions_executed = result.actions_executed
-                source = "AI"
-                harness_meta = {
-                    "provider": provider.name,
-                    "model": provider.model,
-                    "strategy": result.strategy,
-                    "steps": result.steps,
-                }
-            except Exception as exc:
-                from app.ai.health import ai_health
+                if routed_domains:
+                    try:
+                        reports = []
+                        for dom in routed_domains:
+                            rep = await self.supervisor.dispatch_to_subagent(
+                                domain=dom,
+                                db=db,
+                                user=user,
+                                instruction=user_message,
+                                context=context,
+                            )
+                            reports.append(rep)
+                        response_schema, actions_executed = self.supervisor.synthesize_reports(reports, user_message)
+                        source = "SUB_AGENT"
+                        harness_meta = {
+                            "strategy": "multi_agent_delegation",
+                            "domains": routed_domains,
+                            "agents": [r.agent_name for r in reports],
+                        }
+                    except Exception as exc:
+                        logger.warning("Sub-agent delegation error: %s; falling back to orchestrator harness", exc)
+                        response_schema = None
 
-                ai_health.record_failure(provider.name, provider.model, exc)
-                response_schema = None
+                if response_schema is None:
+                    try:
+                        caps = provider.capabilities
+                        history = self._history_messages(conversation, caps.history_messages)
+                        detail = detail_for_context_window(caps.context_window)
+                        personal_model = build_personal_model(db, user)
+                        profile_ids = {m["id"] for m in personal_model["stated"]}
+                        situation = build_situation(db, user, context, since=since)
+                        recent = conversation_memory.recent_conversations(
+                            db, user.id, user.timezone,
+                            exclude_id=conversation.id,
+                            limit={"compact": 3, "standard": 5, "full": 8}[detail],
+                        )
+                        related = conversation_memory.search_conversations(
+                            db, user.id, user.timezone, user_message,
+                            exclude_id=conversation.id,
+                            exclude_ids={r["conversation_id"] for r in recent},
+                            limit=3,
+                        )
+                        result = await self.harness.run(
+                            provider=provider,
+                            db=db,
+                            user=user,
+                            system_prompt=self._build_system_prompt(
+                                context,
+                                # Profile memories are already in the personal model.
+                                [m for m in relevant_memories if m.id not in profile_ids],
+                                personal_model=render_personal_model(personal_model, detail),
+                                situation=render_situation(situation, detail),
+                                shared=conversation_memory.render_conversations(recent, related),
+                            )
+                            + (_VOICE_MODE if voice else ""),
+                            history=history,
+                            user_message=user_message,
+                        )
+                        response_schema = result.response
+                        actions_executed = result.actions_executed
+                        source = "AI"
+                        harness_meta = {
+                            "provider": provider.name,
+                            "model": provider.model,
+                            "strategy": result.strategy,
+                            "steps": result.steps,
+                        }
+                    except Exception as exc:
+                        from app.ai.health import ai_health
 
-        fast_turn.reset(fast_token)
+                        ai_health.record_failure(provider.name, provider.model, exc)
+                        response_schema = None
+
+            fast_turn.reset(fast_token)
 
         # 5. Deterministic fallback if AI is unavailable or failed
         if response_schema is None:
@@ -360,7 +406,16 @@ HOW YOU OPERATE:
      * `get_email_details`: Fetch full body text and headers for an email message.
      * `create_email_draft`: Create a draft email in Gmail for the user to review and approve before sending.
      * `send_email`: Send an email directly (only when explicitly asked by user).
-   - If user asks to check emails or about their inbox, NEVER say Gmail is not connected when active inboxes are listed above! Use the tools to retrieve their emails immediately.""",
+   - If user asks to check emails or about their inbox, NEVER say Gmail is not connected when active inboxes are listed above! Use the tools to retrieve their emails immediately.
+12. DIARY & NOTES NOTEBOOK:
+   - You have a full Diary / Notes notebook built directly into IRIS (located in the More section of the app).
+   - Use your diary tools whenever the user wants to save an idea, write in their diary, take a note, review recent notes, or search thoughts:
+     * `create_diary_entry`: Write notes, ideas, reflections, meeting notes, or journal entries. Set title, content, category (e.g. NOTE, IDEA, REFLECTION, JOURNAL, MEETING, LEARNING), tags, and is_pinned.
+     * `read_diary_entries`: Search and retrieve notes, thoughts, and ideas by keyword query, category, or tag.
+     * `get_diary_entry`: View full content of a specific note by ID.
+     * `update_diary_entry`: Update or append to existing notes.
+     * `delete_diary_entry`: Delete notes if requested.
+   - When the user asks "write this idea in my diary", "save this in my diary", "take a note", "what are my ideas in the diary", etc., act immediately using these tools!""",
         ]
         if personal_model:
             sections.append(personal_model)

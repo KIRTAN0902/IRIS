@@ -14,6 +14,8 @@ from app.agent.tools.coding import (
     StartAutonomousCodingTool,
     coding_tools,
 )
+from app.agent.tools.diary import diary_tools
+from app.agent.tools.drive import drive_tools
 from app.agent.tools.email import (
     CreateEmailDraftTool,
     GetEmailAccountsTool,
@@ -132,6 +134,10 @@ __all__ = [
     "LockWorkstationTool",
     "SyncClipboardTool",
     "GetDeviceMeshStatusTool",
+    # Diary
+    "diary_tools",
+    # Drive
+    "drive_tools",
 ]
 
 

@@ -43,5 +43,9 @@ export const qk = {
   chatConversation: (id: number) => ["chat-conversation", id] as const,
   memories: (params?: Record<string, unknown>) => ["memories", params] as const,
   briefing: () => ["assistant-briefing"] as const,
+
+  // --- Diary & Notes Notebook ---
+  diary: (filters?: Record<string, unknown>) => ["diary-entries", filters] as const,
+  diarySummary: () => ["diary-summary"] as const,
 };
 

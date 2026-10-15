@@ -56,4 +56,8 @@ class User(Base):
     mesh_relay_messages = relationship(
         "MeshRelayMessage", back_populates="user", cascade="all, delete-orphan"
     )
+    diary_entries = relationship(
+        "DiaryEntry", back_populates="user", cascade="all, delete-orphan"
+    )
+
 

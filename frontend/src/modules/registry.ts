@@ -9,6 +9,7 @@
 
 import {
   Activity,
+  BookOpen,
   BrainCircuit,
   Briefcase,
   CalendarDays,
@@ -78,6 +79,14 @@ export const SETTINGS_NAV_ITEM: NavItem = {
   icon: Settings,
 };
 
+export const DIARY_NAV_ITEM: NavItem = {
+  id: "diary",
+  name: "Diary",
+  route: "/diary",
+  glyph: "📖",
+  icon: BookOpen,
+};
+
 /**
  * Mobile navigation: Home, Schedule, Tasks, Laptop (and More).
  */
@@ -137,6 +146,7 @@ export const PRIMARY_NAV_ITEMS_DESKTOP: NavItem[] = [
 export const PRIMARY_NAV_ITEMS: NavItem[] = PRIMARY_NAV_ITEMS_DESKTOP;
 
 export const MORE_NAV_ITEMS: NavItem[] = [
+  DIARY_NAV_ITEM,
   {
     id: "gym",
     name: "Gym",
@@ -247,6 +257,15 @@ export const MODULES: ModuleDefinition[] = [
     route: "/internship",
     category: "life",
     enabled: true,
+  },
+  {
+    id: "diary",
+    name: "Diary",
+    icon: BookOpen,
+    route: "/diary",
+    category: "life",
+    enabled: true,
+    glyph: "📖",
   },
   {
     id: "insights",

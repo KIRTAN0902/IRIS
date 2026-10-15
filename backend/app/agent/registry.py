@@ -17,6 +17,7 @@ from app.agent.tools.awareness import (
 from app.agent.tools.actions import action_tools
 from app.agent.tools.base import Tool
 from app.agent.tools.coding import coding_tools
+from app.agent.tools.diary import diary_tools
 from app.agent.tools.drive import drive_tools
 from app.agent.tools.email import email_tools
 from app.agent.tools.finance import finance_tools
@@ -77,6 +78,9 @@ class ToolRegistry:
 
     def list_specs(self) -> list[dict[str, Any]]:
         return [tool.to_spec() for tool in self._tools.values()]
+
+    def list_tools(self) -> list[Tool]:
+        return list(self._tools.values())
 
     def list_tool_definitions(self) -> list[ToolDefinition]:
         return [tool.to_tool_definition() for tool in self._tools.values()]
@@ -188,6 +192,10 @@ def create_default_registry() -> ToolRegistry:
 
     # IRIS Mesh Continuity Ecosystem
     for tool in mesh_tools():
+        registry.register(tool)
+
+    # Diary & Notes notebook
+    for tool in diary_tools():
         registry.register(tool)
 
     return registry
