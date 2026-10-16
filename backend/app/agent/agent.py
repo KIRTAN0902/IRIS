@@ -52,7 +52,13 @@ class IrisAgent:
     """Conversational personal assistant & action layer for IRIS."""
 
     def __init__(self, registry: ToolRegistry | None = None) -> None:
-        self.registry = registry or default_registry
+        if registry is not None:
+            self.registry = registry
+        elif settings.ai_multi_agent_enabled:
+            from app.agent.registry import orchestrator_registry
+            self.registry = orchestrator_registry
+        else:
+            self.registry = default_registry
         self.harness = AgentHarness(self.registry)
         self.supervisor = get_iris_supervisor()
 
@@ -108,7 +114,7 @@ class IrisAgent:
             if provider.enabled:
                 # Check specialized sub-agent delegation
                 routed_domains = (
-                    self.supervisor.route_intent(user_message)
+                    await self.supervisor.route_intent_async(user_message)
                     if (not isinstance(provider, MockProvider) and settings.ai_multi_agent_enabled)
                     else []
                 )

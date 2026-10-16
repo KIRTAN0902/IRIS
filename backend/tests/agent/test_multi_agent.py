@@ -226,3 +226,59 @@ async def test_subagent_execution_report(db: Session, multi_user: User, monkeypa
     assert report.agent_name == "Operator"
     assert report.success is True
     assert "Found 5 files" in report.summary
+
+
+@pytest.mark.asyncio
+async def test_supervisor_route_intent_async():
+    """Verify route_intent_async handles deterministic triggers and chitchat properly."""
+    supervisor = get_iris_supervisor()
+
+    # Fast deterministic route
+    res = await supervisor.route_intent_async("lock laptop")
+    assert "operator" in res
+
+    res2 = await supervisor.route_intent_async("check my unread emails")
+    assert "bubba" in res2
+
+    # Fast chitchat short-circuit
+    res_chitchat = await supervisor.route_intent_async("hi")
+    assert res_chitchat == []
+
+    res_thanks = await supervisor.route_intent_async("thank you")
+    assert res_thanks == []
+
+
+@pytest.mark.asyncio
+async def test_supervisor_single_token_jev_mapping(monkeypatch):
+    """Verify single-token Jev classification maps tokens A-E accurately."""
+    from unittest.mock import AsyncMock, MagicMock
+    import httpx
+
+    supervisor = get_iris_supervisor()
+
+    test_cases = [
+        ("A", ["operator"]),
+        ("B", ["planner"]),
+        ("C", ["scribe"]),
+        ("D", ["bubba"]),
+        ("E", []),
+        ("[A]", ["operator"]),
+        ("B.", ["planner"]),
+    ]
+
+    for letter, expected in test_cases:
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {"choices": [{"message": {"content": letter}}]}
+
+        mock_client = AsyncMock()
+        mock_client.__aenter__.return_value = mock_client
+        mock_client.post.return_value = mock_resp
+
+        monkeypatch.setattr(httpx, "AsyncClient", lambda **kw: mock_client)
+        monkeypatch.setattr("app.core.config.settings.groq_api_key", "test-groq-key")
+
+        res = await supervisor.route_intent_async("ambiguous query with no obvious keywords here")
+        assert res == expected
+
+

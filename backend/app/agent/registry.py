@@ -201,7 +201,48 @@ def create_default_registry() -> ToolRegistry:
     return registry
 
 
+def create_orchestrator_registry() -> ToolRegistry:
+    """Create lightweight registry for the conversational Orchestrator (IRIS Core).
 
-# Global default instance
+    Excludes low-level worker tools (terminal CLI, file writes, code execution,
+    raw email editing, workout planning), delegating those to Operator, Planner,
+    Scribe, and BUBBA while keeping Orchestrator payload under 1,500 tokens.
+    """
+    registry = ToolRegistry()
+
+    # Awareness (situation + personal model)
+    registry.register(GetSituationTool())
+    registry.register(GetPersonalProfileTool())
+    registry.register(GetCompletedTasksTool())
+    registry.register(SearchConversationsTool())
+    registry.register(GetConversationTool())
+
+    # Overview read tools
+    registry.register(GetTasksTool())
+    registry.register(GetTaskTool())
+    registry.register(GetGoalsTool())
+    registry.register(GetScheduleTool())
+    registry.register(GetStartupStatusTool())
+
+    # Intelligence & Recommendations
+    registry.register(GetTodayStateTool())
+    registry.register(GetCurrentStateTool())
+    registry.register(GetAttentionItemsTool())
+    registry.register(GetDecisionRecommendationTool())
+    registry.register(GetCurrentRecommendationTool())
+    registry.register(GetDecisionHistoryTool())
+
+    # Memory
+    registry.register(SaveMemoryTool())
+    registry.register(SearchMemoryTool())
+    registry.register(ForgetMemoryTool())
+    registry.register(ListMemoriesTool())
+
+    return registry
+
+
+# Global default instances
 default_registry = create_default_registry()
+orchestrator_registry = create_orchestrator_registry()
+
 

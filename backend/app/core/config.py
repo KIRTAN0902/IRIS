@@ -84,7 +84,7 @@ class Settings(BaseSettings):
     # NVIDIA NIM (OpenAI-compatible API)
     nvidia_base_url: str = "https://integrate.api.nvidia.com/v1"
     nvidia_api_key: str | None = None
-    nvidia_model: str = "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"
+    nvidia_model: str = "google/gemma-4-31b-it"
     nvidia_timeout_seconds: float = 90.0
 
     # Gemini
@@ -98,9 +98,10 @@ class Settings(BaseSettings):
     groq_model: str = "openai/gpt-oss-120b"
     groq_timeout_seconds: float = 30.0
 
-    # Multi-Agent Routing
+    # Multi-Agent Routing & System 1 Decision Router (Jev alternative)
     ai_multi_agent_enabled: bool = True
-    ai_orchestrator_model: str = "gemini-3.8-live"
+    ai_router_model: str = "groq:qwen/qwen3.8-27b"
+    ai_orchestrator_model: str = "google/gemma-4-31b-it"
     ai_operator_model: str = "groq:openai/gpt-oss-120b"
     ai_planner_model: str = "groq:openai/gpt-oss-120b"
     ai_scribe_model: str = "groq:qwen/qwen3.8-27b"

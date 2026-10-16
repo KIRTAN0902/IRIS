@@ -141,7 +141,7 @@ def create_ai_provider(provider_name: str | None = None, model: str | None = Non
             timeout = 90.0
         return NvidiaProvider(
             base_url=_first(settings.ai_base_url, settings.nvidia_base_url) or NVIDIA_HOSTED_URL,
-            api_key=_first(settings.ai_api_key, settings.nvidia_api_key),
+            api_key=_first(settings.ai_api_key, settings.nvidia_api_key, os.environ.get("NVIDIA_API_KEY")),
             model=resolved_model,
             timeout_seconds=timeout,
             **_common_kwargs(),

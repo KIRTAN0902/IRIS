@@ -17,10 +17,13 @@ The Orchestrator:
 
 from __future__ import annotations
 
+import json
+import os
 import re
 from datetime import datetime
 from typing import Any
 
+import httpx
 from sqlalchemy.orm import Session
 
 from app.agent.agents.base_agent import SubAgentReport
@@ -31,6 +34,8 @@ from app.agent.agents.scribe import get_scribe_agent
 from app.agent.schemas import AgentResponseSchema
 from app.agent.tools.mesh import LockWorkstationTool, RingMyPhoneTool
 from app.agent.tools.tasks import CompleteTaskTool
+from app.core.config import settings
+from app.core.logging import get_logger
 from app.intelligence.decision_engine import deterministic_decision
 from app.models.enums import TaskStatus
 from app.models.task import Task
@@ -38,6 +43,8 @@ from app.models.user import User
 from app.services import habit_service
 from app.services.memory_service import memory_service
 from app.utils.datetime import to_local, utcnow
+
+logger = get_logger("iris.agent.supervisor")
 
 
 class IrisSupervisor:
@@ -493,6 +500,74 @@ class IrisSupervisor:
             matched.append("bubba")
 
         return matched
+
+    async def route_intent_async(self, user_message: str) -> list[str]:
+        """Classify which specialized domain(s) should handle this request.
+
+        Two-tier routing architecture (Jev alternative):
+        1. Instant deterministic keyword check (0ms, 0 API calls).
+        2. Fast Groq LPU System 1 Decision Classifier (~400ms, calibrated JSON output).
+        """
+        # Tier 1: Deterministic fast check (0ms)
+        deterministic_matches = self.route_intent(user_message)
+        if deterministic_matches:
+            return deterministic_matches
+
+        # If user message is too short or simple chitchat, avoid unnecessary API calls
+        msg_clean = user_message.strip().lower()
+        if len(msg_clean) < 6 or msg_clean in {
+            "hi", "hello", "hey", "yo", "sup", "thanks", "thank you", "bye", "good morning", "good evening"
+        }:
+            return []
+
+        # Tier 2: Groq LPU System 1 Decision Engine (Jev Principle: single forward pass, 0 tool schemas)
+        groq_key = settings.groq_api_key or os.environ.get("GROQ_API_KEY")
+        if not groq_key:
+            return []
+
+        router_model = settings.ai_router_model.replace("groq:", "").strip()
+        system_prompt = (
+            "Classify user intent into exactly one category:\n"
+            "[A] Operator (terminal/shell commands, file operations, desktop apps, autonomous coding)\n"
+            "[B] Planner (calendar, schedule timeblocks, task management, goals)\n"
+            "[C] Scribe (notes, diary, workout/gym log, habits, finance/expenses)\n"
+            "[D] BUBBA (emails, Gmail triage, Google Drive docs)\n"
+            "[E] Chat (general chitchat, greetings, questions directly to IRIS)\n\n"
+            "Reply with ONLY the single uppercase letter [A/B/C/D/E]."
+        )
+
+        try:
+            async with httpx.AsyncClient(timeout=1.5) as client:
+                resp = await client.post(
+                    f"{settings.groq_base_url}/chat/completions",
+                    headers={"Authorization": f"Bearer {groq_key}", "Content-Type": "application/json"},
+                    json={
+                        "model": router_model,
+                        "messages": [
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": user_message},
+                        ],
+                        "temperature": 0.0,
+                        "max_tokens": 1,
+                    },
+                )
+                if resp.status_code == 200:
+                    data = resp.json()
+                    raw_text = data["choices"][0]["message"]["content"].strip()
+                    cleaned = raw_text.strip("[]() :.\"'").upper()
+                    mapping = {
+                        "A": ["operator"],
+                        "B": ["planner"],
+                        "C": ["scribe"],
+                        "D": ["bubba"],
+                        "E": [],
+                    }
+                    if cleaned and cleaned[0] in mapping:
+                        return mapping[cleaned[0]]
+        except Exception as exc:
+            logger.debug("Groq System 1 Decision Router skipped/timed out: %s", exc)
+
+        return []
 
     # --- 3. Sub-Agent Dispatch -----------------------------------------------
 
