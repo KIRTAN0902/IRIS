@@ -520,12 +520,24 @@ class IrisSupervisor:
         }:
             return []
 
-        # Tier 2: Groq LPU System 1 Decision Engine (Jev Principle: single forward pass, 0 tool schemas)
-        groq_key = settings.groq_api_key or os.environ.get("GROQ_API_KEY")
-        if not groq_key:
+        # Tier 2: System 1 Decision Engine (Jev Principle: single forward pass, 0 tool schemas)
+        router_spec = (settings.ai_router_model or "").strip()
+        if router_spec.startswith("nvidia:"):
+            router_base_url = settings.nvidia_base_url
+            router_api_key = settings.nvidia_api_key or os.environ.get("NVIDIA_API_KEY")
+            router_model = router_spec.replace("nvidia:", "").strip()
+        elif router_spec.startswith("groq:"):
+            router_base_url = settings.groq_base_url
+            router_api_key = settings.groq_api_key or os.environ.get("GROQ_API_KEY")
+            router_model = router_spec.replace("groq:", "").strip()
+        else:
+            router_base_url = settings.nvidia_base_url
+            router_api_key = settings.nvidia_api_key or os.environ.get("NVIDIA_API_KEY")
+            router_model = router_spec or "nvidia/nemotron-3.5-lightning-30b-a3b"
+
+        if not router_api_key:
             return []
 
-        router_model = settings.ai_router_model.replace("groq:", "").strip()
         system_prompt = (
             "Classify user intent into exactly one category:\n"
             "[A] Operator (terminal/shell commands, file operations, desktop apps, autonomous coding)\n"
@@ -537,10 +549,10 @@ class IrisSupervisor:
         )
 
         try:
-            async with httpx.AsyncClient(timeout=1.5) as client:
+            async with httpx.AsyncClient(timeout=2.0) as client:
                 resp = await client.post(
-                    f"{settings.groq_base_url}/chat/completions",
-                    headers={"Authorization": f"Bearer {groq_key}", "Content-Type": "application/json"},
+                    f"{router_base_url}/chat/completions",
+                    headers={"Authorization": f"Bearer {router_api_key}", "Content-Type": "application/json"},
                     json={
                         "model": router_model,
                         "messages": [
@@ -565,7 +577,7 @@ class IrisSupervisor:
                     if cleaned and cleaned[0] in mapping:
                         return mapping[cleaned[0]]
         except Exception as exc:
-            logger.debug("Groq System 1 Decision Router skipped/timed out: %s", exc)
+            logger.debug("System 1 Decision Router skipped/timed out: %s", exc)
 
         return []
 

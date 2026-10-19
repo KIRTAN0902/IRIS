@@ -18,7 +18,7 @@ from app.ai.provider import (
 )
 from app.ai.providers.gemini import GeminiProvider
 from app.ai.providers.mock import MockProvider
-from app.ai.providers.nvidia import NvidiaProvider
+from app.ai.providers.nvidia import NVIDIA_DEFAULT_MODEL, NvidiaProvider
 from app.intelligence.decision_engine import decide_now
 from app.intelligence.recommendation import DecisionType
 from app.models.enums import LifeArea
@@ -250,7 +250,7 @@ def test_nvidia_enabled_property():
     p_enabled = NvidiaProvider(base_url="https://integrate.api.nvidia.com/v1", api_key="nvapi-test")
     assert p_enabled.enabled is True
     assert p_enabled.name == "nvidia"
-    assert p_enabled.model == "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"
+    assert p_enabled.model == NVIDIA_DEFAULT_MODEL
 
 
 @pytest.mark.asyncio
@@ -317,18 +317,18 @@ def test_factory_migrates_legacy_models(monkeypatch):
 
     monkeypatch.setattr("app.core.config.settings.ai_model", "nvidia/nemotron-3-super-120b-a12b")
     provider2 = create_ai_provider()
-    assert provider2.model == NVIDIA_DEFAULT_MODEL
+    assert provider2.model == "nvidia/nemotron-3-super-120b-a12b"
 
 
 def test_factory_creates_gemini_provider(monkeypatch):
     monkeypatch.setattr("app.core.config.settings.ai_provider", "gemini")
     monkeypatch.setattr("app.core.config.settings.gemini_api_key", "secret-key")
-    monkeypatch.setattr("app.core.config.settings.gemini_model", "gemini-2.5-flash")
+    monkeypatch.setattr("app.core.config.settings.gemini_model", "gemini-3.5-flash")
 
     provider = create_ai_provider()
     assert isinstance(provider, GeminiProvider)
     assert provider.name == "gemini"
-    assert provider.model == "gemini-2.5-flash"
+    assert provider.model == "gemini-3.5-flash"
     assert provider.enabled is True
 
 

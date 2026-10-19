@@ -276,6 +276,7 @@ async def test_supervisor_single_token_jev_mapping(monkeypatch):
         mock_client.post.return_value = mock_resp
 
         monkeypatch.setattr(httpx, "AsyncClient", lambda **kw: mock_client)
+        monkeypatch.setattr("app.core.config.settings.nvidia_api_key", "test-nvidia-key")
         monkeypatch.setattr("app.core.config.settings.groq_api_key", "test-groq-key")
 
         res = await supervisor.route_intent_async("ambiguous query with no obvious keywords here")

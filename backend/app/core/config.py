@@ -100,11 +100,11 @@ class Settings(BaseSettings):
 
     # Multi-Agent Routing & System 1 Decision Router (Jev alternative)
     ai_multi_agent_enabled: bool = True
-    ai_router_model: str = "groq:qwen/qwen3.8-27b"
+    ai_router_model: str = "nvidia:nvidia/nemotron-3.5-lightning-30b-a3b"
     ai_orchestrator_model: str = "google/gemma-4-31b-it"
-    ai_operator_model: str = "groq:openai/gpt-oss-120b"
-    ai_planner_model: str = "groq:openai/gpt-oss-120b"
-    ai_scribe_model: str = "groq:qwen/qwen3.8-27b"
+    ai_operator_model: str = "nvidia:nvidia/nemotron-3-super-120b-a12b"
+    ai_planner_model: str = "nvidia:nvidia/nemotron-3.5-lightning-30b-a3b"
+    ai_scribe_model: str = "nvidia:nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"
     ai_bubba_model: str = "gemini:gemini-3.5-flash"
     ai_vision_model: str = "nvidia:nvidia/nemotron-3.5-super-vl-120b-a12b"
 

@@ -93,7 +93,6 @@ def _common_kwargs() -> dict:
 
 
 LEGACY_MODEL_MIGRATIONS: dict[str, str] = {
-    "nvidia/nemotron-3-super-120b-a12b": NVIDIA_DEFAULT_MODEL,
     "nvidia/nemotron-3-ultra-550b-a55b": NVIDIA_DEFAULT_MODEL,
     "gemini-2.5-flash": "gemini-3.5-flash",
 }
