@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, patch
+import sys
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -30,7 +31,12 @@ async def test_launch_and_get_coding_task():
     mock_agent.chat.return_value = mock_response
     mock_agent.__aenter__.return_value = mock_agent
 
-    with patch("google.antigravity.Agent", return_value=mock_agent):
+    mock_antigravity = MagicMock()
+    mock_antigravity.Agent = MagicMock(return_value=mock_agent)
+    mock_antigravity.LocalAgentConfig = MagicMock()
+    mock_antigravity.CapabilitiesConfig = MagicMock()
+
+    with patch.dict(sys.modules, {"google.antigravity": mock_antigravity}):
         task = acs.launch_coding_task(
             instruction="Write a hello world test",
             workspace="iris",
