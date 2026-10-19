@@ -92,6 +92,14 @@ MODEL_PROFILES: list[tuple[str, dict[str, Any]]] = [
     # Reasoning models: let them think, then extract JSON (guided JSON decoding
     # from the first token suppresses the reasoning phase).
     (
+        "*gemma*",
+        {
+            "reasoning": True,
+            "context_window": 262_144,
+            "max_output_tokens": 8_192,
+        },
+    ),
+    (
         "*nemotron*",
         {
             "reasoning": True,

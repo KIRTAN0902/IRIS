@@ -19,7 +19,7 @@ from app.ai.provider import AISchemaValidationError
 
 T = TypeVar("T", bound=BaseModel)
 
-_THINK_RE = re.compile(r"<(think|thinking|reasoning)>([\s\S]*?)</\1>", re.IGNORECASE)
+_THINK_RE = re.compile(r"<(think|thinking|thought|reasoning)>([\s\S]*?)</\1>", re.IGNORECASE)
 _FENCE_RE = re.compile(r"```(?:json)?\s*([\s\S]*?)\s*```", re.DOTALL)
 
 
@@ -33,11 +33,12 @@ def split_reasoning(text: str) -> tuple[str, str | None]:
         return "", None
     reasoning_parts = [m.group(2) for m in _THINK_RE.finditer(text)]
     answer = _THINK_RE.sub("", text)
-    # Some templates emit only the closing tag ("...thoughts</think>answer").
-    if "</think>" in answer.lower():
-        head, _, tail = re.split(r"(</think>)", answer, maxsplit=1, flags=re.IGNORECASE)
-        reasoning_parts.append(head)
-        answer = tail
+    # Some templates emit only the closing tag ("...thoughts</think>answer" or "...thoughts</thought>answer").
+    for closing in ("</think>", "</thought>"):
+        if closing in answer.lower():
+            head, _, tail = re.split(re.escape(closing), answer, maxsplit=1, flags=re.IGNORECASE)
+            reasoning_parts.append(head)
+            answer = tail
     reasoning = "\n".join(p.strip() for p in reasoning_parts if p.strip()) or None
     return answer.strip(), reasoning
 

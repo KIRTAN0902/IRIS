@@ -485,15 +485,24 @@ export function SettingsPage() {
                   <div>
                     <div className="flex flex-wrap items-center gap-2">
                       <p className="font-semibold text-ink text-[15px]">IRIS Core Reasoning</p>
-                      <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[11px] font-semibold text-emerald-400 border border-emerald-500/20">
-                        NVIDIA NIM
+                      <span
+                        className={cn(
+                          "rounded-full px-2 py-0.5 text-[11px] font-semibold border",
+                          (aiStatus?.provider || "gemini").toLowerCase().includes("gemini")
+                            ? "bg-sky-500/10 text-sky-400 border-sky-500/20"
+                            : "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                        )}
+                      >
+                        {(aiStatus?.provider || "gemini").toLowerCase().includes("gemini")
+                          ? "GOOGLE GEMINI"
+                          : "NVIDIA NIM"}
                       </span>
                       <span className="rounded-full bg-ai/10 px-2 py-0.5 text-[11px] font-semibold text-ai border border-ai/20">
                         Strict Gemma 4 (No Fallback)
                       </span>
                     </div>
                     <p className="text-[12px] text-ink-dim mt-0.5">
-                      Model: <code className="font-mono text-ai font-medium">google/gemma-4-31b-it</code> • Strategy: {aiStatus?.strategy || "Native Tool Calling"}
+                      Model: <code className="font-mono text-ai font-medium">{aiStatus?.model || "gemma-4-26b-a4b-it"}</code> • Strategy: {aiStatus?.strategy || "Native Tool Calling"}
                     </p>
                   </div>
                 </div>
@@ -542,8 +551,8 @@ export function SettingsPage() {
                         id: "orchestrator",
                         name: "IRIS Core (Orchestrator)",
                         role: "Multi-Turn Conversation, Fast State Actions & Sub-Agent Synthesis",
-                        provider: "nvidia",
-                        model: "google/gemma-4-31b-it",
+                        provider: "gemini",
+                        model: "gemma-4-26b-a4b-it",
                         fallback: "None (Strict Gemma 4)",
                         status: "OPERATIONAL",
                       },

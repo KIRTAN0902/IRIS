@@ -30,6 +30,10 @@ def _parse_spec(spec: str, default_provider: str = "nvidia") -> tuple[str, str]:
 def _build_agent_models() -> dict[str, Any]:
     from app.core.config import settings
 
+    orchestrator_p, orchestrator_m = _parse_spec(
+        settings.ai_orchestrator_model or settings.ai_model or "gemini:gemma-4-26b-a4b-it",
+        default_provider=settings.ai_provider or "gemini",
+    )
     router_p, router_m = _parse_spec(settings.ai_router_model, "nvidia")
     scribe_p, scribe_m = _parse_spec(settings.ai_scribe_model, "nvidia")
     planner_p, planner_m = _parse_spec(settings.ai_planner_model, "nvidia")
@@ -42,8 +46,8 @@ def _build_agent_models() -> dict[str, Any]:
             "id": "orchestrator",
             "name": "IRIS Core (Orchestrator)",
             "role": "Multi-Turn Conversation, Instant State Actions & Sub-Agent Synthesis",
-            "provider": "nvidia",
-            "model": settings.ai_orchestrator_model or settings.ai_model or "google/gemma-4-31b-it",
+            "provider": orchestrator_p,
+            "model": orchestrator_m,
             "fallback": "None (Strict Gemma 4)",
             "status": "OPERATIONAL",
         },
