@@ -552,8 +552,8 @@ export function SettingsPage() {
                         name: "IRIS Core (Orchestrator)",
                         role: "Multi-Turn Conversation, Fast State Actions & Sub-Agent Synthesis",
                         provider: "gemini",
-                        model: "gemma-4-26b-a4b-it",
-                        fallback: "None (Strict Gemma 4)",
+                        model: "gemma-4-31b-it",
+                        fallback: "Gemma 4 (gemma-4-26b-a4b-it)",
                         status: "OPERATIONAL",
                       },
                       {

@@ -46,6 +46,7 @@ class GeminiProvider(AIProvider):
         self,
         api_key: str | None = None,
         model: str = "gemini-2.5-flash",
+        fallback_model: str | None = None,
         timeout_seconds: float = 45.0,
         *,
         capability_overrides: dict[str, Any] | None = None,
@@ -53,6 +54,7 @@ class GeminiProvider(AIProvider):
     ):
         self._api_key = api_key or ""
         self._model = model or "gemini-2.5-flash"
+        self._fallback_model = fallback_model if (fallback_model and fallback_model != self._model) else None
         self._timeout = timeout_seconds
         self._client = None
         self._caps: ModelCapabilities = resolve_capabilities(self._model, capability_overrides)
@@ -66,6 +68,19 @@ class GeminiProvider(AIProvider):
             capabilities=self._caps,
             **chat_kwargs,
         )
+        if self._fallback_model:
+            self._fallback_chat_backend = OpenAICompatibleProvider(
+                name="gemini",
+                label="Gemini",
+                base_url=GEMINI_OPENAI_URL,
+                model=self._fallback_model,
+                api_key=self._api_key,
+                timeout_seconds=timeout_seconds,
+                capabilities=resolve_capabilities(self._fallback_model),
+                **chat_kwargs,
+            )
+        else:
+            self._fallback_chat_backend = None
 
     @property
     def name(self) -> str:
@@ -74,6 +89,10 @@ class GeminiProvider(AIProvider):
     @property
     def model(self) -> str:
         return self._model
+
+    @property
+    def fallback_model(self) -> str | None:
+        return self._fallback_model
 
     @property
     def enabled(self) -> bool:
@@ -97,13 +116,30 @@ class GeminiProvider(AIProvider):
                 "Gemini provider is not enabled (missing API key)",
                 provider=self.name,
             )
-        return await self._chat_backend.chat(
-            messages,
-            tools=tools,
-            response_format=response_format,
-            temperature=temperature,
-            max_tokens=max_tokens,
-        )
+        try:
+            return await self._chat_backend.chat(
+                messages,
+                tools=tools,
+                response_format=response_format,
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
+        except AIProviderError as exc:
+            if self._fallback_chat_backend:
+                logger.warning(
+                    "Gemini primary model %s chat failed (%s); falling back to %s",
+                    self._model,
+                    exc,
+                    self._fallback_model,
+                )
+                return await self._fallback_chat_backend.chat(
+                    messages,
+                    tools=tools,
+                    response_format=response_format,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                )
+            raise
 
     def _get_client(self):
         if self._client is None:
@@ -161,64 +197,74 @@ class GeminiProvider(AIProvider):
             )
             return response.text or ""
 
-        try:
-            raw_text = await asyncio.wait_for(
-                asyncio.to_thread(_call_gemini, self._model),
-                timeout=self._timeout,
+        models_to_try = [self._model]
+        if self._fallback_model:
+            models_to_try.append(self._fallback_model)
+
+        last_exc: Exception | None = None
+        for idx, model_to_use in enumerate(models_to_try):
+            logger.info(
+                "AI request started: provider=%s, model=%s",
+                self.name,
+                model_to_use,
             )
-        except TimeoutError as exc:
+            try:
+                raw_text = await asyncio.wait_for(
+                    asyncio.to_thread(_call_gemini, model_to_use),
+                    timeout=self._timeout,
+                )
+                if not raw_text:
+                    raise AISchemaValidationError(
+                        "Gemini returned empty response text",
+                        provider=self.name,
+                    )
+
+                cleaned_text = _clean_json_markdown(raw_text)
+                parsed_json = json.loads(cleaned_text)
+                result = schema.model_validate(parsed_json)
+
+                if idx > 0:
+                    logger.info(
+                        "AI request completed using fallback model: provider=%s, model=%s",
+                        self.name,
+                        model_to_use,
+                    )
+                else:
+                    logger.info(
+                        "AI request completed: provider=%s, model=%s, status=success",
+                        self.name,
+                        self._model,
+                    )
+                return result
+            except Exception as exc:
+                last_exc = exc
+                if idx < len(models_to_try) - 1:
+                    logger.warning(
+                        "Gemini primary model %s failed (%s); trying fallback model %s",
+                        model_to_use,
+                        exc,
+                        models_to_try[idx + 1],
+                    )
+                    continue
+
+        if isinstance(last_exc, TimeoutError):
             logger.warning("AI request timeout: provider=%s, model=%s", self.name, self._model)
             raise AIConnectionError(
                 f"Gemini request timed out after {self._timeout}s",
                 provider=self.name,
-                cause=exc,
-            ) from exc
-        except Exception as exc:
-            logger.warning("AI Gemini SDK error: provider=%s, error=%s", self.name, exc)
-            raise AIProviderError(
-                f"Gemini API call failed: {exc}",
-                provider=self.name,
-                cause=exc,
-            ) from exc
-
-        if not raw_text:
+                cause=last_exc,
+            ) from last_exc
+        if isinstance(last_exc, (json.JSONDecodeError, ValidationError)):
             raise AISchemaValidationError(
-                "Gemini returned empty response text",
+                f"Gemini output failed schema validation: {last_exc}",
                 provider=self.name,
-            )
-
-        cleaned_text = _clean_json_markdown(raw_text)
-
-        try:
-            parsed_json = json.loads(cleaned_text)
-            result = schema.model_validate(parsed_json)
-        except json.JSONDecodeError as exc:
-            logger.warning(
-                "AI JSON decode failure: provider=%s, text=%s",
-                self.name,
-                cleaned_text[:200],
-            )
-            raise AISchemaValidationError(
-                f"Gemini output was not valid JSON: {exc}",
-                provider=self.name,
-                cause=exc,
-            ) from exc
-        except ValidationError as exc:
-            logger.warning(
-                "AI schema validation failure: provider=%s, schema=%s, errors=%s",
-                self.name,
-                schema.__name__,
-                exc.errors(),
-            )
-            raise AISchemaValidationError(
-                f"Gemini output failed schema validation for {schema.__name__}: {exc}",
-                provider=self.name,
-                cause=exc,
-            ) from exc
-
-        logger.info(
-            "AI request completed: provider=%s, model=%s, status=success",
-            self.name,
-            self._model,
-        )
-        return result
+                cause=last_exc,
+            ) from last_exc
+        if isinstance(last_exc, AIProviderError):
+            raise last_exc
+        logger.warning("AI Gemini SDK error: provider=%s, error=%s", self.name, last_exc)
+        raise AIProviderError(
+            f"Gemini API call failed: {last_exc}",
+            provider=self.name,
+            cause=last_exc,
+        ) from last_exc

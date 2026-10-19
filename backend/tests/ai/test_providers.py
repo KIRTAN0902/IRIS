@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
@@ -286,6 +286,64 @@ async def test_gemini_disabled_raises_configuration_error():
             prompt="prompt",
             schema=SampleSchema,
         )
+
+
+@pytest.mark.asyncio
+async def test_gemini_fallback_on_primary_failure():
+    provider = GeminiProvider(
+        api_key="fake-gemini-key",
+        model="gemma-4-31b-it",
+        fallback_model="gemma-4-26b-a4b-it",
+    )
+
+    call_models = []
+
+    class FakeResponse:
+        text = '{"title": "Fallback Success", "score": 99, "tags": ["gemma"]}'
+
+    def mock_generate_content(model, contents, config=None):
+        call_models.append(model)
+        if model == "gemma-4-31b-it":
+            raise RuntimeError("500 INTERNAL: Internal error encountered.")
+        return FakeResponse()
+
+    fake_client = MagicMock()
+    fake_client.models.generate_content.side_effect = mock_generate_content
+
+    with patch.object(provider, "_get_client", return_value=fake_client):
+        res = await provider.generate_structured(
+            system="system prompt",
+            prompt="user prompt",
+            schema=SampleSchema,
+        )
+        assert res.title == "Fallback Success"
+        assert res.score == 99
+        assert call_models == ["gemma-4-31b-it", "gemma-4-26b-a4b-it"]
+
+
+@pytest.mark.asyncio
+async def test_gemini_chat_fallback_on_primary_failure():
+    from app.ai.provider import ChatMessage, ChatResult
+
+    provider = GeminiProvider(
+        api_key="fake-gemini-key",
+        model="gemma-4-31b-it",
+        fallback_model="gemma-4-26b-a4b-it",
+    )
+
+    assert provider.fallback_model == "gemma-4-26b-a4b-it"
+
+    async def fail_chat(*args, **kwargs):
+        raise AIProviderError("Gemini HTTP error 500: Server error", provider="gemini")
+
+    async def success_chat(*args, **kwargs):
+        return ChatResult(content="Fallback Chat Response")
+
+    with patch.object(provider._chat_backend, "chat", side_effect=fail_chat):
+        with patch.object(provider._fallback_chat_backend, "chat", side_effect=success_chat):
+            res = await provider.chat([ChatMessage(role="user", content="hello")])
+            assert res.content == "Fallback Chat Response"
+
 
 
 # --- Factory & Configuration Switching Tests ----------------------------------

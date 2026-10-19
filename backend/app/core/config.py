@@ -45,7 +45,8 @@ class Settings(BaseSettings):
 
     # Provider-neutral model settings. These win over the legacy per-vendor
     # variables below, so switching models is only ever an .env change.
-    ai_model: str | None = "gemma-4-26b-a4b-it"
+    ai_model: str | None = "gemma-4-31b-it"
+    ai_fallback_model: str | None = "gemma-4-26b-a4b-it"
     ai_base_url: str | None = None
     ai_api_key: str | None = None
     ai_timeout_seconds: float | None = None
@@ -89,7 +90,8 @@ class Settings(BaseSettings):
 
     # Gemini
     gemini_api_key: str | None = None
-    gemini_model: str = "gemma-4-26b-a4b-it"
+    gemini_model: str = "gemma-4-31b-it"
+    gemini_fallback_model: str | None = "gemma-4-26b-a4b-it"
     gemini_timeout_seconds: float = 45.0
 
     # Groq Cloud (Ultra-fast LPU inference)
@@ -101,7 +103,7 @@ class Settings(BaseSettings):
     # Multi-Agent Routing & System 1 Decision Router (Jev alternative)
     ai_multi_agent_enabled: bool = True
     ai_router_model: str = "nvidia:nvidia/nemotron-3.5-lightning-30b-a3b"
-    ai_orchestrator_model: str = "gemini:gemma-4-26b-a4b-it"
+    ai_orchestrator_model: str = "gemini:gemma-4-31b-it"
     ai_operator_model: str = "nvidia:nvidia/nemotron-3-super-120b-a12b"
     ai_planner_model: str = "nvidia:nvidia/nemotron-3.5-lightning-30b-a3b"
     ai_scribe_model: str = "nvidia:nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"
