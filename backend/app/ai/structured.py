@@ -36,7 +36,7 @@ def split_reasoning(text: str) -> tuple[str, str | None]:
     # Some templates emit only the closing tag ("...thoughts</think>answer" or "...thoughts</thought>answer").
     for closing in ("</think>", "</thought>"):
         if closing in answer.lower():
-            head, _, tail = re.split(re.escape(closing), answer, maxsplit=1, flags=re.IGNORECASE)
+            head, _, tail = re.split(f"({re.escape(closing)})", answer, maxsplit=1, flags=re.IGNORECASE)
             reasoning_parts.append(head)
             answer = tail
     reasoning = "\n".join(p.strip() for p in reasoning_parts if p.strip()) or None
