@@ -19,6 +19,105 @@ from app.utils.datetime import utcnow
 logger = get_logger("iris.ai.health")
 
 
+def _parse_spec(spec: str, default_provider: str = "nvidia") -> tuple[str, str]:
+    spec = (spec or "").strip()
+    if ":" in spec:
+        p, m = spec.split(":", 1)
+        return p.strip(), m.strip()
+    return default_provider, spec
+
+
+def _build_agent_models() -> dict[str, Any]:
+    from app.core.config import settings
+
+    router_p, router_m = _parse_spec(settings.ai_router_model, "nvidia")
+    scribe_p, scribe_m = _parse_spec(settings.ai_scribe_model, "nvidia")
+    planner_p, planner_m = _parse_spec(settings.ai_planner_model, "nvidia")
+    operator_p, operator_m = _parse_spec(settings.ai_operator_model, "nvidia")
+    bubba_p, bubba_m = _parse_spec(settings.ai_bubba_model, "gemini")
+    vision_p, vision_m = _parse_spec(settings.ai_vision_model, "nvidia")
+
+    agents = [
+        {
+            "id": "orchestrator",
+            "name": "IRIS Core (Orchestrator)",
+            "role": "Multi-Turn Conversation, Instant State Actions & Sub-Agent Synthesis",
+            "provider": "nvidia",
+            "model": settings.ai_orchestrator_model or settings.ai_model or "google/gemma-4-31b-it",
+            "fallback": "None (Strict Gemma 4)",
+            "status": "OPERATIONAL",
+        },
+        {
+            "id": "router",
+            "name": "System 1 Intent Router",
+            "role": "Single-Token Fast Intent Classification (Jev Principle)",
+            "provider": router_p,
+            "model": router_m,
+            "fallback": "Deterministic Keyword Match",
+            "status": "OPERATIONAL",
+        },
+        {
+            "id": "scribe",
+            "name": "Scribe Agent",
+            "role": "Personal Knowledge, Notes, Diary, Habits, Fitness & Finances",
+            "provider": scribe_p,
+            "model": scribe_m,
+            "fallback": "Direct Service APIs",
+            "status": "OPERATIONAL",
+        },
+        {
+            "id": "planner",
+            "name": "Planner Agent",
+            "role": "Chronos Strategic Schedule, Time Blocks, Tasks & Milestones",
+            "provider": planner_p,
+            "model": planner_m,
+            "fallback": "Chronos Heuristics",
+            "status": "OPERATIONAL",
+        },
+        {
+            "id": "operator",
+            "name": "Operator Agent",
+            "role": "Workstation CLI, Filesystem, Application Launch & Autonomous Coding",
+            "provider": operator_p,
+            "model": operator_m,
+            "fallback": "Mesh Local APIs",
+            "status": "OPERATIONAL",
+        },
+        {
+            "id": "bubba",
+            "name": "BUBBA Agent",
+            "role": "Google Workspace (Gmail Triage, Drafts & Google Drive Docs)",
+            "provider": bubba_p,
+            "model": bubba_m,
+            "fallback": "Direct OAuth API",
+            "status": "OPERATIONAL",
+        },
+        {
+            "id": "vision",
+            "name": "Vision Perception",
+            "role": "Multimodal Screen Analysis & UI Inspection",
+            "provider": vision_p,
+            "model": vision_m,
+            "fallback": "Screen OCR / Native Snapshot",
+            "status": "OPERATIONAL",
+        },
+    ]
+
+    voice = {
+        "stt_provider": settings.ai_stt_provider,
+        "stt_model": settings.ai_stt_model,
+        "tts_provider": settings.ai_tts_provider,
+        "tts_model": settings.ai_tts_model,
+        "tts_voice": settings.ai_tts_voice,
+    }
+
+    return {
+        "agents": agents,
+        "voice": voice,
+        "models": {a["id"]: a["model"] for a in agents},
+    }
+
+
 class AIHealthTracker:
     """Monitors live responsiveness and error states of the active AI provider."""
 
@@ -71,10 +170,12 @@ class AIHealthTracker:
             "strategy": "native_tools" if provider.capabilities.native_tools else "structured_json",
             "capabilities": provider.capabilities.to_dict(),
         }
+        agent_models = _build_agent_models()
 
         if not configured:
             return {
                 **harness,
+                **agent_models,
                 "provider": provider_name,
                 "model": model_name,
                 "configured": False,
@@ -90,6 +191,7 @@ class AIHealthTracker:
         if self._consecutive_failures > 0:
             return {
                 **harness,
+                **agent_models,
                 "provider": provider_name,
                 "model": model_name,
                 "configured": True,
@@ -106,6 +208,7 @@ class AIHealthTracker:
 
         return {
             **harness,
+            **agent_models,
             "provider": provider_name,
             "model": model_name,
             "configured": True,

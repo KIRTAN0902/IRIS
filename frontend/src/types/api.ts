@@ -407,6 +407,24 @@ export interface StartupTrends {
 
 export type AISource = "AI" | "DETERMINISTIC";
 
+export interface AgentModelItem {
+  id: string;
+  name: string;
+  role: string;
+  provider: string;
+  model: string;
+  fallback?: string;
+  status: string;
+}
+
+export interface VoiceConfigOut {
+  stt_provider: string;
+  stt_model: string;
+  tts_provider: string;
+  tts_model: string;
+  tts_voice: string;
+}
+
 export interface AIStatusOut {
   provider: string;
   model: string;
@@ -414,9 +432,13 @@ export interface AIStatusOut {
   responding: boolean;
   status: "OPERATIONAL" | "NOT_RESPONDING" | "NOT_CONFIGURED" | string;
   message: string;
+  strategy?: string;
   last_error?: string | null;
   consecutive_failures?: number;
   last_checked_at?: string;
+  agents?: AgentModelItem[];
+  voice?: VoiceConfigOut;
+  models?: Record<string, string>;
 }
 
 export interface AIMeta {

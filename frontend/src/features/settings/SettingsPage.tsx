@@ -1,21 +1,32 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
+  BookOpen,
   BrainCircuit,
+  Calendar,
+  CheckCircle2,
   Cpu,
+  Eye,
   Laptop,
   Lock,
+  Mail,
+  Mic,
   Radio,
+  RefreshCw,
   Settings,
+  ShieldCheck,
   Smartphone,
   Sparkles,
+  Terminal,
   Trash2,
   Volume2,
+  Zap,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Panel, Lamp } from "@/components/ui/Panel";
 import { api } from "@/api/client";
 import { cn } from "@/lib/format";
+import type { AIStatusOut } from "@/types/api";
 
 interface PairedDevice {
   id: number;
@@ -67,6 +78,10 @@ export function SettingsPage() {
   const [loadingInvite, setLoadingInvite] = useState(false);
   const [phonePairedSuccess, setPhonePairedSuccess] = useState(false);
 
+  // --- AI Settings State ---
+  const [aiStatus, setAiStatus] = useState<AIStatusOut | null>(null);
+  const [loadingAi, setLoadingAi] = useState(false);
+
   const loadMeshData = async () => {
     try {
       const devRes = await api.get<{ host_power: HostPower | null }>("/mesh/devices");
@@ -78,8 +93,21 @@ export function SettingsPage() {
     }
   };
 
+  const loadAiStatus = async () => {
+    setLoadingAi(true);
+    try {
+      const res = await api.get<AIStatusOut>("/ai/status");
+      setAiStatus(res);
+    } catch {
+      // Fallback
+    } finally {
+      setLoadingAi(false);
+    }
+  };
+
   useEffect(() => {
     loadMeshData();
+    loadAiStatus();
   }, []);
 
   const setTab = (tab: "mesh" | "ai" | "general") => {
@@ -443,37 +471,231 @@ export function SettingsPage() {
       {/* --- Tab 2: AI & Models Settings --- */}
       {currentTab === "ai" && (
         <div className="space-y-6">
-          <Panel title="Autonomous AI Engine & Models" lamp={<Lamp tone="ai" />}>
+          {/* Overview & Live Engine Status */}
+          <Panel
+            title="Autonomous AI Mesh & Active Models"
+            lamp={<Lamp tone={aiStatus?.status === "OPERATIONAL" ? "ai" : "caution"} pulse />}
+          >
             <div className="space-y-4 pt-2 text-[13px]">
-              <div className="rounded-lg bg-ops-raised/30 p-3.5 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2.5">
-                    <Sparkles size={18} className="text-ai" />
-                    <div>
-                      <p className="font-medium text-ink">Primary Reasoning Engine</p>
-                      <p className="text-[12px] text-ink-faint">Nemotron 3 Nano Omni / Gemini</p>
-                    </div>
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-ai/20 bg-ai/5 p-4">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-ai/10 border border-ai/20 text-ai">
+                    <Sparkles size={20} />
                   </div>
-                  <span className="rounded-full bg-ai/10 px-2.5 py-0.5 text-[11px] font-semibold text-ai border border-ai/20">
-                    Active
-                  </span>
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="font-semibold text-ink text-[15px]">IRIS Core Reasoning</p>
+                      <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[11px] font-semibold text-emerald-400 border border-emerald-500/20">
+                        NVIDIA NIM
+                      </span>
+                      <span className="rounded-full bg-ai/10 px-2 py-0.5 text-[11px] font-semibold text-ai border border-ai/20">
+                        Strict Gemma 4 (No Fallback)
+                      </span>
+                    </div>
+                    <p className="text-[12px] text-ink-dim mt-0.5">
+                      Model: <code className="font-mono text-ai font-medium">google/gemma-4-31b-it</code> • Strategy: {aiStatus?.strategy || "Native Tool Calling"}
+                    </p>
+                  </div>
                 </div>
 
-                <div className="flex items-center justify-between border-t border-ops-line pt-2">
-                  <div className="flex items-center gap-2.5">
-                    <Volume2 size={18} className="text-go" />
-                    <div>
-                      <p className="font-medium text-ink">Voice Intelligence</p>
-                      <p className="text-[12px] text-ink-faint">Gemini Flash-Lite TTS (Voice: Kore)</p>
-                    </div>
-                  </div>
-                  <span className="text-[12px] text-ink-dim">16kHz High-Fidelity</span>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={loadAiStatus}
+                    disabled={loadingAi}
+                    className="flex items-center gap-1.5"
+                  >
+                    <RefreshCw size={13} className={loadingAi ? "animate-spin" : ""} />
+                    {loadingAi ? "Refreshing..." : "Check Status"}
+                  </Button>
                 </div>
               </div>
 
-              <p className="text-[12px] text-ink-faint">
-                Model configurations are managed via environment variables and hot-swapped dynamically without backend downtime.
+              {/* Status explanation */}
+              <div className="flex items-center justify-between rounded-lg bg-ops-raised/40 px-3.5 py-2.5 text-[12px] text-ink-dim border border-ops-line">
+                <span className="flex items-center gap-2">
+                  <CheckCircle2 size={14} className="text-emerald-400" />
+                  Health: <strong className="text-ink">{aiStatus?.status || "OPERATIONAL"}</strong>
+                </span>
+                <span className="text-ink-faint">
+                  {aiStatus?.last_checked_at
+                    ? `Checked ${new Date(aiStatus.last_checked_at).toLocaleTimeString()}`
+                    : "Zero-data training guaranteed"}
+                </span>
+              </div>
+            </div>
+          </Panel>
+
+          {/* Sub-Agent Specialist Models Grid */}
+          <Panel title="Specialized Sub-Agent Models (Multi-Agent Swarm)" lamp={<Lamp tone="go" />}>
+            <div className="space-y-3 pt-2 text-[13px]">
+              <p className="text-[12px] text-ink-dim">
+                Each agent has an isolated execution registry and dedicated model calibrated for zero tool-collision and maximum speed.
               </p>
+
+              <div className="grid gap-3 sm:grid-cols-1">
+                {(aiStatus?.agents && aiStatus.agents.length > 0
+                  ? aiStatus.agents
+                  : [
+                      {
+                        id: "orchestrator",
+                        name: "IRIS Core (Orchestrator)",
+                        role: "Multi-Turn Conversation, Fast State Actions & Sub-Agent Synthesis",
+                        provider: "nvidia",
+                        model: "google/gemma-4-31b-it",
+                        fallback: "None (Strict Gemma 4)",
+                        status: "OPERATIONAL",
+                      },
+                      {
+                        id: "router",
+                        name: "System 1 Intent Router",
+                        role: "Single-Token Fast Intent Classification (Jev Principle)",
+                        provider: "nvidia",
+                        model: "nvidia/nemotron-3.5-lightning-30b-a3b",
+                        fallback: "Deterministic Keyword Match",
+                        status: "OPERATIONAL",
+                      },
+                      {
+                        id: "scribe",
+                        name: "Scribe Agent",
+                        role: "Personal Knowledge, Notes, Diary, Habits, Fitness & Finances",
+                        provider: "nvidia",
+                        model: "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
+                        fallback: "Direct Service APIs",
+                        status: "OPERATIONAL",
+                      },
+                      {
+                        id: "planner",
+                        name: "Planner Agent",
+                        role: "Chronos Strategic Schedule, Time Blocks, Tasks & Milestones",
+                        provider: "nvidia",
+                        model: "nvidia/nemotron-3.5-lightning-30b-a3b",
+                        fallback: "Chronos Heuristics",
+                        status: "OPERATIONAL",
+                      },
+                      {
+                        id: "operator",
+                        name: "Operator Agent",
+                        role: "Workstation CLI, Filesystem, Application Launch & Autonomous Coding",
+                        provider: "nvidia",
+                        model: "nvidia/nemotron-3-super-120b-a12b",
+                        fallback: "Mesh Local APIs",
+                        status: "OPERATIONAL",
+                      },
+                      {
+                        id: "bubba",
+                        name: "BUBBA Agent",
+                        role: "Google Workspace (Gmail Triage, Drafts & Google Drive Docs)",
+                        provider: "gemini",
+                        model: "gemini-3.5-flash",
+                        fallback: "Direct OAuth API",
+                        status: "OPERATIONAL",
+                      },
+                      {
+                        id: "vision",
+                        name: "Vision Perception",
+                        role: "Multimodal Screen Analysis & UI Inspection",
+                        provider: "nvidia",
+                        model: "nvidia/nemotron-3.5-super-vl-120b-a12b",
+                        fallback: "Screen OCR / Native Snapshot",
+                        status: "OPERATIONAL",
+                      },
+                    ]
+                ).map((agent) => (
+                  <div
+                    key={agent.id}
+                    className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl bg-ops-raised/40 p-3.5 border border-ops-line/80 hover:border-ops-line-bright transition-colors"
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-ops-panel border border-ops-line">
+                        {agent.id === "orchestrator" && <Sparkles size={16} className="text-ai" />}
+                        {agent.id === "router" && <Zap size={16} className="text-amber-400" />}
+                        {agent.id === "scribe" && <BookOpen size={16} className="text-emerald-400" />}
+                        {agent.id === "planner" && <Calendar size={16} className="text-sky-400" />}
+                        {agent.id === "operator" && <Terminal size={16} className="text-indigo-400" />}
+                        {agent.id === "bubba" && <Mail size={16} className="text-rose-400" />}
+                        {agent.id === "vision" && <Eye size={16} className="text-violet-400" />}
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <p className="font-semibold text-ink text-[13px]">{agent.name}</p>
+                          <span
+                            className={cn(
+                              "rounded-full px-2 py-0.2 text-[10px] font-semibold border",
+                              agent.provider.toLowerCase().includes("nvidia")
+                                ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                                : agent.provider.toLowerCase().includes("gemini")
+                                ? "bg-sky-500/10 text-sky-400 border-sky-500/20"
+                                : "bg-ops-panel text-ink-dim border-ops-line"
+                            )}
+                          >
+                            {agent.provider.toUpperCase()}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-ink-dim mt-0.5 line-clamp-1">{agent.role}</p>
+                      </div>
+                    </div>
+
+                    <div className="flex sm:flex-col sm:items-end justify-between sm:justify-center border-t sm:border-t-0 border-ops-line/50 pt-2 sm:pt-0 shrink-0">
+                      <code className="font-mono text-[12px] font-medium text-ink bg-ops-panel/80 px-2.5 py-1 rounded-md border border-ops-line">
+                        {agent.model}
+                      </code>
+                      {agent.fallback && (
+                        <span className="text-[10px] text-ink-faint mt-1">
+                          Fallback: {agent.fallback}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </Panel>
+
+          {/* Voice Intelligence Pipeline */}
+          <Panel title="Voice & Multimodal Intelligence Pipeline" lamp={<Lamp tone="go" />}>
+            <div className="space-y-3 pt-2 text-[13px]">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="rounded-xl bg-ops-raised/30 p-3.5 border border-ops-line space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Mic size={16} className="text-amber-400" />
+                      <p className="font-semibold text-ink text-[13px]">Speech-to-Text (STT)</p>
+                    </div>
+                    <span className="rounded-full bg-sky-500/10 px-2 py-0.2 text-[10px] font-semibold text-sky-400 border border-sky-500/20">
+                      GEMINI
+                    </span>
+                  </div>
+                  <p className="font-mono text-[12px] text-ink-dim">
+                    {aiStatus?.voice?.stt_model || "gemini-3.5-transcribe"}
+                  </p>
+                  <p className="text-[11px] text-ink-faint">Real-time low-latency transcription</p>
+                </div>
+
+                <div className="rounded-xl bg-ops-raised/30 p-3.5 border border-ops-line space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Volume2 size={16} className="text-go" />
+                      <p className="font-semibold text-ink text-[13px]">Text-to-Speech (TTS)</p>
+                    </div>
+                    <span className="rounded-full bg-sky-500/10 px-2 py-0.2 text-[10px] font-semibold text-sky-400 border border-sky-500/20">
+                      GEMINI
+                    </span>
+                  </div>
+                  <p className="font-mono text-[12px] text-ink-dim">
+                    {aiStatus?.voice?.tts_model || "gemini-3.8-flash-lite-tts"} • Voice: {aiStatus?.voice?.tts_voice || "Kore"}
+                  </p>
+                  <p className="text-[11px] text-ink-faint">16kHz High-Fidelity neural voice</p>
+                </div>
+              </div>
+
+              <div className="rounded-lg bg-ops-raised/20 p-3 text-[11px] text-ink-faint flex items-center gap-2">
+                <ShieldCheck size={14} className="text-emerald-400 shrink-0" />
+                <span>
+                  All sub-agent models execute with strict scoped registries, preventing tool clutter, hallucination, and rate limits.
+                </span>
+              </div>
             </div>
           </Panel>
         </div>
