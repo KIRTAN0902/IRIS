@@ -75,7 +75,7 @@ class Settings(BaseSettings):
     ai_tts_provider: str = "gemini"
     # Comma-separated: later models are tried when an earlier one is rate-limited.
     ai_tts_model: str = "gemini-3.8-live,gemini-3.8-flash-tts"
-    ai_tts_voice: str = "Arlo"
+    ai_tts_voice: str = "Enceladus"
     ai_live_model: str = "gemini-3.8-live"
     ai_live_enabled: bool = True
     # For openai_compatible voice providers (or to override the Gemini key).

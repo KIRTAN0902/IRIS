@@ -44,7 +44,7 @@ In your **Vercel Project Settings → Environment Variables**, configure:
 | `GEMINI_API_KEY` | `[YOUR_GEMINI_KEY]` | Key for Gemini Orchestrator & BUBBA (aistudio.google.com) |
 | `GROQ_API_KEY` | `[YOUR_GROQ_KEY]` | Key for Operator, Planner & Scribe sub-agents (console.groq.com) |
 | `NVIDIA_API_KEY` | `[YOUR_NVIDIA_KEY]` | *(optional)* For Vision perception |
-| `AI_STT_MODEL` / `AI_TTS_MODEL` / `AI_TTS_VOICE` | *(optional)* | Defaults: `gemini-3.5-transcribe`, `gemini-3.8-flash-lite-tts`, `Arlo` |
+| `AI_STT_MODEL` / `AI_TTS_MODEL` / `AI_TTS_VOICE` | *(optional)* | Defaults: `gemini-3.5-transcribe`, `gemini-3.8-flash-lite-tts`, `Enceladus` |
 
 ---
 

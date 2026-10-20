@@ -145,18 +145,40 @@ async def voice_live_websocket(
     try:
         from google.genai import types
 
+        user_name = "Kirtan"
+        situation_text = ""
+        pm_text = ""
+        try:
+            from app.core.database import SessionLocal
+            from app.core.security import get_current_user
+            from app.intelligence.personal_model import build_personal_model, render_personal_model
+            from app.intelligence.situation import build_situation, render_situation
+
+            with SessionLocal() as db:
+                user = get_current_user(db)
+                if user:
+                    user_name = user.name or "Kirtan"
+                    sit = build_situation(db, user)
+                    situation_text = render_situation(sit, detail="standard")
+                    pm = build_personal_model(db, user)
+                    pm_text = render_personal_model(pm, detail="standard")
+        except Exception as exc:
+            logger.warning("Failed to render situation for voice live: %s", exc)
+
         client = voice.get_genai_client()
         system_instruction = (
-            "You are IRIS, an intelligent, sovereign personal AI companion and desktop workstation orchestrator. "
-            "You are conversing directly with Kirtan. "
-            "Speak with a natural, concise, intelligent, and warm tone. "
-            "Keep your responses conversational and directly relevant."
+            f"You are IRIS, an intelligent, sovereign personal AI companion and desktop workstation orchestrator.\n"
+            f"You are conversing directly with {user_name}.\n"
+            "Speak with a natural, concise, intelligent, and warm tone suitable for real-time speech.\n"
+            "Keep your responses direct, conversational, and grounded in the user's real situation, tasks, and schedule below.\n\n"
+            f"{pm_text}\n\n"
+            f"{situation_text}\n"
         )
         live_config = types.LiveConnectConfig(
             response_modalities=["AUDIO"],
             speech_config=types.SpeechConfig(
                 voice_config=types.VoiceConfig(
-                    prebuilt_voice_config=types.PrebuiltVoiceConfig(voice_name=settings.ai_tts_voice or "Arlo")
+                    prebuilt_voice_config=types.PrebuiltVoiceConfig(voice_name=settings.ai_tts_voice or "Enceladus")
                 )
             ),
             system_instruction=types.Content(parts=[types.Part.from_text(text=system_instruction)]),
@@ -166,7 +188,7 @@ async def voice_live_websocket(
         await websocket.send_json({
             "type": "ready",
             "model": model_name,
-            "voice": settings.ai_tts_voice or "Arlo",
+            "voice": settings.ai_tts_voice or "Enceladus",
             "sample_rate": 24000,
         })
 
