@@ -149,7 +149,7 @@ export const MORE_NAV_ITEMS: NavItem[] = [
   DIARY_NAV_ITEM,
   {
     id: "gym",
-    name: "Gym",
+    name: "Gym & Yoga",
     route: "/gym",
     glyph: "◆",
     icon: Dumbbell,

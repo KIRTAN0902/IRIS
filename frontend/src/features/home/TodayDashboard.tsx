@@ -255,7 +255,7 @@ function useClock() {
 
 /** Routines without a set duration count as "now" for this long. */
 const DEFAULT_ROUTINE_MIN = 30;
-const WORKOUT_ROUTINE = /gym|workout|lift|training|exercise/i;
+const WORKOUT_ROUTINE = /gym|workout|lift|training|exercise|yoga|asana/i;
 
 function routineWindow(h: HabitOut): [number, number] | null {
   if (!h.time) return null;

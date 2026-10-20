@@ -259,13 +259,23 @@ class IrisSupervisor:
                     [],
                 )
 
-        # D. Direct "Gym done" / "Workout completed"
-        gym_triggers = {"gym done", "finished gym", "workout done", "completed workout", "done with gym", "chest day done", "leg day done"}
-        if clean_msg in gym_triggers or (
-            any(w in clean_msg for w in ["gym", "workout"]) and any(w in clean_msg for w in ["done", "finished", "completed"])
-        ):
-            # Check if routine exists
-            routine = habit_service.find(db, user, "gym") or habit_service.find(db, user, "workout")
+        # D. Direct "Gym done" / "Workout completed" / "Yoga done"
+        fitness_triggers = {
+            "gym done", "finished gym", "workout done", "completed workout", "done with gym",
+            "chest day done", "leg day done",
+            "yoga done", "finished yoga", "completed yoga", "yoga completed", "done with yoga", "asana done",
+        }
+        is_fitness_completion = clean_msg in fitness_triggers or (
+            any(w in clean_msg for w in ["gym", "workout", "yoga"]) and any(w in clean_msg for w in ["done", "finished", "completed"])
+        )
+        if is_fitness_completion:
+            is_yoga = "yoga" in clean_msg or "asana" in clean_msg
+            routine = None
+            if is_yoga:
+                routine = habit_service.find(db, user, "yoga") or habit_service.find(db, user, "asana")
+            if not routine:
+                routine = habit_service.find(db, user, "gym") or habit_service.find(db, user, "workout") or habit_service.find(db, user, "yoga")
+
             actions_executed: list[dict[str, Any]] = []
             streak_info = ""
             if routine:
@@ -280,14 +290,16 @@ class IrisSupervisor:
                 except Exception:
                     pass
 
-            reply = f"💪 Awesome work! Logged your gym/workout session as completed for today{streak_info}."
+            item_label = "yoga session" if is_yoga else "gym/workout session"
+            reply_icon = "🧘 Namaste!" if is_yoga else "💪 Awesome work!"
+            reply = f"{reply_icon} Logged your {item_label} as completed for today{streak_info}."
             return (
                 AgentResponseSchema(
-                    thought="Instant gym/workout completion handler.",
+                    thought=f"Instant {item_label} completion handler.",
                     actions=[],
                     message=reply,
-                    actions_summary=["Logged gym/workout completion"],
-                    evidence=["Routine: Gym/Workout marked done"],
+                    actions_summary=[f"Logged {item_label} completion"],
+                    evidence=[f"Routine: {item_label} marked done"],
                 ),
                 actions_executed,
             )
@@ -533,6 +545,7 @@ class IrisSupervisor:
             "diary", "my notes", "take a note", "save note", "write note", "note in diary",
             "journal", "reflection", "startup idea", "write in diary", "read diary",
             "workout", "gym", "exercise", "bench press", "squat", "pushups", "sets", "reps",
+            "yoga", "asana", "pranayama", "surya namaskar",
             "habit", "streak", "daily routine",
             "finance", "expense", "spent", "income", "budget", "bill", "savings goal",
             "startup status", "outreach status", "log outreach",

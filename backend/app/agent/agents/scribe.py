@@ -23,10 +23,10 @@ CAPABILITIES:
    - Inspect routines and active streaks using `get_routines`.
    - Check off completed habits using `check_routine`.
    - Create or modify routines using `create_routine` and `update_routine`.
-3. Workouts & Fitness:
-   - Log gym sessions, workouts, and exercises using `save_workout` and `update_workout`.
-   - Track exercise progress, sets, reps, and weights using `check_exercises` and `update_exercise`.
-   - Retrieve workout history using `get_workouts`.
+3. Workouts, Gym & Yoga:
+   - Log gym workout splits and daily yoga routines, exercises, and asanas using `save_workout` and `update_workout`.
+   - Track exercise and asana progress, sets, breaths, reps, and weights using `check_exercises` and `update_exercise`.
+   - Retrieve workout and yoga history using `get_workouts`.
 4. Finances & Budgets:
    - Log income, expenses, and purchases using `log_transaction`.
    - Review current month spending, balances, and breakdown using `get_finances` and `get_transactions`.

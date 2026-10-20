@@ -20,14 +20,18 @@ export function WorkoutEditor({
   onOpenChange,
   workout,
   defaultDay,
+  mode = "gym",
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   workout: WorkoutOut | null;
   defaultDay?: string;
+  mode?: "gym" | "yoga";
 }) {
   const save = useSaveWorkout();
   const del = useDeleteWorkout();
+  const isYoga = mode === "yoga" || (workout?.name ?? "").toLowerCase().includes("yoga") || (workout?.focus ?? "").toLowerCase().includes("yoga");
+
   const [name, setName] = useState("");
   const [focus, setFocus] = useState("");
   const [days, setDays] = useState<string[]>([]);
@@ -41,16 +45,24 @@ export function WorkoutEditor({
 
   useEffect(() => {
     if (!open) return;
-    setName(workout?.name ?? "");
-    setFocus(workout?.focus ?? "");
-    setDays(workout ? workout.days_of_week.split(",").filter(Boolean) : defaultDay ? [defaultDay] : []);
-    setDuration(workout?.duration ?? "");
+    setName(workout?.name ?? (isYoga ? "Daily Yoga Routine" : ""));
+    setFocus(workout?.focus ?? (isYoga ? "Flexibility, Mobility & Breathwork" : ""));
+    setDays(
+      workout
+        ? workout.days_of_week.split(",").filter(Boolean)
+        : isYoga
+        ? [...DAYS]
+        : defaultDay
+        ? [defaultDay]
+        : []
+    );
+    setDuration(workout?.duration ?? (isYoga ? "25-30 min" : ""));
     setDaysTouched(!!workout);
     setRows(workout?.exercises.length ? workout.exercises.map((e) => row(e)) : [row()]);
-    setPasting(!workout);
+    setPasting(!workout && !isYoga);
     setPasted("");
     setPasteNote(null);
-  }, [open, workout, defaultDay]);
+  }, [open, workout, defaultDay, isYoga]);
 
   const applyPaste = () => {
     const { workout: meta, exercises } = parseWorkoutTable(pasted);
@@ -64,7 +76,7 @@ export function WorkoutEditor({
     if (meta.days_of_week && !daysTouched) setDays([meta.days_of_week]);
     setRows(exercises.map((e) => row(e)));
     setPasting(false);
-    setPasteNote(`Added ${exercises.length} exercises. Check them below.`);
+    setPasteNote(`Added ${exercises.length} items. Check them below.`);
   };
 
   const edit = (key: number, patch: Partial<ExerciseIn>) => setRows((rs) => rs.map((r) => (r.key === key ? { ...r, ...patch } : r)));
@@ -80,12 +92,20 @@ export function WorkoutEditor({
     setDays((ds) => (ds.includes(d) ? ds.filter((x) => x !== d) : DAYS.filter((x) => ds.includes(x) || x === d)));
   };
 
+  const setAllDays = () => {
+    setDaysTouched(true);
+    setDays([...DAYS]);
+  };
+
   const exercises = rows.filter((r) => r.name.trim()).map(({ key: _key, ...e }) => e);
   const close = () => onOpenChange(false);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent title={workout ? `Edit ${workout.name}` : "New workout"} className="max-w-2xl">
+      <DialogContent
+        title={workout ? `Edit ${workout.name}` : isYoga ? "New Yoga Routine" : "New Workout"}
+        className="max-w-2xl"
+      >
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -103,14 +123,14 @@ export function WorkoutEditor({
           {pasting ? (
             <div className="rounded-xl border border-ops-line-bright p-3">
               <p className="text-[13px] text-ink-dim">
-                Paste your workout table from Notion (select the table, copy, paste here). The title and “Total Time” lines are
+                Paste your routine table from Notion (select the table, copy, paste here). The title and “Total Time” lines are
                 picked up too.
               </p>
               <Textarea
                 value={pasted}
                 onChange={(e) => setPasted(e.target.value)}
                 rows={5}
-                placeholder={"Sunday – CST (Chest, Shoulders, Triceps)\nExercise\tSets x Reps\tTime\tTargeted Muscles\tWeight\n…"}
+                placeholder={"Daily Yoga Routine\nAsana\tHold / Breaths\tTime\tTarget Area\nSurya Namaskar\t5 rounds\t5 min\tFull Body Warmup\n…"}
                 className="mt-2 font-mono text-[12px]"
               />
               <div className="mt-2 flex gap-2">
@@ -130,21 +150,47 @@ export function WorkoutEditor({
           {pasteNote && <p className="text-[13px] text-ink-dim">{pasteNote}</p>}
 
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Name">
-              <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="CST" maxLength={80} />
+            <Field label={isYoga ? "Routine Name" : "Name"}>
+              <Input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder={isYoga ? "Daily Yoga Routine" : "CST"}
+                maxLength={80}
+              />
             </Field>
             <Field label="Duration">
-              <Input value={duration} onChange={(e) => setDuration(e.target.value)} placeholder="75-85 min" maxLength={40} />
+              <Input
+                value={duration}
+                onChange={(e) => setDuration(e.target.value)}
+                placeholder={isYoga ? "25-30 min" : "75-85 min"}
+                maxLength={40}
+              />
             </Field>
             <div className="col-span-2">
-              <Field label="Focus">
-                <Input value={focus} onChange={(e) => setFocus(e.target.value)} placeholder="Chest, Shoulders, Triceps" maxLength={160} />
+              <Field label={isYoga ? "Focus & Intention" : "Focus"}>
+                <Input
+                  value={focus}
+                  onChange={(e) => setFocus(e.target.value)}
+                  placeholder={isYoga ? "Flexibility, Spine Mobility & Mindfulness" : "Chest, Shoulders, Triceps"}
+                  maxLength={160}
+                />
               </Field>
             </div>
           </div>
 
           <div>
-            <p className="mb-1.5 text-[12px] text-ink-faint">Days</p>
+            <div className="mb-1.5 flex items-center justify-between">
+              <p className="text-[12px] text-ink-faint">Scheduled Days</p>
+              {isYoga && (
+                <button
+                  type="button"
+                  onClick={setAllDays}
+                  className="text-[11px] text-ai hover:underline cursor-pointer font-medium"
+                >
+                  Select All Week (Everyday)
+                </button>
+              )}
+            </div>
             <div className="flex gap-1.5">
               {DAYS.map((d) => (
                 <button
@@ -154,7 +200,7 @@ export function WorkoutEditor({
                   aria-pressed={days.includes(d)}
                   className={cn(
                     "h-9 flex-1 rounded-full border text-[12px] transition-colors cursor-pointer",
-                    days.includes(d) ? "border-ink bg-ink text-ops-ground" : "border-ops-line-bright text-ink-faint",
+                    days.includes(d) ? "border-ink bg-ink text-ops-ground font-medium" : "border-ops-line-bright text-ink-faint",
                   )}
                 >
                   {d.slice(0, 2)}
@@ -164,13 +210,18 @@ export function WorkoutEditor({
           </div>
 
           <div>
-            <p className="mb-1.5 text-[12px] text-ink-faint">Exercises</p>
+            <p className="mb-1.5 text-[12px] text-ink-faint">{isYoga ? "Asanas / Poses" : "Exercises"}</p>
             <ol className="space-y-2">
               {rows.map((r, i) => (
                 <li key={r.key} className="rounded-xl border border-ops-line p-2.5">
                   <div className="flex items-center gap-2">
                     <span className="tnum w-5 text-center text-[12px] text-ink-faint">{i + 1}</span>
-                    <Input value={r.name} onChange={(e) => edit(r.key, { name: e.target.value })} placeholder="Exercise" maxLength={120} />
+                    <Input
+                      value={r.name}
+                      onChange={(e) => edit(r.key, { name: e.target.value })}
+                      placeholder={isYoga ? "Asana / Pose name (e.g. Surya Namaskar)" : "Exercise name"}
+                      maxLength={120}
+                    />
                     <div className="flex shrink-0">
                       <button type="button" onClick={() => move(i, -1)} disabled={i === 0} aria-label="Move up" className="rounded p-1 text-ink-faint hover:text-ink disabled:opacity-30 cursor-pointer">
                         <ArrowUp size={14} />
@@ -178,24 +229,53 @@ export function WorkoutEditor({
                       <button type="button" onClick={() => move(i, 1)} disabled={i === rows.length - 1} aria-label="Move down" className="rounded p-1 text-ink-faint hover:text-ink disabled:opacity-30 cursor-pointer">
                         <ArrowDown size={14} />
                       </button>
-                      <button type="button" onClick={() => setRows((rs) => rs.filter((x) => x.key !== r.key))} aria-label="Remove exercise" className="rounded p-1 text-ink-faint hover:text-critical cursor-pointer">
+                      <button type="button" onClick={() => setRows((rs) => rs.filter((x) => x.key !== r.key))} aria-label="Remove item" className="rounded p-1 text-ink-faint hover:text-critical cursor-pointer">
                         <X size={14} />
                       </button>
                     </div>
                   </div>
                   <div className="mt-2 grid grid-cols-3 gap-2 pl-7">
-                    <Input value={r.sets_reps ?? ""} onChange={(e) => edit(r.key, { sets_reps: e.target.value })} placeholder="Sets x reps" maxLength={40} />
-                    <Input value={r.weight ?? ""} onChange={(e) => edit(r.key, { weight: e.target.value })} placeholder="Weight" maxLength={40} />
-                    <Input value={r.time ?? ""} onChange={(e) => edit(r.key, { time: e.target.value })} placeholder="Time" maxLength={40} />
+                    <Input
+                      value={r.sets_reps ?? ""}
+                      onChange={(e) => edit(r.key, { sets_reps: e.target.value })}
+                      placeholder={isYoga ? "Hold / Breaths (e.g. 5 breaths)" : "Sets x reps"}
+                      maxLength={40}
+                    />
+                    {!isYoga ? (
+                      <Input
+                        value={r.weight ?? ""}
+                        onChange={(e) => edit(r.key, { weight: e.target.value })}
+                        placeholder="Weight"
+                        maxLength={40}
+                      />
+                    ) : (
+                      <Input
+                        value={r.notes ?? ""}
+                        onChange={(e) => edit(r.key, { notes: e.target.value })}
+                        placeholder="Alignment / cue"
+                        maxLength={160}
+                      />
+                    )}
+                    <Input
+                      value={r.time ?? ""}
+                      onChange={(e) => edit(r.key, { time: e.target.value })}
+                      placeholder={isYoga ? "Time (e.g. 60s, 3m)" : "Time"}
+                      maxLength={40}
+                    />
                     <div className="col-span-3">
-                      <Input value={r.muscles ?? ""} onChange={(e) => edit(r.key, { muscles: e.target.value })} placeholder="Targeted muscles" maxLength={160} />
+                      <Input
+                        value={r.muscles ?? ""}
+                        onChange={(e) => edit(r.key, { muscles: e.target.value })}
+                        placeholder={isYoga ? "Target areas (e.g. Spine, Hips, Hamstrings)" : "Targeted muscles"}
+                        maxLength={160}
+                      />
                     </div>
                   </div>
                 </li>
               ))}
             </ol>
             <button type="button" onClick={() => setRows((rs) => [...rs, row()])} className="mt-2 inline-flex items-center gap-1 text-[13px] text-ink-faint hover:text-ink cursor-pointer">
-              <Plus size={14} /> Add exercise
+              <Plus size={14} /> {isYoga ? "Add asana / pose" : "Add exercise"}
             </button>
           </div>
 
