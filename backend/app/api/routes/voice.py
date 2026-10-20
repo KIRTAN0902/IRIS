@@ -156,7 +156,7 @@ async def voice_live_websocket(
             response_modalities=["AUDIO"],
             speech_config=types.SpeechConfig(
                 voice_config=types.VoiceConfig(
-                    prebuilt_voice_config=types.PrebuiltVoiceConfig(voice_name=settings.ai_tts_voice or "Kore")
+                    prebuilt_voice_config=types.PrebuiltVoiceConfig(voice_name=settings.ai_tts_voice or "Arlo")
                 )
             ),
             system_instruction=types.Content(parts=[types.Part.from_text(text=system_instruction)]),
@@ -166,7 +166,7 @@ async def voice_live_websocket(
         await websocket.send_json({
             "type": "ready",
             "model": model_name,
-            "voice": settings.ai_tts_voice or "Kore",
+            "voice": settings.ai_tts_voice or "Arlo",
             "sample_rate": 24000,
         })
 
