@@ -693,7 +693,7 @@ export function SettingsPage() {
                     </span>
                   </div>
                   <p className="font-mono text-[12px] text-ink-dim truncate">
-                    {aiStatus?.voice?.tts_model || "gemini-3.8-live,gemini-3.8-flash-tts"} • Voice: {aiStatus?.voice?.tts_voice || "Kore"}
+                    {aiStatus?.voice?.tts_model || "gemini-3.8-live,gemini-3.8-flash-tts"} • Voice: {aiStatus?.voice?.tts_voice || "Arlo"}
                   </p>
                   <p className="text-[11px] text-ink-faint">24kHz conversational neural audio stream</p>
                 </div>
