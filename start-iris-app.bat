@@ -2,12 +2,9 @@
 title Launching IRIS Desktop App...
 cd /d "%~dp0"
 
-:: 1. Check if backend on port 8000 is listening; start silently if needed
+:: 1. Ensure backend daemon on port 8000 is listening; start silently if needed
 powershell -NoProfile -Command "if (-not (Get-NetTCPConnection -LocalPort 8000 -ErrorAction SilentlyContinue)) { wscript.exe '%~dp0start-mesh-silent.vbs' }"
 
-:: 2. Check if frontend on port 5173 is listening; start if needed
-powershell -NoProfile -Command "if (-not (Get-NetTCPConnection -LocalPort 5173 -ErrorAction SilentlyContinue)) { wscript.exe '%~dp0start-vite-silent.vbs' }"
-
-:: 3. Launch Electron Desktop App
+:: 2. Launch Electron Native Desktop App
 cd /d "%~dp0desktop"
 npm start

@@ -1,8 +1,23 @@
-const { app, BrowserWindow, Tray, Menu, globalShortcut, ipcMain, shell, Notification } = require('electron');
+const { app, BrowserWindow, Tray, Menu, globalShortcut, ipcMain, shell, Notification, protocol, net } = require('electron');
 const path = require('path');
 const http = require('http');
 const { spawn } = require('child_process');
 const fs = require('fs');
+const url = require('url');
+
+// 1. Register custom standard scheme for native offline app execution
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: 'iris',
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      corsEnabled: true,
+      stream: true,
+    },
+  },
+]);
 
 const REPO_ROOT = 'C:\\kirtan\\IRIS';
 const logFile = path.join(REPO_ROOT, 'desktop', 'iris-desktop.log');
@@ -12,7 +27,7 @@ function log(msg) {
   } catch (e) {}
 }
 
-log('=== main.cjs loaded ===');
+log('=== main.cjs loaded (Native Desktop Mode) ===');
 app.name = 'IRIS';
 try {
   app.setPath('userData', path.join(app.getPath('appData'), 'IRIS-Desktop'));
@@ -25,12 +40,22 @@ let tray = null;
 let isQuitting = false;
 let hasNotifiedTray = false;
 
-const FRONTEND_URL = 'http://localhost:5173';
 const BACKEND_URL = 'http://localhost:8000/health';
+const APP_URL = 'iris://app/index.html';
 
 const ICON_PATH = path.join(__dirname, 'assets', 'icon.ico');
 const PNG_ICON_PATH = path.join(__dirname, 'assets', 'icon.png');
 const LOADING_HTML = path.join(__dirname, 'loading.html');
+
+// Locate local distribution directory
+const candidateDistDirs = [
+  path.join(__dirname, 'dist-frontend'),
+  path.join(__dirname, 'dist'),
+  path.join(REPO_ROOT, 'frontend', 'dist'),
+  path.join(__dirname, '..', 'frontend', 'dist'),
+];
+const DIST_DIR = candidateDistDirs.find((d) => fs.existsSync(path.join(d, 'index.html'))) || path.join(REPO_ROOT, 'frontend', 'dist');
+log('Using frontend distribution from: ' + DIST_DIR);
 
 // Ensure single instance
 const gotTheLock = app.requestSingleInstanceLock();
@@ -47,19 +72,13 @@ app.on('second-instance', async () => {
     if (!mainWindow.isVisible()) mainWindow.show();
     mainWindow.focus();
     await ensureServices();
-    try {
-      const ok = await checkUrl(BACKEND_URL);
-      if (ok) {
-        mainWindow.webContents.reloadIgnoringCache();
-      }
-    } catch {}
   }
 });
 
-function checkUrl(url, timeoutMs = 4000) {
+function checkUrl(targetUrl, timeoutMs = 4000) {
   return new Promise((resolve) => {
     try {
-      const parsed = new URL(url);
+      const parsed = new URL(targetUrl);
       const req = http.request(
         {
           host: parsed.hostname,
@@ -86,7 +105,7 @@ function checkUrl(url, timeoutMs = 4000) {
 }
 
 async function ensureServices() {
-  // 1. Ensure backend is running
+  // Ensure local IRIS intelligence backend engine daemon is running
   const backendUp = await checkUrl(BACKEND_URL);
   if (!backendUp) {
     log('Backend offline; starting IRIS backend daemon...');
@@ -99,22 +118,6 @@ async function ensureServices() {
         windowsHide: true,
       }).unref();
       log('Spawned backend via start-mesh-silent.vbs');
-    }
-  }
-
-  // 2. Ensure frontend Vite is running
-  const frontendUp = await checkUrl(FRONTEND_URL);
-  if (!frontendUp) {
-    const vbsScript = path.join(REPO_ROOT, 'start-vite-silent.vbs');
-    if (fs.existsSync(vbsScript)) {
-      log('Starting IRIS frontend Vite dev server silently...');
-      spawn('wscript.exe', [vbsScript], {
-        cwd: REPO_ROOT,
-        detached: true,
-        stdio: 'ignore',
-        windowsHide: true,
-      }).unref();
-      log('Spawned frontend via start-vite-silent.vbs');
     }
   }
 }
@@ -174,46 +177,20 @@ function createWindow() {
     }
   });
 
-  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    if (url.startsWith('http://localhost') || url.startsWith('http://127.0.0.1')) {
+  mainWindow.webContents.setWindowOpenHandler(({ url: openUrl }) => {
+    if (openUrl.startsWith('iris://') || openUrl.startsWith('http://localhost') || openUrl.startsWith('http://127.0.0.1')) {
       return { action: 'allow' };
     }
-    shell.openExternal(url);
+    shell.openExternal(openUrl);
     return { action: 'deny' };
-  });
-
-  mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
-    if (validatedURL && validatedURL.includes('5173')) {
-      mainWindow.loadFile(LOADING_HTML);
-      pollAndConnect();
-    }
   });
 
   loadApp();
 }
 
-let pollTimer = null;
-function pollAndConnect() {
-  if (pollTimer) clearInterval(pollTimer);
-  pollTimer = setInterval(async () => {
-    const isReady = await checkUrl(FRONTEND_URL);
-    if (isReady && mainWindow) {
-      clearInterval(pollTimer);
-      pollTimer = null;
-      mainWindow.loadURL(FRONTEND_URL);
-    }
-  }, 1000);
-}
-
 async function loadApp() {
-  ensureServices();
-  const isViteReady = await checkUrl(FRONTEND_URL);
-  if (isViteReady) {
-    mainWindow.loadURL(FRONTEND_URL);
-  } else {
-    mainWindow.loadFile(LOADING_HTML);
-    pollAndConnect();
-  }
+  await ensureServices();
+  mainWindow.loadURL(APP_URL);
 }
 
 function createTray() {
@@ -242,7 +219,7 @@ function createTray() {
     },
     { type: 'separator' },
     {
-      label: 'Reload UI (Ctrl+R)',
+      label: 'Reload App (Ctrl+R)',
       click: () => {
         if (mainWindow) mainWindow.reload();
       },
@@ -255,10 +232,6 @@ function createTray() {
     },
     { type: 'separator' },
     {
-      label: 'Open in Browser (localhost:5173)',
-      click: () => shell.openExternal(FRONTEND_URL),
-    },
-    {
       label: 'Check Backend Status',
       click: async () => {
         const ok = await checkUrl(BACKEND_URL);
@@ -266,7 +239,7 @@ function createTray() {
           try {
             new Notification({
               title: 'IRIS Backend Status',
-              body: ok ? 'Backend & Mesh daemon are OPERATIONAL on port 8000.' : 'Backend on port 8000 is not responding.',
+              body: ok ? 'Local IRIS AI Engine is OPERATIONAL.' : 'Local IRIS AI Engine is starting...',
               icon: PNG_ICON_PATH,
             }).show();
           } catch {}
@@ -333,6 +306,41 @@ ipcMain.on('window-close', () => {
 });
 
 app.whenReady().then(() => {
+  // Register custom protocol handler for native iris://app execution
+  protocol.handle('iris', async (request) => {
+    const reqUrl = new URL(request.url);
+
+    // 1. Transparently proxy /api/ calls directly to local backend daemon
+    if (reqUrl.pathname.startsWith('/api/')) {
+      const targetUrl = 'http://127.0.0.1:8000' + reqUrl.pathname + reqUrl.search;
+      try {
+        const fetchOpts = {
+          method: request.method,
+          headers: request.headers,
+        };
+        if (request.method !== 'GET' && request.method !== 'HEAD') {
+          fetchOpts.body = request.body;
+          fetchOpts.duplex = 'half';
+        }
+        return await net.fetch(targetUrl, fetchOpts);
+      } catch (err) {
+        log('API proxy error (' + targetUrl + '): ' + err.message);
+        return new Response(JSON.stringify({ error: err.message }), {
+          status: 502,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+    }
+
+    // 2. Resolve static assets from local build
+    let relPath = reqUrl.pathname.replace(/^\/+/, '');
+    let filePath = path.join(DIST_DIR, relPath);
+    if (!fs.existsSync(filePath) || fs.statSync(filePath).isDirectory()) {
+      filePath = path.join(DIST_DIR, 'index.html');
+    }
+    return net.fetch(url.pathToFileURL(filePath).toString());
+  });
+
   createWindow();
   createTray();
 

@@ -40,12 +40,21 @@ function recognizerClass(): (new () => Recognizer) | null {
 const canRecord = () => typeof MediaRecorder !== "undefined" && !!navigator.mediaDevices?.getUserMedia;
 
 function getVoiceLiveWsUrl(): string {
-  const base = import.meta.env.VITE_API_URL?.replace(/\/+$/, "") || "/api";
-  if (base.startsWith("http")) {
+  const base = import.meta.env.VITE_API_URL?.replace(/\/+$/, "");
+  if (base && base.startsWith("http")) {
     return `${base.replace(/^http/, "ws")}/voice/live`;
   }
+  if (
+    typeof window !== "undefined" &&
+    (window.location.protocol.startsWith("iris") ||
+      window.location.protocol === "file:" ||
+      !window.location.host ||
+      window.location.host === "app")
+  ) {
+    return "ws://127.0.0.1:8000/api/voice/live";
+  }
   const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
-  return `${proto}//${window.location.host}${base}/voice/live`;
+  return `${proto}//${window.location.host}${base || "/api"}/voice/live`;
 }
 
 function floatTo16BitPCM(float32Array: Float32Array): Int16Array {
