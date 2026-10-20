@@ -77,7 +77,7 @@ class Settings(BaseSettings):
     ai_tts_model: str = "gemini-3.8-live,gemini-3.8-flash-tts"
     ai_tts_voice: str = "Enceladus"
     ai_live_model: str = "gemini-3.8-live"
-    ai_live_enabled: bool = True
+    ai_live_enabled: bool = False
     # For openai_compatible voice providers (or to override the Gemini key).
     ai_voice_base_url: str | None = None
     ai_voice_api_key: str | None = None

@@ -581,14 +581,28 @@ class IrisSupervisor:
             router_base_url = settings.groq_base_url
             router_api_key = settings.groq_api_key or os.environ.get("GROQ_API_KEY")
             router_model = router_spec.replace("groq:", "").strip()
-        elif router_spec.startswith("gemini:"):
-            router_base_url = settings.nvidia_base_url
-            router_api_key = settings.nvidia_api_key or settings.gemini_api_key or os.environ.get("NVIDIA_API_KEY")
-            router_model = "google/gemma-4-31b-it" if "nvidia" in router_base_url else "gemma-4-31b-it"
+        elif router_spec.startswith("gemini:") or not router_spec or router_spec.startswith("google/"):
+            router_base_url = "https://generativelanguage.googleapis.com/v1beta/openai"
+            router_api_key = (
+                settings.gemini_api_key
+                or settings.ai_api_key
+                or settings.nvidia_api_key
+                or settings.groq_api_key
+                or os.environ.get("GEMINI_API_KEY")
+            )
+            raw_m = router_spec.replace("gemini:", "").strip()
+            router_model = f"models/{raw_m}" if raw_m.startswith("gemma-") and not raw_m.startswith("models/") else (raw_m or "models/gemma-4-31b-it")
         else:
-            router_base_url = settings.nvidia_base_url
-            router_api_key = settings.nvidia_api_key or os.environ.get("NVIDIA_API_KEY")
-            router_model = router_spec or "google/gemma-4-31b-it"
+            router_base_url = "https://generativelanguage.googleapis.com/v1beta/openai"
+            router_api_key = (
+                settings.gemini_api_key
+                or settings.ai_api_key
+                or settings.nvidia_api_key
+                or settings.groq_api_key
+                or os.environ.get("GEMINI_API_KEY")
+            )
+            raw_m = router_spec.replace("gemini:", "").strip()
+            router_model = f"models/{raw_m}" if raw_m.startswith("gemma-") and not raw_m.startswith("models/") else (raw_m or "models/gemma-4-31b-it")
 
         if not router_api_key:
             return []

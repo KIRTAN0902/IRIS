@@ -35,12 +35,12 @@ def _build_agent_models() -> dict[str, Any]:
         default_provider=settings.ai_provider or "gemini",
     )
     fallback_model_name = settings.ai_fallback_model or settings.gemini_fallback_model or "gemma-4-31b-it"
-    router_p, router_m = _parse_spec(settings.ai_router_model, "nvidia")
-    scribe_p, scribe_m = _parse_spec(settings.ai_scribe_model, "nvidia")
-    planner_p, planner_m = _parse_spec(settings.ai_planner_model, "nvidia")
-    operator_p, operator_m = _parse_spec(settings.ai_operator_model, "nvidia")
+    router_p, router_m = _parse_spec(settings.ai_router_model, "gemini")
+    scribe_p, scribe_m = _parse_spec(settings.ai_scribe_model, "gemini")
+    planner_p, planner_m = _parse_spec(settings.ai_planner_model, "gemini")
+    operator_p, operator_m = _parse_spec(settings.ai_operator_model, "gemini")
     bubba_p, bubba_m = _parse_spec(settings.ai_bubba_model, "gemini")
-    vision_p, vision_m = _parse_spec(settings.ai_vision_model, "nvidia")
+    vision_p, vision_m = _parse_spec(settings.ai_vision_model, "gemini")
 
     agents = [
         {

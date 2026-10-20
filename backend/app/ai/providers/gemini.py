@@ -58,22 +58,32 @@ class GeminiProvider(AIProvider):
         self._timeout = timeout_seconds
         self._client = None
         self._caps: ModelCapabilities = resolve_capabilities(self._model, capability_overrides)
+        chat_model = (
+            f"models/{self._model}"
+            if self._model.startswith("gemma-") and not self._model.startswith("models/")
+            else self._model
+        )
         self._chat_backend = OpenAICompatibleProvider(
             name="gemini",
             label="Gemini",
             base_url=GEMINI_OPENAI_URL,
-            model=self._model,
+            model=chat_model,
             api_key=self._api_key,
             timeout_seconds=timeout_seconds,
             capabilities=self._caps,
             **chat_kwargs,
         )
         if self._fallback_model:
+            fallback_chat_model = (
+                f"models/{self._fallback_model}"
+                if self._fallback_model.startswith("gemma-") and not self._fallback_model.startswith("models/")
+                else self._fallback_model
+            )
             self._fallback_chat_backend = OpenAICompatibleProvider(
                 name="gemini",
                 label="Gemini",
                 base_url=GEMINI_OPENAI_URL,
-                model=self._fallback_model,
+                model=fallback_chat_model,
                 api_key=self._api_key,
                 timeout_seconds=timeout_seconds,
                 capabilities=resolve_capabilities(self._fallback_model),
@@ -181,6 +191,23 @@ class GeminiProvider(AIProvider):
             self._model,
         )
 
+        def _strip_additional_properties(schema_obj: Any) -> Any:
+            if isinstance(schema_obj, dict):
+                return {
+                    k: _strip_additional_properties(v)
+                    for k, v in schema_obj.items()
+                    if k != "additionalProperties"
+                }
+            if isinstance(schema_obj, list):
+                return [_strip_additional_properties(item) for item in schema_obj]
+            return schema_obj
+
+        clean_response_schema = (
+            _strip_additional_properties(schema.model_json_schema())
+            if hasattr(schema, "model_json_schema")
+            else schema
+        )
+
         def _call_gemini(model_to_use: str) -> str:
             from google.genai import types
 
@@ -188,7 +215,7 @@ class GeminiProvider(AIProvider):
                 system_instruction=system,
                 temperature=self._caps.structured_temperature,
                 response_mime_type="application/json",
-                response_schema=schema,
+                response_schema=clean_response_schema,
             )
             normalized_model = (
                 f"models/{model_to_use}"
