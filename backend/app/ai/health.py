@@ -34,7 +34,7 @@ def _build_agent_models() -> dict[str, Any]:
         settings.ai_orchestrator_model or settings.ai_model or "gemini:gemma-4-31b-it",
         default_provider=settings.ai_provider or "gemini",
     )
-    fallback_model_name = settings.ai_fallback_model or settings.gemini_fallback_model or "gemma-4-26b-a4b-it"
+    fallback_model_name = settings.ai_fallback_model or settings.gemini_fallback_model or "gemma-4-31b-it"
     router_p, router_m = _parse_spec(settings.ai_router_model, "nvidia")
     scribe_p, scribe_m = _parse_spec(settings.ai_scribe_model, "nvidia")
     planner_p, planner_m = _parse_spec(settings.ai_planner_model, "nvidia")

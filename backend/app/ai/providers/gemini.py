@@ -190,8 +190,13 @@ class GeminiProvider(AIProvider):
                 response_mime_type="application/json",
                 response_schema=schema,
             )
+            normalized_model = (
+                f"models/{model_to_use}"
+                if model_to_use.startswith("gemma-") and not model_to_use.startswith("models/")
+                else model_to_use
+            )
             response = client.models.generate_content(
-                model=model_to_use,
+                model=normalized_model,
                 contents=prompt,
                 config=config,
             )

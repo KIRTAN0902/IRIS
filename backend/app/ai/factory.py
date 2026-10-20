@@ -121,7 +121,7 @@ def create_ai_provider(provider_name: str | None = None, model: str | None = Non
         resolved_model = _resolve_model(model, settings.ai_model, settings.gemini_model, default="gemini-3.5-flash")
         resolved_fallback = _first(settings.ai_fallback_model, settings.gemini_fallback_model)
         if not resolved_fallback and "31b" in resolved_model:
-            resolved_fallback = "gemma-4-26b-a4b-it"
+            resolved_fallback = "gemma-4-31b-it"
         return GeminiProvider(
             api_key=_first(settings.ai_api_key, settings.gemini_api_key),
             model=resolved_model,

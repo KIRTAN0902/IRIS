@@ -502,7 +502,7 @@ export function SettingsPage() {
                       </span>
                     </div>
                     <p className="text-[12px] text-ink-dim mt-0.5">
-                      Model: <code className="font-mono text-ai font-medium">{aiStatus?.model || "gemma-4-26b-a4b-it"}</code> • Strategy: {aiStatus?.strategy || "Native Tool Calling"}
+                      Model: <code className="font-mono text-ai font-medium">{aiStatus?.model || "gemma-4-31b-it"}</code> • Strategy: {aiStatus?.strategy || "Native Tool Calling"}
                     </p>
                   </div>
                 </div>
@@ -553,15 +553,15 @@ export function SettingsPage() {
                         role: "Multi-Turn Conversation, Fast State Actions & Sub-Agent Synthesis",
                         provider: "gemini",
                         model: "gemma-4-31b-it",
-                        fallback: "Gemma 4 (gemma-4-26b-a4b-it)",
+                        fallback: "Gemma 4 (gemma-4-31b-it)",
                         status: "OPERATIONAL",
                       },
                       {
                         id: "router",
                         name: "System 1 Intent Router",
                         role: "Single-Token Fast Intent Classification (Jev Principle)",
-                        provider: "nvidia",
-                        model: "nvidia/nemotron-3.5-lightning-30b-a3b",
+                        provider: "gemini",
+                        model: "gemma-4-31b-it",
                         fallback: "Deterministic Keyword Match",
                         status: "OPERATIONAL",
                       },
@@ -569,8 +569,8 @@ export function SettingsPage() {
                         id: "scribe",
                         name: "Scribe Agent",
                         role: "Personal Knowledge, Notes, Diary, Habits, Fitness & Finances",
-                        provider: "nvidia",
-                        model: "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
+                        provider: "gemini",
+                        model: "gemma-4-31b-it",
                         fallback: "Direct Service APIs",
                         status: "OPERATIONAL",
                       },
@@ -578,8 +578,8 @@ export function SettingsPage() {
                         id: "planner",
                         name: "Planner Agent",
                         role: "Chronos Strategic Schedule, Time Blocks, Tasks & Milestones",
-                        provider: "nvidia",
-                        model: "nvidia/nemotron-3.5-lightning-30b-a3b",
+                        provider: "gemini",
+                        model: "gemma-4-31b-it",
                         fallback: "Chronos Heuristics",
                         status: "OPERATIONAL",
                       },
@@ -587,8 +587,8 @@ export function SettingsPage() {
                         id: "operator",
                         name: "Operator Agent",
                         role: "Workstation CLI, Filesystem, Application Launch & Autonomous Coding",
-                        provider: "nvidia",
-                        model: "nvidia/nemotron-3-super-120b-a12b",
+                        provider: "gemini",
+                        model: "gemma-4-31b-it",
                         fallback: "Mesh Local APIs",
                         status: "OPERATIONAL",
                       },
@@ -597,7 +597,7 @@ export function SettingsPage() {
                         name: "BUBBA Agent",
                         role: "Google Workspace (Gmail Triage, Drafts & Google Drive Docs)",
                         provider: "gemini",
-                        model: "gemini-3.5-flash",
+                        model: "gemma-4-31b-it",
                         fallback: "Direct OAuth API",
                         status: "OPERATIONAL",
                       },
@@ -605,8 +605,8 @@ export function SettingsPage() {
                         id: "vision",
                         name: "Vision Perception",
                         role: "Multimodal Screen Analysis & UI Inspection",
-                        provider: "nvidia",
-                        model: "nvidia/nemotron-3.5-super-vl-120b-a12b",
+                        provider: "gemini",
+                        model: "gemma-4-31b-it",
                         fallback: "Screen OCR / Native Snapshot",
                         status: "OPERATIONAL",
                       },

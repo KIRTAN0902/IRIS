@@ -303,7 +303,7 @@ async def test_gemini_fallback_on_primary_failure():
 
     def mock_generate_content(model, contents, config=None):
         call_models.append(model)
-        if model == "gemma-4-31b-it":
+        if "gemma-4-31b-it" in model:
             raise RuntimeError("500 INTERNAL: Internal error encountered.")
         return FakeResponse()
 
@@ -318,7 +318,7 @@ async def test_gemini_fallback_on_primary_failure():
         )
         assert res.title == "Fallback Success"
         assert res.score == 99
-        assert call_models == ["gemma-4-31b-it", "gemma-4-26b-a4b-it"]
+        assert call_models == ["models/gemma-4-31b-it", "models/gemma-4-26b-a4b-it"]
 
 
 @pytest.mark.asyncio

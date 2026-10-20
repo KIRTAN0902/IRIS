@@ -581,10 +581,14 @@ class IrisSupervisor:
             router_base_url = settings.groq_base_url
             router_api_key = settings.groq_api_key or os.environ.get("GROQ_API_KEY")
             router_model = router_spec.replace("groq:", "").strip()
+        elif router_spec.startswith("gemini:"):
+            router_base_url = settings.nvidia_base_url
+            router_api_key = settings.nvidia_api_key or settings.gemini_api_key or os.environ.get("NVIDIA_API_KEY")
+            router_model = "google/gemma-4-31b-it" if "nvidia" in router_base_url else "gemma-4-31b-it"
         else:
             router_base_url = settings.nvidia_base_url
             router_api_key = settings.nvidia_api_key or os.environ.get("NVIDIA_API_KEY")
-            router_model = router_spec or "nvidia/nemotron-3.5-lightning-30b-a3b"
+            router_model = router_spec or "google/gemma-4-31b-it"
 
         if not router_api_key:
             return []
@@ -608,7 +612,7 @@ class IrisSupervisor:
             "temperature": 0.0,
             "max_tokens": 10,
         }
-        if "nemotron" in router_model.lower() or "nvidia" in router_base_url.lower():
+        if "nemotron" in router_model.lower() or "nvidia" in router_base_url.lower() or "gemma" in router_model.lower():
             payload["chat_template_kwargs"] = {"enable_thinking": False}
 
         try:
