@@ -30,6 +30,7 @@ Safety rails that apply to every model:
 
 from __future__ import annotations
 
+import asyncio
 import json
 from dataclasses import dataclass, field
 from typing import Any
@@ -134,6 +135,7 @@ class HarnessResult:
 class _RunState:
     actions_executed: list[dict[str, Any]] = field(default_factory=list)
     mutation_keys: set[str] = field(default_factory=set)
+    in_flight_mutations: set[str] = field(default_factory=set)
     # Calls that already ran this turn; a repeat is not progress.
     seen_calls: set[str] = field(default_factory=set)
     # Count of new, successful tool calls (drives the step budget).
@@ -258,10 +260,22 @@ class AgentHarness:
                 messages.append(
                     ChatMessage(role="assistant", content=result.content, tool_calls=work_calls)
                 )
-                for call in work_calls:
-                    feedback = await self._execute(
-                        db, user, call.name, call.arguments, state, call.argument_error
+                exec_results = await asyncio.gather(
+                    *(
+                        self._execute(
+                            db, user, call.name, call.arguments, state, call.argument_error
+                        )
+                        for call in work_calls
                     )
+                )
+                for call, (record, feedback, key, mutating, success) in zip(work_calls, exec_results):
+                    if record is not None:
+                        state.actions_executed.append(record)
+                    if success and key not in state.seen_calls:
+                        state.progress += 1
+                    state.seen_calls.add(key)
+                    if success and mutating:
+                        state.mutation_keys.add(key)
                     messages.append(
                         ChatMessage(
                             role="tool",
@@ -349,8 +363,20 @@ class AgentHarness:
                 state.reasoning.append(response.thought)
 
             feedback_lines: list[str] = []
-            for action in response.actions:
-                feedback = await self._execute(db, user, action.tool_name, action.parameters, state)
+            exec_results = await asyncio.gather(
+                *(
+                    self._execute(db, user, action.tool_name, action.parameters, state)
+                    for action in response.actions
+                )
+            )
+            for action, (record, feedback, key, mutating, success) in zip(response.actions, exec_results):
+                if record is not None:
+                    state.actions_executed.append(record)
+                if success and key not in state.seen_calls:
+                    state.progress += 1
+                state.seen_calls.add(key)
+                if success and mutating:
+                    state.mutation_keys.add(key)
                 feedback_lines.append(
                     f"- {action.tool_name}({json.dumps(action.parameters, default=str)}) -> "
                     f"{_truncate(feedback, caps.tool_result_chars)}"
@@ -412,23 +438,30 @@ class AgentHarness:
         arguments: dict[str, Any] | None,
         state: _RunState,
         argument_error: str | None = None,
-    ) -> str:
-        """Run one tool call and return the feedback string for the model."""
+    ) -> tuple[dict[str, Any] | None, str, str, bool, bool]:
+        """Run one tool call and return (record, feedback_json, key, mutating, success)."""
         arguments = arguments or {}
-        if argument_error:
-            return json.dumps({"success": False, "error": argument_error})
-
         key = f"{name}:{json.dumps(arguments, sort_keys=True, default=str)}"
         mutating = self.registry.is_mutating(name)
-        if mutating and key in state.mutation_keys:
-            return json.dumps(
-                {
-                    "success": False,
-                    "error": "This exact action already succeeded earlier in this turn; it was not repeated.",
-                }
-            )
 
-        res = await self.registry.execute(name=name, db=db, user=user, parameters=arguments)
+        if argument_error:
+            feedback = json.dumps({"success": False, "error": argument_error})
+            return None, feedback, key, mutating, False
+
+        if mutating and (key in state.mutation_keys or key in state.in_flight_mutations):
+            err_msg = "This exact action already succeeded earlier in this turn; it was not repeated."
+            feedback = json.dumps({"success": False, "error": err_msg})
+            return None, feedback, key, mutating, False
+
+        if mutating:
+            state.in_flight_mutations.add(key)
+
+        try:
+            res = await self.registry.execute(name=name, db=db, user=user, parameters=arguments)
+        finally:
+            if mutating:
+                state.in_flight_mutations.discard(key)
+
         record = {
             "tool_name": res.tool_name,
             "success": res.success,
@@ -436,16 +469,11 @@ class AgentHarness:
             "error": res.error,
             "data": res.data,
         }
-        state.actions_executed.append(record)
-        if res.success and key not in state.seen_calls:
-            state.progress += 1
-        state.seen_calls.add(key)
-        if res.success and mutating:
-            state.mutation_keys.add(key)
-        return json.dumps(
+        feedback = json.dumps(
             {"success": res.success, "summary": res.summary, "error": res.error, "data": res.data},
             default=str,
         )
+        return record, feedback, key, mutating, res.success
 
     def _finish(
         self,

@@ -39,6 +39,46 @@ function recognizerClass(): (new () => Recognizer) | null {
 }
 const canRecord = () => typeof MediaRecorder !== "undefined" && !!navigator.mediaDevices?.getUserMedia;
 
+function getVoiceLiveWsUrl(): string {
+  const base = import.meta.env.VITE_API_URL?.replace(/\/+$/, "") || "/api";
+  if (base.startsWith("http")) {
+    return `${base.replace(/^http/, "ws")}/voice/live`;
+  }
+  const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+  return `${proto}//${window.location.host}${base}/voice/live`;
+}
+
+function floatTo16BitPCM(float32Array: Float32Array): Int16Array {
+  const pcm16 = new Int16Array(float32Array.length);
+  for (let i = 0; i < float32Array.length; i++) {
+    const s = Math.max(-1, Math.min(1, float32Array[i]));
+    pcm16[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
+  }
+  return pcm16;
+}
+
+function downsampleTo24k(input: Float32Array, inputRate: number): Float32Array {
+  if (inputRate === 24000) return input;
+  const ratio = inputRate / 24000;
+  const newLength = Math.round(input.length / ratio);
+  const result = new Float32Array(newLength);
+  let offsetResult = 0;
+  let offsetInput = 0;
+  while (offsetResult < result.length) {
+    const nextOffsetInput = Math.round((offsetResult + 1) * ratio);
+    let accum = 0;
+    let count = 0;
+    for (let i = offsetInput; i < nextOffsetInput && i < input.length; i++) {
+      accum += input[i];
+      count++;
+    }
+    result[offsetResult] = count > 0 ? accum / count : input[offsetInput] || 0;
+    offsetResult++;
+    offsetInput = nextOffsetInput;
+  }
+  return result;
+}
+
 interface Session {
   active: boolean;
   stt: "server" | "browser";
@@ -46,10 +86,14 @@ interface Session {
   /** Stream replies as they're generated (falls back to whole clips). */
   ttsStream: boolean;
   ttsBlockedUntil: number;
+  live: boolean;
+  ws?: WebSocket | null;
   audio: HTMLAudioElement;
   ctx: AudioContext | null;
   analyser: AnalyserNode | null;
   stream: MediaStream | null;
+  processor?: ScriptProcessorNode | null;
+  muteGain?: GainNode | null;
   /** Latest microphone loudness (RMS) while recording. */
   level: number;
   /** The room's background loudness, learned while listening. */
@@ -81,6 +125,16 @@ export function useVoiceConversation(onUtterance: (text: string) => Promise<stri
     s.audio.pause();
     s.finish?.();
     s.interrupt?.();
+    if (s.ws) {
+      try {
+        s.ws.close();
+      } catch {
+        /* noop */
+      }
+      s.ws = null;
+    }
+    s.processor?.disconnect();
+    s.muteGain?.disconnect();
     s.stream?.getTracks().forEach((t) => t.stop());
     s.ctx?.close().catch(() => {});
     session.current = null;
@@ -349,6 +403,210 @@ export function useVoiceConversation(onUtterance: (text: string) => Promise<stri
     if (s.active) await speakWithPhone(s, text);
   };
 
+  // --- full-duplex live websocket ------------------------------------------------
+
+  const connectLive = (s: Session): Promise<boolean> =>
+    new Promise<boolean>((resolve) => {
+      let resolved = false;
+      const wsUrl = getVoiceLiveWsUrl();
+      let ws: WebSocket;
+      try {
+        ws = new WebSocket(wsUrl);
+      } catch {
+        return resolve(false);
+      }
+      ws.binaryType = "arraybuffer";
+      s.ws = ws;
+
+      const activeSources: AudioBufferSourceNode[] = [];
+      let playHead = s.ctx ? s.ctx.currentTime + 0.05 : 0;
+      let pendingBytes: Uint8Array | null = null;
+      let completionTimeout: number | null = null;
+
+      const stopPlayback = () => {
+        if (completionTimeout) {
+          window.clearTimeout(completionTimeout);
+          completionTimeout = null;
+        }
+        activeSources.forEach((src) => {
+          try {
+            src.stop();
+          } catch {
+            /* already stopped */
+          }
+        });
+        activeSources.length = 0;
+        pendingBytes = null;
+        if (s.ctx) playHead = s.ctx.currentTime + 0.02;
+      };
+
+      const playChunk = (chunk: ArrayBuffer, rate = 24000) => {
+        const ctx = s.ctx;
+        if (!ctx || !s.active) return;
+        let bytes = new Uint8Array(chunk);
+        if (pendingBytes) {
+          const combined = new Uint8Array(pendingBytes.length + bytes.length);
+          combined.set(pendingBytes);
+          combined.set(bytes, pendingBytes.length);
+          bytes = combined;
+          pendingBytes = null;
+        }
+        const even = bytes.length - (bytes.length % 2);
+        if (even < bytes.length) {
+          pendingBytes = bytes.slice(even);
+        }
+        if (!even) return;
+
+        const pcm = new Int16Array(bytes.slice(0, even).buffer);
+        const buffer = ctx.createBuffer(1, pcm.length, rate);
+        const channel = buffer.getChannelData(0);
+        for (let i = 0; i < pcm.length; i++) channel[i] = pcm[i] / 32768;
+
+        const src = ctx.createBufferSource();
+        src.buffer = buffer;
+        src.connect(ctx.destination);
+        playHead = Math.max(playHead, ctx.currentTime + 0.02);
+        src.start(playHead);
+        playHead += buffer.duration;
+        activeSources.push(src);
+
+        src.onended = () => {
+          const idx = activeSources.indexOf(src);
+          if (idx !== -1) activeSources.splice(idx, 1);
+        };
+      };
+
+      s.interrupt = () => {
+        stopPlayback();
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: "interrupt" }));
+        }
+      };
+
+      s.finish = () => {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: "end_of_turn" }));
+        }
+      };
+
+      ws.onopen = () => {
+        const ctx = s.ctx;
+        if (!ctx || !s.stream) {
+          ws.close();
+          return;
+        }
+        try {
+          const source = ctx.createMediaStreamSource(s.stream);
+          const processor = ctx.createScriptProcessor(4096, 1, 1);
+          const muteGain = ctx.createGain();
+          muteGain.gain.value = 0;
+
+          s.processor = processor;
+          s.muteGain = muteGain;
+
+          let loudCount = 0;
+          processor.onaudioprocess = (e) => {
+            if (!s.active || ws.readyState !== WebSocket.OPEN) return;
+            const input = e.inputBuffer.getChannelData(0);
+            let sum = 0;
+            for (let i = 0; i < input.length; i++) sum += input[i] * input[i];
+            const rms = Math.sqrt(sum / input.length);
+            s.level = rms;
+
+            // Barge-in detection while IRIS is speaking
+            if (activeSources.length > 0) {
+              if (rms > Math.max(0.08, s.floor * 4)) {
+                loudCount++;
+                if (loudCount * 50 >= BARGE_IN_MS) {
+                  s.bargedIn = true;
+                  s.interrupt?.();
+                  loudCount = 0;
+                }
+              } else {
+                loudCount = 0;
+              }
+            } else {
+              loudCount = 0;
+              s.floor = s.floor * 0.98 + rms * 0.02;
+              // Stream PCM chunk to Gemini Live WebSocket
+              const downsampled = downsampleTo24k(input, ctx.sampleRate);
+              const pcm16 = floatTo16BitPCM(downsampled);
+              ws.send(pcm16.buffer);
+            }
+          };
+
+          source.connect(processor);
+          processor.connect(muteGain);
+          muteGain.connect(ctx.destination);
+        } catch {
+          ws.close();
+        }
+      };
+
+      ws.onmessage = (e) => {
+        if (e.data instanceof ArrayBuffer) {
+          setPhase("speaking");
+          playChunk(e.data, 24000);
+          return;
+        }
+        if (typeof e.data === "string") {
+          try {
+            const data = JSON.parse(e.data);
+            if (data.type === "ready") {
+              if (!resolved) {
+                resolved = true;
+                s.live = true;
+                setPhase("listening");
+                resolve(true);
+              }
+            } else if (data.type === "text") {
+              setSaid((prev) => (prev ? prev + " " + data.text : data.text));
+            } else if (data.type === "turn_complete") {
+              const delay = Math.max(0, (playHead - (s.ctx?.currentTime ?? 0)) * 1000) + 120;
+              completionTimeout = window.setTimeout(() => {
+                if (s.active) {
+                  setPhase("listening");
+                  setSaid("");
+                }
+              }, delay);
+            } else if (data.type === "interrupted") {
+              stopPlayback();
+              setPhase("listening");
+            } else if (data.type === "error") {
+              if (!resolved) {
+                resolved = true;
+                resolve(false);
+              }
+            }
+          } catch {
+            /* ignore malformed json */
+          }
+        }
+      };
+
+      ws.onerror = () => {
+        if (!resolved) {
+          resolved = true;
+          resolve(false);
+        }
+      };
+
+      ws.onclose = () => {
+        stopPlayback();
+        if (!resolved) {
+          resolved = true;
+          resolve(false);
+        } else if (s.active) {
+          s.live = false;
+          s.processor?.disconnect();
+          s.muteGain?.disconnect();
+          s.processor = null;
+          s.muteGain = null;
+          void converse(s);
+        }
+      };
+    });
+
   // --- the conversation loop ------------------------------------------------------
 
   const converse = async (s: Session) => {
@@ -414,6 +672,7 @@ export function useVoiceConversation(onUtterance: (text: string) => Promise<stri
       ttsServer: false,
       ttsStream: true,
       ttsBlockedUntil: 0,
+      live: false,
       audio,
       ctx,
       analyser: null,
@@ -435,24 +694,35 @@ export function useVoiceConversation(onUtterance: (text: string) => Promise<stri
     const status = await statusRequest;
     s.ttsServer = !!status?.tts.enabled;
     s.stt = status?.stt.enabled && ctx && canRecord() ? "server" : "browser";
-    if (s.stt === "browser" && !recognizerClass()) {
+    if (s.stt === "browser" && !recognizerClass() && !status?.live?.enabled) {
       setNotice("Voice input isn't supported in this browser.");
       return end();
     }
-    if (s.stt === "server") {
+    const needsStream = !!status?.live?.enabled || s.stt === "server";
+    if (needsStream && ctx) {
       try {
         s.stream = await navigator.mediaDevices.getUserMedia({
           audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
         });
         if (!s.active) return s.stream.getTracks().forEach((t) => t.stop());
-        s.analyser = ctx!.createAnalyser();
+        s.analyser = ctx.createAnalyser();
         s.analyser.fftSize = 1024;
-        ctx!.createMediaStreamSource(s.stream).connect(s.analyser);
+        ctx.createMediaStreamSource(s.stream).connect(s.analyser);
       } catch {
-        setNotice("Microphone access is blocked. Allow it for this site in your browser settings.");
-        return end();
+        if (!status?.live?.enabled && s.stt === "browser") {
+          // Allow fallback to browser speech recognition if mic getUserMedia is blocked
+        } else {
+          setNotice("Microphone access is blocked. Allow it for this site in your browser settings.");
+          return end();
+        }
       }
     }
+
+    if (s.active && status?.live?.enabled && s.stream && ctx) {
+      const liveOk = await connectLive(s);
+      if (liveOk) return;
+    }
+
     if (s.active) void converse(s);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [end]);

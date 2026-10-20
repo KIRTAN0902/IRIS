@@ -372,3 +372,51 @@ async def test_failed_recovery_after_lookups_says_so_honestly(db, harness_user, 
 
     assert "Done:" not in out.content  # a lookup isn't something IRIS "did"
     assert "stopped before it could answer" in out.content
+
+
+@pytest.mark.asyncio
+async def test_native_loop_parallel_tool_execution(db, harness_user, monkeypatch):
+    """Multiple tool calls in a single step are executed concurrently and results ordered."""
+    import asyncio
+
+    execution_order = []
+
+    orig_execute = default_registry.execute
+
+    async def tracking_execute(name, db, user, parameters=None):
+        execution_order.append(f"start:{name}")
+        if name == "get_tasks":
+            await asyncio.sleep(0.02)
+        elif name == "get_situation":
+            await asyncio.sleep(0.01)
+        execution_order.append(f"end:{name}")
+        return await orig_execute(name=name, db=db, user=user, parameters=parameters)
+
+    monkeypatch.setattr(default_registry, "execute", tracking_execute)
+
+    provider = MockProvider(
+        chat_generator=_scripted(
+            [
+                ChatResult(
+                    tool_calls=[
+                        _call("get_tasks", {"limit": 2}, "c1"),
+                        _call("get_situation", {}, "c2"),
+                    ]
+                ),
+                ChatResult(content="Found your tasks and situation."),
+            ]
+        )
+    )
+    _use(monkeypatch, provider)
+
+    out, _ = await IrisAgent(default_registry).run_turn(db, harness_user, "Check tasks and situation")
+
+    assert out.content == "Found your tasks and situation."
+    assert [a["tool_name"] for a in out.actions_taken] == ["get_tasks", "get_situation"]
+    # Verified parallel start before finish
+    assert execution_order[0].startswith("start:")
+    assert execution_order[1].startswith("start:")
+    # get_situation (0.01s) finishes before get_tasks (0.02s) because they ran concurrently
+    assert execution_order[2] == "end:get_situation"
+    assert execution_order[3] == "end:get_tasks"
+

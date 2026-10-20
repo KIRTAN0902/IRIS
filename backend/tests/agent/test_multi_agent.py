@@ -281,5 +281,8 @@ async def test_supervisor_single_token_jev_mapping(monkeypatch):
 
         res = await supervisor.route_intent_async("ambiguous query with no obvious keywords here")
         assert res == expected
+        called_payload = mock_client.post.call_args[1]["json"]
+        assert called_payload["max_tokens"] == 10
+        assert called_payload.get("chat_template_kwargs") == {"enable_thinking": False}
 
 

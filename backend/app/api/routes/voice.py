@@ -213,6 +213,8 @@ async def voice_live_websocket(
                     sc = response.server_content
                     if sc and sc.model_turn:
                         for part in sc.model_turn.parts:
+                            if getattr(part, 'text', None):
+                                await websocket.send_json({'type': 'text', 'text': part.text})
                             if part.inline_data and part.inline_data.data:
                                 await websocket.send_bytes(part.inline_data.data)
                     if sc and sc.turn_complete:

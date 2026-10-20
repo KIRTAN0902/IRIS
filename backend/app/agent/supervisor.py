@@ -548,20 +548,24 @@ class IrisSupervisor:
             "Reply with ONLY the single uppercase letter [A/B/C/D/E]."
         )
 
+        payload: dict[str, Any] = {
+            "model": router_model,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_message},
+            ],
+            "temperature": 0.0,
+            "max_tokens": 10,
+        }
+        if "nemotron" in router_model.lower() or "nvidia" in router_base_url.lower():
+            payload["chat_template_kwargs"] = {"enable_thinking": False}
+
         try:
             async with httpx.AsyncClient(timeout=2.0) as client:
                 resp = await client.post(
                     f"{router_base_url}/chat/completions",
                     headers={"Authorization": f"Bearer {router_api_key}", "Content-Type": "application/json"},
-                    json={
-                        "model": router_model,
-                        "messages": [
-                            {"role": "system", "content": system_prompt},
-                            {"role": "user", "content": user_message},
-                        ],
-                        "temperature": 0.0,
-                        "max_tokens": 1,
-                    },
+                    json=payload,
                 )
                 if resp.status_code == 200:
                     data = resp.json()
