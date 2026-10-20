@@ -235,3 +235,66 @@ def test_launch_windows_app_antigravity_cli_vs_ide():
         assert res_ide["app"] == "Antigravity IDE"
         assert any("Antigravity" in part for part in res_ide["command"])
         assert "powershell.exe" not in " ".join(res_ide["command"])
+
+
+def test_parse_terminal_intent():
+    from pathlib import Path
+    home_dir = str(Path.home())
+
+    # Default opens in home
+    h, t = ms.parse_terminal_intent("open terminal")
+    assert h == home_dir
+    assert t == home_dir
+
+    h, t = ms.parse_terminal_intent("launch terminal")
+    assert h == home_dir
+    assert t == home_dir
+
+    h, t = ms.parse_terminal_intent("terminal")
+    assert h == home_dir
+    assert t == home_dir
+
+    # With target directory
+    h, t = ms.parse_terminal_intent(r"open terminal in C:\kirtan\IRIS")
+    assert h == home_dir
+    assert t == r"C:\kirtan\IRIS"
+
+    h, t = ms.parse_terminal_intent(r"open terminal at C:\Users\shahk\Desktop")
+    assert h == home_dir
+    assert t == r"C:\Users\shahk\Desktop"
+
+    # Home alias
+    h, t = ms.parse_terminal_intent("open terminal in home")
+    assert h == home_dir
+    assert t == home_dir
+
+    h, t = ms.parse_terminal_intent("open terminal in ~")
+    assert h == home_dir
+    assert t == home_dir
+
+
+def test_launch_windows_app_terminal_home_vs_target():
+    from pathlib import Path
+    home_str = str(Path.home())
+
+    with patch("subprocess.Popen") as mock_popen, patch("threading.Thread"):
+        mock_proc = MagicMock()
+        mock_proc.pid = 54321
+        mock_popen.return_value = mock_proc
+
+        # 1. No directory: starts directly in home directory
+        res_default = ms.launch_windows_app(app_name="terminal")
+        assert res_default["success"] is True
+        assert res_default["app"] == "Terminal"
+        cmd_str_default = " ".join(res_default["command"])
+        assert home_str in cmd_str_default
+        assert "Set-Location 'C:" not in cmd_str_default
+
+        # 2. Specific directory: starts in home directory and navigates to target directory
+        target = r"C:\kirtan\IRIS"
+        res_target = ms.launch_windows_app(app_name="terminal", directory=target)
+        assert res_target["success"] is True
+        assert res_target["app"] == "Terminal"
+        cmd_str_target = " ".join(res_target["command"])
+        assert home_str in cmd_str_target
+        assert f"Set-Location '{target}'" in cmd_str_target or f"cd /d {target}" in cmd_str_target

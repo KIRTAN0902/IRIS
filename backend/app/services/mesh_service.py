@@ -479,6 +479,36 @@ def parse_antigravity_cli_intent(text: str, default_dir: str = r"C:\kirtan\IRIS"
     return target_dir, prompt, resume
 
 
+def parse_terminal_intent(text: str) -> tuple[str, str]:
+    """Extracts start and target directories from user phrasing.
+
+    Always starts from user's home directory.
+    If a specific directory is mentioned (e.g. 'in C:\\kirtan\\IRIS', 'at Desktop'),
+    returns (home_dir, resolved_target_dir).
+    If no directory is mentioned, returns (home_dir, home_dir).
+    """
+    from pathlib import Path
+    import re
+
+    home_dir = str(Path.home())
+    t_clean = text.strip()
+
+    dir_match = re.search(
+        r'\b(?:in|at|into)\s+([a-zA-Z]:\\[^\s"\'`]+|[a-zA-Z]:/[^\s"\'`]+|[a-zA-Z0-9_\-\\.]+)',
+        t_clean,
+        re.IGNORECASE,
+    )
+    if dir_match:
+        cand = dir_match.group(1).strip().strip("'\"`")
+        if cand.lower() not in ["terminal", "cli", "powershell", "cmd", "console", "wt", "window", "tab", "laptop"]:
+            if cand.lower() in ["home", "~"]:
+                return home_dir, home_dir
+            resolved = resolve_laptop_path(cand)
+            return home_dir, str(resolved)
+
+    return home_dir, home_dir
+
+
 def launch_windows_app(
     app_name: str = "antigravity_ide",
     argument: str | None = None,
@@ -523,9 +553,11 @@ def launch_windows_app(
     keywords: list[str] = [app_clean]
 
     # --- 1. Antigravity CLI (Terminal with agy) ---
-    is_agy_cli = (
-        any(k in raw_app for k in ["cli", "terminal", "console"]) and any(k in raw_app for k in ["antigravity", "agy"])
-    ) or raw_app in ["agy", "agycli", "antigravitycli", "antigravity_cli", "agy_cli"]
+    is_agy_ide = any(k in raw_app for k in ["ide", "gui", "editor", "desktop"])
+    is_agy_cli = not is_agy_ide and (
+        (any(k in raw_app for k in ["cli", "terminal", "console"]) and any(k in raw_app for k in ["antigravity", "agy"]))
+        or raw_app in ["agy", "agycli", "antigravitycli", "antigravity_cli", "agy_cli", "antigravity"]
+    )
 
     if is_agy_cli:
         keywords = ["powershell", "terminal", "cascadia", "agy", "antigravity"]
@@ -557,8 +589,14 @@ def launch_windows_app(
         agy_invocation = f"& '{agy_bin}' {' '.join(flags_list)}".strip() if flags_list else f"& '{agy_bin}'"
         ps_command = f"Set-Location '{target_dir}'; {agy_invocation}"
 
-        # Launch interactive PowerShell terminal executing agy in target directory
-        cmd = ["cmd.exe", "/c", "start", ps_bin, "-NoExit", "-Command", ps_command]
+        wt_bin = shutil.which("wt.exe") or shutil.which("wt") or str(user_home / r"AppData\Local\Microsoft\WindowsApps\wt.exe")
+        has_wt = Path(wt_bin).exists() if wt_bin else False
+
+        # Launch interactive terminal executing agy in target directory
+        if has_wt:
+            cmd = ["cmd.exe", "/c", "start", "", wt_bin, "-d", target_dir, ps_bin, "-NoExit", "-Command", agy_invocation]
+        else:
+            cmd = ["cmd.exe", "/c", "start", "", ps_bin, "-NoExit", "-Command", ps_command]
         app_name = "Antigravity CLI"
 
     # --- 2. Antigravity IDE (Desktop GUI Application) ---
@@ -585,7 +623,7 @@ def launch_windows_app(
             cmd = [chosen, target_dir]
         else:
             # Fallback to shell start
-            cmd = ["cmd.exe", "/c", "start", "antigravity", target_dir]
+            cmd = ["cmd.exe", "/c", "start", "", "antigravity", target_dir]
         app_name = "Antigravity IDE"
 
     # --- 3. VS Code ---
@@ -599,7 +637,7 @@ def launch_windows_app(
         if code_path:
             cmd = [code_path, target_dir]
         else:
-            cmd = ["cmd.exe", "/c", "start", "code", target_dir]
+            cmd = ["cmd.exe", "/c", "start", "", "code", target_dir]
         app_name = "VS Code"
 
     # --- 4. Terminal / PowerShell ---
@@ -608,19 +646,42 @@ def launch_windows_app(
         sys_root = os.environ.get("SystemRoot", r"C:\Windows")
         ps_path = Path(sys_root) / r"System32\WindowsPowerShell\v1.0\powershell.exe"
         ps_bin = str(ps_path) if ps_path.exists() else "powershell.exe"
-
         home_path = str(user_home)
-        if (directory and directory.strip()) or (argument and argument.strip().lower() not in ["home", "~", "default", ""] and argument != default_workspace):
-            term_dir = target_dir
-        else:
-            term_dir = home_path
 
-        if "wt" in app_clean or "windowsterminal" in app_clean:
-            cmd = ["cmd.exe", "/c", "start", "wt.exe", "-w", "-1", "-d", term_dir]
-        elif "cmd" in app_clean:
-            cmd = ["cmd.exe", "/c", "start", "cmd.exe", "/k", f"cd /d {term_dir}"]
+        # Always start in home directory; if specific directory asked, navigate to it
+        is_specific_dir = False
+        target_dest = home_path
+        if directory and directory.strip():
+            cand_dir = str(resolve_laptop_path(directory.strip()))
+            if cand_dir.lower() != home_path.lower() and directory.strip().lower() not in ["home", "~", "default", ""]:
+                is_specific_dir = True
+                target_dest = cand_dir
+        elif argument and argument.strip():
+            cand_dir = str(resolve_laptop_path(argument.strip()))
+            if cand_dir.lower() != home_path.lower() and argument.strip().lower() not in ["home", "~", "default", ""]:
+                is_specific_dir = True
+                target_dest = cand_dir
+
+        wt_bin = shutil.which("wt.exe") or shutil.which("wt") or str(user_home / r"AppData\Local\Microsoft\WindowsApps\wt.exe")
+        has_wt = Path(wt_bin).exists() if wt_bin else False
+
+        if "cmd" in app_clean and "powershell" not in app_clean and "wt" not in app_clean:
+            if is_specific_dir:
+                cmd = ["cmd.exe", "/c", "start", "", "cmd.exe", "/k", f"cd /d {home_path} && cd /d {target_dest}"]
+            else:
+                cmd = ["cmd.exe", "/c", "start", "", "cmd.exe", "/k", f"cd /d {home_path}"]
+        elif has_wt:
+            if is_specific_dir:
+                # Open in home directory and navigate to target directory
+                cmd = ["cmd.exe", "/c", "start", "", wt_bin, "-d", home_path, ps_bin, "-NoExit", "-Command", f"Set-Location '{target_dest}'"]
+            else:
+                # Open directly in home directory
+                cmd = ["cmd.exe", "/c", "start", "", wt_bin, "-d", home_path]
         else:
-            cmd = ["cmd.exe", "/c", "start", ps_bin, "-NoExit", "-Command", f"Set-Location '{term_dir}'"]
+            if is_specific_dir:
+                cmd = ["cmd.exe", "/c", "start", "", ps_bin, "-NoExit", "-Command", f"Set-Location '{home_path}'; Set-Location '{target_dest}'"]
+            else:
+                cmd = ["cmd.exe", "/c", "start", "", ps_bin, "-NoExit", "-Command", f"Set-Location '{home_path}'"]
         app_name = "Terminal"
 
     # --- 5. Chrome / Web Browser ---

@@ -345,10 +345,13 @@ class IrisSupervisor:
             )
 
         # F. Antigravity CLI / IDE quick launcher
-        is_agy_cli = (
+        is_agy_ide = any(w in msg_lower for w in ["antigravity ide", "agy ide", "antigravity gui", "antigravity editor"])
+        is_agy_cli = not is_agy_ide and (
             ("antigravity" in msg_lower or "agy" in msg_lower)
-            and any(w in msg_lower for w in ["cli", "terminal", "console", "resume", "continue", "-c", "--continue"])
-        ) or any(msg_lower.startswith(w) for w in ["open agy", "launch agy", "start agy", "agy -c", "agy --continue"]) or msg_lower == "agy"
+            and any(w in msg_lower for w in ["cli", "terminal", "console", "resume", "continue", "-c", "--continue", "open", "launch", "start", "run"])
+            or any(msg_lower.startswith(w) for w in ["open agy", "launch agy", "start agy", "agy -c", "agy --continue", "open antigravity", "launch antigravity", "start antigravity"])
+            or msg_lower.strip() in ["agy", "antigravity", "antigravity cli", "agy cli"]
+        )
 
         if is_agy_cli:
             from app.services import mesh_service as ms
@@ -372,6 +375,54 @@ class IrisSupervisor:
                     message=msg_text,
                     actions_summary=[f"Opened Antigravity CLI in {target_dir}"],
                     evidence=[f"Antigravity CLI: Active ({target_dir})"],
+                ),
+                [{"tool_name": "launch_laptop_app", "success": res.get("success", False), "summary": msg_text}],
+            )
+
+        if is_agy_ide:
+            from app.services import mesh_service as ms
+            target_dir, _, _ = ms.parse_antigravity_cli_intent(user_message, default_dir=r"C:\kirtan\IRIS")
+            res = ms.launch_windows_app("antigravity_ide", directory=target_dir)
+            msg_text = (
+                f"🚀 Launched Antigravity IDE in `{target_dir}` on your Windows laptop display."
+                if res.get("success")
+                else f"Could not launch Antigravity IDE: {res.get('error')}"
+            )
+            return (
+                AgentResponseSchema(
+                    thought=f"Launched Antigravity IDE in {target_dir}.",
+                    actions=[],
+                    message=msg_text,
+                    actions_summary=["Launched Antigravity IDE on laptop"],
+                    evidence=["Antigravity IDE: Active"],
+                ),
+                [{"tool_name": "launch_laptop_app", "success": res.get("success", False), "summary": msg_text}],
+            )
+
+        # F2. Terminal quick launcher: opens in home directory and navigates to target directory if specified
+        is_terminal = (
+            any(w in msg_lower for w in ["terminal", "powershell", "console", "command prompt", "cmd window"])
+            and any(w in msg_lower for w in ["open", "launch", "start", "spawn", "bring up", "show"])
+            and not is_agy_cli
+        ) or msg_lower.strip() in ["open terminal", "terminal", "launch terminal", "open powershell"]
+
+        if is_terminal:
+            from app.services import mesh_service as ms
+            home_dir, target_dir = ms.parse_terminal_intent(user_message)
+            res = ms.launch_windows_app("terminal", directory=target_dir if target_dir != home_dir else None)
+            folder_label = "your home directory" if target_dir == home_dir else f"`{target_dir}` (from home directory)"
+            msg_text = (
+                f"💻 Opened Terminal in {folder_label} on your Windows laptop."
+                if res.get("success")
+                else f"Could not launch Terminal: {res.get('error')}"
+            )
+            return (
+                AgentResponseSchema(
+                    thought=f"Opened Terminal in {folder_label}.",
+                    actions=[],
+                    message=msg_text,
+                    actions_summary=[f"Opened Terminal in {folder_label}"],
+                    evidence=[f"Terminal: Active ({target_dir})"],
                 ),
                 [{"tool_name": "launch_laptop_app", "success": res.get("success", False), "summary": msg_text}],
             )

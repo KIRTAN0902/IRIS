@@ -461,9 +461,13 @@ HOW YOU OPERATE:
         msg_lower = user_message.lower()
         evidence: list[str] = []
 
-        is_agy_cli = (
-            ("antigravity" in msg_lower or "agy" in msg_lower) and any(w in msg_lower for w in ["cli", "terminal", "console", "resume", "continue", "-c", "--continue"])
-        ) or any(msg_lower.startswith(w) for w in ["open agy", "launch agy", "start agy", "agy -c", "agy --continue"]) or msg_lower == "agy"
+        is_agy_ide = any(w in msg_lower for w in ["antigravity ide", "agy ide", "antigravity gui", "antigravity editor"])
+        is_agy_cli = not is_agy_ide and (
+            ("antigravity" in msg_lower or "agy" in msg_lower)
+            and any(w in msg_lower for w in ["cli", "terminal", "console", "resume", "continue", "-c", "--continue", "open", "launch", "start", "run"])
+            or any(msg_lower.startswith(w) for w in ["open agy", "launch agy", "start agy", "agy -c", "agy --continue", "open antigravity", "launch antigravity", "start antigravity"])
+            or msg_lower.strip() in ["agy", "antigravity", "antigravity cli", "agy cli"]
+        )
 
         if is_agy_cli:
             from app.services import mesh_service as ms
@@ -484,7 +488,7 @@ HOW YOU OPERATE:
                 evidence=[f"Antigravity CLI: Active ({target_dir})"],
             )
 
-        if "antigravity" in msg_lower or "agy ide" in msg_lower:
+        if is_agy_ide:
             from app.services import mesh_service as ms
             target_dir, _, _ = ms.parse_antigravity_cli_intent(user_message, default_dir=r"C:\kirtan\IRIS")
             res = ms.launch_windows_app("antigravity_ide", directory=target_dir)
@@ -497,24 +501,28 @@ HOW YOU OPERATE:
                 evidence=["Antigravity IDE: Launched on WinSta0\\Default"],
             )
 
-        if "terminal" in msg_lower and any(w in msg_lower for w in ["open", "launch", "start", "wt"]):
-            from pathlib import Path
-            from app.services import mesh_service as ms
-            target_arg = None
-            if " in " in msg_lower:
-                target_arg = user_message.split(" in ", 1)[1].strip().strip("'\"")
-            elif " at " in msg_lower:
-                target_arg = user_message.split(" at ", 1)[1].strip().strip("'\"")
+        is_terminal = (
+            any(w in msg_lower for w in ["terminal", "powershell", "console", "command prompt", "cmd window"])
+            and any(w in msg_lower for w in ["open", "launch", "start", "spawn", "bring up", "show"])
+            and not is_agy_cli
+        ) or msg_lower.strip() in ["open terminal", "terminal", "launch terminal", "open powershell"]
 
-            target_path = str(ms.resolve_laptop_path(target_arg)) if target_arg else str(Path.home())
-            res = ms.launch_windows_app("terminal", argument=target_path)
-            folder_label = "your home directory" if not target_arg else f"`{target_path}`"
+        if is_terminal:
+            from app.services import mesh_service as ms
+            home_dir, target_dir = ms.parse_terminal_intent(user_message)
+            res = ms.launch_windows_app("terminal", directory=target_dir if target_dir != home_dir else None)
+            folder_label = "your home directory" if target_dir == home_dir else f"`{target_dir}` (from home directory)"
+            msg_text = (
+                f"💻 Opened Terminal in {folder_label} on your Windows laptop."
+                if res.get("success")
+                else f"Could not launch Terminal: {res.get('error')}"
+            )
             return AgentResponseSchema(
                 thought=f"User commanded to open Terminal in {folder_label}.",
                 actions=[],
-                message=f"💻 Opened Terminal in {folder_label} on your laptop display.",
+                message=msg_text,
                 actions_summary=[f"Opened Terminal in {folder_label}"],
-                evidence=[f"Terminal: Active ({target_path})"],
+                evidence=[f"Terminal: Active ({target_dir})"],
             )
 
         if "terminal" in msg_lower and any(w in msg_lower for w in ["access", "can you", "available", "support"]):

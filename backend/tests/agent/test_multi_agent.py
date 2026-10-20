@@ -286,3 +286,43 @@ async def test_supervisor_single_token_jev_mapping(monkeypatch):
         assert called_payload.get("chat_template_kwargs") == {"enable_thinking": False}
 
 
+@pytest.mark.asyncio
+async def test_fast_path_open_terminal(db: Session, multi_user: User):
+    """Verify fast path opens Terminal starting from home directory."""
+    from unittest.mock import patch
+    supervisor = get_iris_supervisor()
+    with patch("app.services.mesh_service.launch_windows_app") as mock_launch:
+        mock_launch.return_value = {"success": True, "app": "Terminal", "pid": 1234}
+
+        # 1. Without specific directory -> opens in home directory
+        res = supervisor.try_fast_path(db, multi_user, {}, "open terminal")
+        assert res is not None
+        resp, tools = res
+        assert "Opened Terminal in your home directory" in resp.message
+        mock_launch.assert_called_with("terminal", directory=None)
+
+        # 2. With specific directory -> opens in target directory (from home directory)
+        res_dir = supervisor.try_fast_path(db, multi_user, {}, r"open terminal in C:\kirtan\IRIS")
+        assert res_dir is not None
+        resp_dir, _ = res_dir
+        assert "C:\\kirtan\\IRIS" in resp_dir.message
+        assert "(from home directory)" in resp_dir.message
+        mock_launch.assert_called_with("terminal", directory=r"C:\kirtan\IRIS")
+
+
+@pytest.mark.asyncio
+async def test_fast_path_open_antigravity_cli(db: Session, multi_user: User):
+    """Verify fast path opens Antigravity CLI."""
+    from unittest.mock import patch
+    supervisor = get_iris_supervisor()
+    with patch("app.services.mesh_service.launch_windows_app") as mock_launch:
+        mock_launch.return_value = {"success": True, "app": "Antigravity CLI", "pid": 1234}
+
+        res = supervisor.try_fast_path(db, multi_user, {}, "open antigravity cli")
+        assert res is not None
+        resp, _ = res
+        assert "Antigravity CLI" in resp.message
+        mock_launch.assert_called_with("antigravity_cli", directory=r"C:\kirtan\IRIS", prompt=None, resume=False)
+
+
+
