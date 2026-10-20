@@ -146,6 +146,10 @@ class GeminiTextToSpeech(TextToSpeech):
         self.voice = voice
         self._key = api_key
 
+    @staticmethod
+    def _is_live_model(model: str) -> bool:
+        return "live" in model.lower()
+
     async def synthesize(self, text: str) -> SpeechAudio:
         for i, model in enumerate(self.models):
             try:
@@ -171,6 +175,50 @@ class GeminiTextToSpeech(TextToSpeech):
                 logger.info("TTS model %s is rate-limited; trying %s", model, self.models[i + 1])
 
     async def _stream(self, model: str, text: str) -> AsyncIterator[bytes]:
+        if self._is_live_model(model):
+            async for chunk in self._stream_live(model, text):
+                yield chunk
+            return
+        async for chunk in self._stream_rest(model, text):
+            yield chunk
+
+    async def _stream_live(self, model: str, text: str) -> AsyncIterator[bytes]:
+        try:
+            from google.genai import types
+
+            client = get_genai_client()
+            config = types.LiveConnectConfig(
+                response_modalities=["AUDIO"],
+                speech_config=types.SpeechConfig(
+                    voice_config=types.VoiceConfig(
+                        prebuilt_voice_config=types.PrebuiltVoiceConfig(voice_name=self.voice)
+                    )
+                ),
+            )
+            prompt = (
+                "Read the following text aloud with natural conversational intonation. "
+                "Do not add any preamble or commentary, speak only the text:\n\n"
+                f"{text}"
+            )
+            async with client.aio.live.connect(model=model, config=config) as session:
+                await session.send_client_content(
+                    turns=[types.Content(role="user", parts=[types.Part.from_text(text=prompt)])],
+                    turn_complete=True,
+                )
+                async for response in session.receive():
+                    sc = response.server_content
+                    if sc and sc.model_turn:
+                        for part in sc.model_turn.parts:
+                            if part.inline_data and part.inline_data.data:
+                                yield part.inline_data.data
+                    if sc and sc.turn_complete:
+                        break
+        except Exception as exc:
+            rate_limited = "429" in str(exc) or "quota" in str(exc).lower()
+            logger.warning("Gemini Live TTS streaming failed (model=%s): %s", model, exc)
+            raise VoiceError(f"Speech synthesis failed with live model {model}: {exc}", rate_limited=rate_limited) from exc
+
+    async def _stream_rest(self, model: str, text: str) -> AsyncIterator[bytes]:
         try:
             async with httpx.AsyncClient(timeout=settings.ai_voice_timeout_seconds) as client:
                 async with client.stream(
@@ -203,6 +251,21 @@ class GeminiTextToSpeech(TextToSpeech):
         }
 
     async def _synthesize(self, model: str, text: str) -> SpeechAudio:
+        if self._is_live_model(model):
+            return await self._synthesize_live(model, text)
+        return await self._synthesize_rest(model, text)
+
+    async def _synthesize_live(self, model: str, text: str) -> SpeechAudio:
+        chunks = []
+        async for chunk in self._stream_live(model, text):
+            chunks.append(chunk)
+        if not chunks:
+            raise VoiceError(f"Speech synthesis returned no audio from live model {model}.")
+        pcm = b"".join(chunks)
+        wav = _pcm_to_wav(pcm, self.stream_rate)
+        return SpeechAudio(data=wav, mime_type="audio/wav")
+
+    async def _synthesize_rest(self, model: str, text: str) -> SpeechAudio:
         response = await _post(
             "Speech synthesis",
             f"{GEMINI_API_URL}/models/{model}:generateContent",
@@ -290,3 +353,18 @@ def get_text_to_speech() -> TextToSpeech | None:
             settings.ai_tts_model, settings.ai_tts_voice, settings.ai_voice_base_url, settings.ai_voice_api_key
         )
     return None
+
+
+def is_live_enabled() -> bool:
+    """Whether Gemini Live conversational model is enabled."""
+    return bool(_gemini_key() and getattr(settings, "ai_live_enabled", True))
+
+
+def get_genai_client():
+    """Returns an authenticated google.genai.Client instance."""
+    key = _gemini_key()
+    if not key:
+        raise VoiceError("Gemini API key is not configured.")
+    from google import genai
+
+    return genai.Client(api_key=key)

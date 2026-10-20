@@ -423,6 +423,8 @@ export interface VoiceConfigOut {
   tts_provider: string;
   tts_model: string;
   tts_voice: string;
+  live_model?: string;
+  live_enabled?: boolean;
 }
 
 export interface AIStatusOut {

@@ -114,6 +114,8 @@ def _build_agent_models() -> dict[str, Any]:
         "tts_provider": settings.ai_tts_provider,
         "tts_model": settings.ai_tts_model,
         "tts_voice": settings.ai_tts_voice,
+        "live_model": settings.ai_live_model,
+        "live_enabled": settings.ai_live_enabled,
     }
 
     return {

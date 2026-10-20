@@ -6,14 +6,21 @@ A 429/503 here tells the client to fall back to the phone's own speech engines.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Request, Response
+import asyncio
+import base64
+
+from fastapi import APIRouter, Depends, Request, Response, WebSocket, WebSocketDisconnect, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from app.ai import voice
 from app.api.deps import current_user
+from app.core.config import settings
 from app.core.errors import AppError
+from app.core.logging import get_logger
 from app.models.user import User
+
+logger = get_logger("iris.api.voice")
 
 router = APIRouter(prefix="/voice", tags=["Voice"])
 
@@ -46,6 +53,11 @@ def voice_status(_: User = Depends(current_user)) -> dict:
     return {
         "stt": {"enabled": stt is not None, "provider": stt.provider if stt else None, "model": stt.model if stt else None},
         "tts": {"enabled": tts is not None, "provider": tts.provider if tts else None, "model": tts.model if tts else None},
+        "live": {
+            "enabled": voice.is_live_enabled(),
+            "model": settings.ai_live_model,
+            "voice": settings.ai_tts_voice,
+        },
     }
 
 
@@ -117,3 +129,108 @@ async def speak_stream(payload: SpeakIn, _: User = Depends(current_user)) -> Res
         media_type="application/octet-stream",
         headers={"X-Sample-Rate": str(tts.stream_rate), "Cache-Control": "no-store"},
     )
+
+
+@router.websocket("/live")
+async def voice_live_websocket(
+    websocket: WebSocket,
+):
+    """Bidirectional full-duplex conversational audio streaming with Gemini 3.8 Live."""
+    await websocket.accept()
+    if not voice.is_live_enabled():
+        await websocket.send_json({"type": "error", "message": "Gemini Live is not configured or disabled."})
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return
+
+    try:
+        from google.genai import types
+
+        client = voice.get_genai_client()
+        system_instruction = (
+            "You are IRIS, an intelligent, sovereign personal AI companion and desktop workstation orchestrator. "
+            "You are conversing directly with Kirtan. "
+            "Speak with a natural, concise, intelligent, and warm tone. "
+            "Keep your responses conversational and directly relevant."
+        )
+        live_config = types.LiveConnectConfig(
+            response_modalities=["AUDIO"],
+            speech_config=types.SpeechConfig(
+                voice_config=types.VoiceConfig(
+                    prebuilt_voice_config=types.PrebuiltVoiceConfig(voice_name=settings.ai_tts_voice or "Kore")
+                )
+            ),
+            system_instruction=types.Content(parts=[types.Part.from_text(text=system_instruction)]),
+        )
+
+        model_name = settings.ai_live_model or "gemini-3.8-live"
+        await websocket.send_json({
+            "type": "ready",
+            "model": model_name,
+            "voice": settings.ai_tts_voice or "Kore",
+            "sample_rate": 24000,
+        })
+
+        async with client.aio.live.connect(model=model_name, config=live_config) as session:
+            async def client_to_gemini():
+                while True:
+                    msg = await websocket.receive()
+                    if msg.get("type") == "websocket.disconnect":
+                        break
+                    if "bytes" in msg and msg["bytes"]:
+                        # Raw audio PCM chunk from microphone
+                        await session.send_realtime_input(
+                            audio=types.Blob(data=msg["bytes"], mime_type="audio/pcm;rate=24000")
+                        )
+                    elif "text" in msg and msg["text"]:
+                        import json
+                        try:
+                            payload = json.loads(msg["text"])
+                        except Exception:
+                            payload = {"type": "text", "text": msg["text"]}
+                        p_type = payload.get("type", "text")
+                        if p_type == "audio":
+                            raw = base64.b64decode(payload.get("data", ""))
+                            rate = payload.get("rate", 24000)
+                            await session.send_realtime_input(
+                                audio=types.Blob(data=raw, mime_type=f"audio/pcm;rate={rate}")
+                            )
+                        elif p_type == "text":
+                            text = payload.get("text", "").strip()
+                            if text:
+                                await session.send_client_content(
+                                    turns=[types.Content(role="user", parts=[types.Part.from_text(text=text)])],
+                                    turn_complete=True,
+                                )
+                        elif p_type == "end_of_turn":
+                            await session.send_client_content(turns=[], turn_complete=True)
+                        elif p_type == "interrupt":
+                            pass
+                        elif p_type == "ping":
+                            await websocket.send_json({"type": "pong"})
+
+            async def gemini_to_client():
+                async for response in session.receive():
+                    sc = response.server_content
+                    if sc and sc.model_turn:
+                        for part in sc.model_turn.parts:
+                            if part.inline_data and part.inline_data.data:
+                                await websocket.send_bytes(part.inline_data.data)
+                    if sc and sc.turn_complete:
+                        await websocket.send_json({"type": "turn_complete"})
+                    if sc and sc.interrupted:
+                        await websocket.send_json({"type": "interrupted"})
+
+            t1 = asyncio.create_task(client_to_gemini())
+            t2 = asyncio.create_task(gemini_to_client())
+            done, pending = await asyncio.wait([t1, t2], return_when=asyncio.FIRST_COMPLETED)
+            for task in pending:
+                task.cancel()
+    except WebSocketDisconnect:
+        logger.info("Voice live websocket disconnected by client")
+    except Exception as exc:
+        logger.warning("Voice live websocket error: %s", exc)
+        try:
+            await websocket.send_json({"type": "error", "message": str(exc)})
+            await websocket.close(code=status.WS_1011_INTERNAL_ERROR)
+        except Exception:
+            pass

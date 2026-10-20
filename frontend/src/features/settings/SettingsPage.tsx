@@ -665,12 +665,44 @@ export function SettingsPage() {
           {/* Voice Intelligence Pipeline */}
           <Panel title="Voice & Multimodal Intelligence Pipeline" lamp={<Lamp tone="go" />}>
             <div className="space-y-3 pt-2 text-[13px]">
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div className="rounded-xl bg-ops-raised/30 p-3.5 border border-ops-line space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Radio size={16} className="text-ai" />
+                      <p className="font-semibold text-ink text-[13px]">Gemini Live Conversational</p>
+                    </div>
+                    <span className="rounded-full bg-ai/10 px-2 py-0.2 text-[10px] font-semibold text-ai border border-ai/20">
+                      LIVE
+                    </span>
+                  </div>
+                  <p className="font-mono text-[12px] text-ink-dim">
+                    {aiStatus?.voice?.live_model || "gemini-3.8-live"}
+                  </p>
+                  <p className="text-[11px] text-ink-faint">Native full-duplex multimodal speech WebSocket</p>
+                </div>
+
+                <div className="rounded-xl bg-ops-raised/30 p-3.5 border border-ops-line space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Volume2 size={16} className="text-go" />
+                      <p className="font-semibold text-ink text-[13px]">Neural Speech Output</p>
+                    </div>
+                    <span className="rounded-full bg-sky-500/10 px-2 py-0.2 text-[10px] font-semibold text-sky-400 border border-sky-500/20">
+                      GEMINI
+                    </span>
+                  </div>
+                  <p className="font-mono text-[12px] text-ink-dim truncate">
+                    {aiStatus?.voice?.tts_model || "gemini-3.8-live,gemini-3.8-flash-tts"} • Voice: {aiStatus?.voice?.tts_voice || "Kore"}
+                  </p>
+                  <p className="text-[11px] text-ink-faint">24kHz conversational neural audio stream</p>
+                </div>
+
                 <div className="rounded-xl bg-ops-raised/30 p-3.5 border border-ops-line space-y-1.5">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <Mic size={16} className="text-amber-400" />
-                      <p className="font-semibold text-ink text-[13px]">Speech-to-Text (STT)</p>
+                      <p className="font-semibold text-ink text-[13px]">Speech-to-Text Fallback</p>
                     </div>
                     <span className="rounded-full bg-sky-500/10 px-2 py-0.2 text-[10px] font-semibold text-sky-400 border border-sky-500/20">
                       GEMINI
@@ -679,30 +711,14 @@ export function SettingsPage() {
                   <p className="font-mono text-[12px] text-ink-dim">
                     {aiStatus?.voice?.stt_model || "gemini-3.5-transcribe"}
                   </p>
-                  <p className="text-[11px] text-ink-faint">Real-time low-latency transcription</p>
-                </div>
-
-                <div className="rounded-xl bg-ops-raised/30 p-3.5 border border-ops-line space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Volume2 size={16} className="text-go" />
-                      <p className="font-semibold text-ink text-[13px]">Text-to-Speech (TTS)</p>
-                    </div>
-                    <span className="rounded-full bg-sky-500/10 px-2 py-0.2 text-[10px] font-semibold text-sky-400 border border-sky-500/20">
-                      GEMINI
-                    </span>
-                  </div>
-                  <p className="font-mono text-[12px] text-ink-dim">
-                    {aiStatus?.voice?.tts_model || "gemini-3.8-flash-lite-tts"} • Voice: {aiStatus?.voice?.tts_voice || "Kore"}
-                  </p>
-                  <p className="text-[11px] text-ink-faint">16kHz High-Fidelity neural voice</p>
+                  <p className="text-[11px] text-ink-faint">Ultra-fast transcription backup</p>
                 </div>
               </div>
 
               <div className="rounded-lg bg-ops-raised/20 p-3 text-[11px] text-ink-faint flex items-center gap-2">
                 <ShieldCheck size={14} className="text-emerald-400 shrink-0" />
                 <span>
-                  All sub-agent models execute with strict scoped registries, preventing tool clutter, hallucination, and rate limits.
+                  Gemini 3.8 Live enables end-to-end conversational speech with zero transcription pipeline delay, native voice inflection, and real-time interruption.
                 </span>
               </div>
             </div>

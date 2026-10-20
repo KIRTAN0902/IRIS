@@ -292,6 +292,7 @@ export const chatApi = {
 export interface VoiceStatus {
   stt: { enabled: boolean; provider: string | null; model: string | null };
   tts: { enabled: boolean; provider: string | null; model: string | null };
+  live?: { enabled: boolean; model: string | null; voice: string | null };
 }
 
 export const voiceApi = {

@@ -242,3 +242,34 @@ async def test_gemini_stream_falls_back_before_first_chunk(monkeypatch):
     monkeypatch.setattr(tts, "_stream", fake_stream)
     assert [c async for c in tts.stream("hi")] == [b"ab"]
     assert tried == ["lite", "full"]
+
+
+def test_voice_status_includes_live(client, monkeypatch):
+    from app.core.config import settings
+
+    monkeypatch.setattr(voice, "is_live_enabled", lambda: True)
+    monkeypatch.setattr(settings, "ai_live_model", "gemini-3.8-live")
+    monkeypatch.setattr(settings, "ai_tts_voice", "Kore")
+
+    r = client.get("/api/voice/status")
+    assert r.status_code == 200
+    body = r.json()
+    assert "live" in body
+    assert body["live"]["enabled"] is True
+    assert body["live"]["model"] == "gemini-3.8-live"
+    assert body["live"]["voice"] == "Kore"
+
+
+def test_voice_live_websocket_disabled_rejects(client, monkeypatch):
+    monkeypatch.setattr(voice, "is_live_enabled", lambda: False)
+    with client.websocket_connect("/api/voice/live") as ws:
+        msg = ws.receive_json()
+        assert msg["type"] == "error"
+        assert "not configured" in msg["message"]
+
+
+@pytest.mark.asyncio
+async def test_gemini_tts_is_live_model_detection():
+    tts = voice.GeminiTextToSpeech("gemini-3.8-live, gemini-3.8-flash-tts", "Kore", "fake-key")
+    assert tts._is_live_model("gemini-3.8-live") is True
+    assert tts._is_live_model("gemini-3.8-flash-tts") is False
