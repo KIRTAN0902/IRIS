@@ -81,18 +81,18 @@
 <body>
   <div class="container">
     <div class="pulse-ring"></div>
-    <h1>Connecting to IRIS...</h1>
-    <p>Connecting to live development services. Changes in your repository will appear automatically.</p>
+    <h1>Initializing IRIS Desktop...</h1>
+    <p>Starting Sovereign Workspace & Local Neural Mesh services...</p>
     <div class="status-badge">
       <span class="dot"></span>
-      <span id="status-text">Connecting to http://localhost:5173</span>
+      <span id="status-text">Connecting to Sovereign Workspace</span>
     </div>
   </div>
   <script>
     let dots = 0;
     setInterval(() => {
       dots = (dots + 1) % 4;
-      document.getElementById('status-text').innerText = 'Connecting to http://localhost:5173' + '.'.repeat(dots);
+      document.getElementById('status-text').innerText = 'Connecting to Sovereign Workspace' + '.'.repeat(dots);
     }, 400);
   </script>
 </body>

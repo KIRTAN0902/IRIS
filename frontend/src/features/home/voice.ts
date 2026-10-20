@@ -359,7 +359,13 @@ export function useVoiceConversation(onUtterance: (text: string) => Promise<stri
       if (!("speechSynthesis" in window)) return resolve();
       const u = new SpeechSynthesisUtterance(text);
       u.lang = /[઀-૿]/.test(text) ? "gu-IN" : /[ऀ-ॿ]/.test(text) ? "hi-IN" : "en-IN";
-      const voice = speechSynthesis.getVoices().find((v) => v.lang.replace("_", "-") === u.lang);
+      const voices = speechSynthesis.getVoices();
+      const langMatches = voices.filter((v) => v.lang.replace("_", "-") === u.lang);
+      // Prefer male voices matching the Enceladus persona over the OS default female voice
+      const maleVoice =
+        langMatches.find((v) => /ravi|david|mark|guy|male|james|george|steve|michael/i.test(v.name)) ||
+        voices.find((v) => /ravi|david|mark|guy|male|james|george|steve|michael/i.test(v.name));
+      const voice = maleVoice || langMatches[0];
       if (voice) u.voice = voice;
       const done = () => {
         s.interrupt = undefined;
