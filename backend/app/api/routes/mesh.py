@@ -434,6 +434,53 @@ async def mesh_websocket_endpoint(
                             ms.hub.devices[device_id].battery_level = payload.get("battery_level")
                             ms.hub.devices[device_id].is_charging = payload.get("is_charging")
                             await ms.hub.broadcast_device_states()
+                    elif cmd in {"AGY_ATTACH_DIR", "AGY_SEND_INPUT", "AGY_SLASH_CMD", "AGY_GET_STATUS"}:
+                        from app.services.agy_bridge import AgyError, agy_manager
+
+                        try:
+                            if cmd == "AGY_ATTACH_DIR":
+                                session = agy_manager.spawn_or_attach(
+                                    payload.get("directory"), payload.get("alias")
+                                )
+                                result = {"success": True, "session": session.to_dict()}
+                            elif cmd == "AGY_SEND_INPUT":
+                                key = payload.get("session_key") or agy_manager.current_session_key
+                                text = payload.get("input", "")
+                                if text.strip().startswith("/"):
+                                    result = {"success": True, **agy_manager.send_raw_input(key, text)}
+                                else:
+                                    result = {"success": True, **agy_manager.send_prompt(key, text)}
+                            elif cmd == "AGY_SLASH_CMD":
+                                key = payload.get("session_key") or agy_manager.current_session_key
+                                command = payload.get("command", "")
+                                if not command.startswith("/"):
+                                    command = f"/{command}"
+                                result = {"success": True, **agy_manager.send_raw_input(key, command)}
+                            else:
+                                session = agy_manager.find_session(
+                                    payload.get("session_key") or agy_manager.current_session_key
+                                )
+                                result = (
+                                    {
+                                        "success": True,
+                                        "session": session.to_dict(),
+                                        "recent_output": session.recent(120),
+                                    }
+                                    if session
+                                    else {"success": False, "error": "No active Antigravity session."}
+                                )
+                        except AgyError as exc:
+                            result = {"success": False, "error": str(exc)}
+                        await websocket.send_json(
+                            {
+                                "type": "COMMAND_RESULT",
+                                "payload": {
+                                    "req_id": payload.get("req_id"),
+                                    "command": cmd,
+                                    "result": result,
+                                },
+                            }
+                        )
 
                     # Forward command to target device (e.g. RING_PHONE)
                     msg = ms.MeshMessage(
@@ -655,23 +702,39 @@ async def trigger_remote_command(
         return {"command": req.command, "executed": True}
 
     # Broadcast remote command locally and across cloud relay
+    sender_id = str(req.parameters.get("sender_device") or "system")
+    payload = {key: value for key, value in req.parameters.items() if key != "sender_device"}
     target = req.target_device or (
-        mrs.LAPTOP_HOST_DEVICE_ID if req.command in ["LOCK_PC", "UNLOCK_PC", "PING_LAPTOP", "PING_ALERT", "LAUNCH_APP", "TRIGGER_CODER"] else None
+        mrs.LAPTOP_HOST_DEVICE_ID
+        if req.command
+        in [
+            "LOCK_PC",
+            "UNLOCK_PC",
+            "PING_LAPTOP",
+            "PING_ALERT",
+            "LAUNCH_APP",
+            "TRIGGER_CODER",
+            "AGY_ATTACH_DIR",
+            "AGY_SEND_INPUT",
+            "AGY_SLASH_CMD",
+            "AGY_GET_STATUS",
+        ]
+        else None
     )
     msg = ms.MeshMessage(
         type="REMOTE_COMMAND",
-        sender_device="system",
+        sender_device=sender_id,
         target_device=target,
-        payload={"command": req.command, **req.parameters},
+        payload={"command": req.command, **payload},
     )
     await ms.hub.broadcast(msg, exclude_sender=False)
     mrs.push_relay_message(
         db=db,
         user_id=user.id,
-        sender_device_id="system",
+        sender_device_id=sender_id,
         target_device_id=target,
         msg_type="REMOTE_COMMAND",
-        payload={"command": req.command, **req.parameters},
+        payload={"command": req.command, **payload},
     )
     return {"command": req.command, "broadcast": True, "target": target or "all"}
 

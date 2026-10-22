@@ -141,6 +141,13 @@ class OpenAICompatibleProvider(AIProvider):
                     }
                     for tc in m.tool_calls
                 ]
+            elif m.images:
+                parts: list[dict[str, Any]] = []
+                if content:
+                    parts.append({"type": "text", "text": content})
+                for image_url in m.images:
+                    parts.append({"type": "image_url", "image_url": {"url": image_url}})
+                msg["content"] = parts
             else:
                 msg["content"] = content or ""
             if m.role == "tool":

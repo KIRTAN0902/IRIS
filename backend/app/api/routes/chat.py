@@ -18,6 +18,12 @@ from app.models.ai_conversation import AIConversation
 from app.models.user import User
 from app.schemas.memory import MemoryCreate, MemoryOut, MemoryUpdate
 from app.services.memory_service import memory_service
+from app.services.vision_service import (
+    VisionError,
+    VisionImageTooLarge,
+    VisionValidationError,
+    vision_service,
+)
 
 router = APIRouter(prefix="/chat", tags=["Chat"])
 
@@ -83,6 +89,7 @@ def get_conversation(
                 source=meta.get("source", "AI"),
                 memories_updated=meta.get("memories_updated", []),
                 created_at=m.created_at,
+                fast_path=bool(meta.get("fast_path", False)),
             )
         )
 
@@ -102,7 +109,39 @@ async def send_message(
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
 ):
-    """Send a user message, trigger agent reasoning and tools, and return response."""
+    """Send a user message, trigger agent reasoning and tools, and return response.
+
+    When ``image_base64`` is supplied it is treated as an ephemeral vision turn:
+    the image is decoded in RAM, sent to Nemotron Super VL, and dropped. Only
+    the structured context and a badge are written to conversation history.
+    """
+    if payload.image_base64:
+        try:
+            image_bytes, mime_type = vision_service.decode_base64_image(
+                payload.image_base64, payload.mime_type
+            )
+        except VisionImageTooLarge as exc:
+            raise HTTPException(status_code=413, detail=str(exc)) from exc
+        except VisionValidationError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+        payload.image_base64 = None
+        payload.mime_type = None
+        try:
+            msg_out, _result, _memory = await vision_service.process_ephemeral_turn(
+                db=db,
+                user=user,
+                image_bytes=image_bytes,
+                mime_type=mime_type,
+                prompt=payload.content,
+                conversation_id=conversation_id,
+            )
+        except VisionError as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+        finally:
+            image_bytes = b""
+        return msg_out
+
     msg_out, _ = await default_agent.run_turn(
         db=db,
         user=user,

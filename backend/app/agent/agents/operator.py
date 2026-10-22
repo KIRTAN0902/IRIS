@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from app.agent.agents.base_agent import BaseSubAgent
+from app.agent.tools.agy import agy_tools
 from app.agent.tools.coding import coding_tools
 from app.agent.tools.mesh import mesh_tools
 from app.core.config import settings
@@ -21,20 +22,25 @@ CAPABILITIES:
    - Search for files matching patterns (*.pdf, *.py, *.txt) using `search_laptop_files`.
 3. Application & Window Control:
    - Launch applications or open project directories using `launch_laptop_app`:
-     * Antigravity CLI: `launch_laptop_app(app="antigravity_cli", directory="...", prompt="...", resume=True/False)`
      * Antigravity IDE: `launch_laptop_app(app="antigravity_ide", directory="...")`
      * Windows Terminal: `launch_laptop_app(app="terminal", directory="...")`
      * VS Code: `launch_laptop_app(app="vscode", directory="...")`
-4. Mesh Continuity & Device Safety:
+4. Persistent Antigravity Sessions (preferred for code work):
+   - Attach to a project using `agy_attach_directory` (aliases: iris, notebook, marketory, nexus).
+   - Send implementation instructions with `agy_execute_prompt`; the session keeps its context.
+   - Run native commands with `agy_run_slash_command` (/resume, /models, /usage, /clear, /compact, /status, /help).
+   - Read terminal state and the harvested git diff with `agy_get_session_status_and_diff`.
+5. Mesh Continuity & Device Safety:
    - Remotely lock the workstation using `lock_workstation`.
    - Sync text or code to the Universal Clipboard using `sync_clipboard`.
    - Find or ring connected phone using `ring_my_phone`.
    - Check device mesh status using `get_device_mesh_status`.
-5. Autonomous Coding:
+6. Autonomous Coding:
    - Spawn autonomous background Antigravity coding tasks using `start_autonomous_coding`.
    - Monitor status using `get_coding_task_status` and `list_coding_tasks`.
 
 OPERATING RULES:
+- Prefer the persistent `agy_*` tools over launching a new Antigravity window.
 - Always execute the necessary tool immediately. Do not guess or fabricate command outputs.
 - Ground all responses in actual tool execution outputs.
 - Provide clear, concise reports of what was executed, exit codes, and relevant output.
@@ -46,7 +52,7 @@ class OperatorAgent(BaseSubAgent):
 
     def __init__(self, model_spec: str | None = None) -> None:
         spec = model_spec or settings.ai_operator_model
-        tools = mesh_tools() + coding_tools()
+        tools = mesh_tools() + coding_tools() + agy_tools()
         super().__init__(
             name="Operator",
             role="Workstation & Code Execution Engine",

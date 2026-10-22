@@ -100,6 +100,9 @@ class ChatMessage:
     content: str | None = None
     tool_calls: list[ToolCallRequest] = field(default_factory=list)
     tool_call_id: str | None = None
+    # Transient multimodal payloads (data:image/...;base64,...). Callers must
+    # never persist these; they exist only for the lifetime of one provider call.
+    images: list[str] = field(default_factory=list)
 
 
 @dataclass

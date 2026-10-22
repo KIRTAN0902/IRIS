@@ -112,6 +112,28 @@ class Settings(BaseSettings):
     ai_bubba_model: str = "gemini:gemma-4-31b-it"
     ai_vision_model: str = "gemini:gemma-4-31b-it"
 
+    # --- Ephemeral Vision (Nemotron 3.5 Super VL) ---
+    # nvidia uses NVIDIA NIM's OpenAI-compatible endpoint. If no NVIDIA key is
+    # configured, the service falls back to Gemini without changing any code.
+    vision_provider: str = "nvidia"
+    vision_model_name: str = "nvidia/nemotron-3.5-super-vl-120b-a12b"
+    vision_max_image_mb: int = 10
+    vision_timeout_seconds: float = 90.0
+    # Used only when vision_provider=nvidia has no API key and falls back to Gemini.
+    vision_fallback_model: str | None = "gemini-3.5-flash"
+
+    # --- Antigravity (agy) ConPTY Bridge ---
+    # Executable or command used to launch the Antigravity CLI inside the PTY.
+    agy_cli_command: str = "agy"
+    agy_default_directory: str = r"C:\kirtan\IRIS"
+    # Seconds of quiet output after a prompt before a task counts as complete.
+    agy_quiet_window_seconds: float = 2.5
+    agy_buffer_lines: int = 500
+    agy_auto_voice: bool = True
+    agy_tts_enabled: bool = True
+    # JSON object mapping project aliases to absolute paths.
+    agy_project_aliases: str | None = None
+
     # --- Gmail Integration ---
     gmail_client_id: str | None = None
     gmail_client_secret: str | None = None

@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from app.agent.harness import AgentHarness
 from app.agent.registry import ToolRegistry, default_registry
 from app.agent.schemas import AgentResponseSchema, ChatMessageOut
-from app.agent.supervisor import IrisSupervisor, get_iris_supervisor
+from app.agent.supervisor import get_iris_supervisor
 from app.ai.factory import get_ai_provider
 from app.ai.provider import ChatMessage, fast_turn
 from app.ai.providers.mock import MockProvider
@@ -70,14 +70,26 @@ class IrisAgent:
         conversation_id: int | None = None,
         voice: bool = False,
         defer_memory: bool = False,
+        *,
+        skip_fast_path: bool = False,
+        skip_memory: bool = False,
+        persisted_user_message: str | None = None,
+        extra_metadata: dict[str, Any] | None = None,
     ) -> tuple[ChatMessageOut, AIConversation]:
         """Execute a single conversational turn with IRIS.
 
         ``defer_memory`` skips memory extraction (a slow, separate model call) so the
         reply returns sooner; the client then calls :meth:`remember_turn`.
+        ``skip_memory`` skips extraction entirely (used by vision turns, whose
+        durable context was already stored separately).
+
+        Vision turns use ``skip_fast_path`` so the enriched visual telemetry is
+        interpreted by an agent, and ``persisted_user_message`` so only the
+        original prompt + a lightweight badge reaches conversation history.
         """
+        stored_user_message = persisted_user_message or user_message
         # 1. Resolve or create conversation
-        conversation = self._resolve_conversation(db, user, conversation_id, user_message)
+        conversation = self._resolve_conversation(db, user, conversation_id, stored_user_message)
 
         # 2. Build focused personal context
         context = build_decision_context(db, user)
@@ -85,12 +97,18 @@ class IrisAgent:
         since = last_user_message_at(db, user.id)
 
         # Fast deterministic path (e.g. "what's my task?", "task done", "gym done")
-        fast_resp, fast_actions = self.supervisor.try_fast_path(db, user, context, user_message)
+        if skip_fast_path:
+            fast_resp, fast_actions = None, []
+        else:
+            fast_resp, fast_actions = self.supervisor.try_fast_path(
+                db, user, context, user_message
+            )
+        is_fast_path = bool(fast_resp is not None or getattr(fast_resp, "fast_path", False))
         if fast_resp is not None:
             response_schema = fast_resp
             actions_executed = fast_actions
             source = "DETERMINISTIC"
-            harness_meta = {"strategy": "fast_path", "source": "supervisor"}
+            harness_meta = {"strategy": "fast_path", "source": "supervisor", "fast_path": True}
             relevant_memories = []
         else:
             # 3. Retrieve relevant long-term memories for this turn
@@ -233,7 +251,7 @@ class IrisAgent:
 
         # 7. Extract and persist contextual memory from this conversational turn
         memories_meta: list[dict[str, Any]] = []
-        if not defer_memory:
+        if not defer_memory and not skip_memory and not is_fast_path:
             memories_meta = await self._extract_memories(
                 db, user, user_message, response_schema.message, conversation.id
             )
@@ -242,22 +260,25 @@ class IrisAgent:
         user_msg_row = AIMessage(
             conversation_id=conversation.id,
             role=AIRole.USER.value,
-            content=user_message,
+            content=stored_user_message,
         )
         db.add(user_msg_row)
 
+        extra = dict(extra_metadata or {})
         assistant_msg_row = AIMessage(
             conversation_id=conversation.id,
             role=AIRole.ASSISTANT.value,
             content=response_schema.message,
             metadata_json={
+                **extra,
                 "actions_taken": actions_executed,
                 "evidence": response_schema.evidence,
                 "recommended_action": recommended_action,
                 "source": source,
                 "memories_updated": memories_meta,
-                "memory_pending": defer_memory,
+                "memory_pending": False if (is_fast_path or skip_memory) else defer_memory,
                 "harness": harness_meta,
+                "fast_path": is_fast_path,
             },
         )
         db.add(assistant_msg_row)
@@ -277,6 +298,8 @@ class IrisAgent:
             source=source,
             memories_updated=memories_meta,
             created_at=assistant_msg_row.created_at,
+            fast_path=is_fast_path,
+            visual_context=extra.get("visual_context"),
         )
         return out, conversation
 
@@ -292,7 +315,7 @@ class IrisAgent:
         if reply is None:
             raise NotFoundError("Message not found.")
         meta = dict(reply.metadata_json or {})
-        if not meta.get("memory_pending"):
+        if meta.get("fast_path") or not meta.get("memory_pending"):
             return meta.get("memories_updated") or []
 
         asked = (

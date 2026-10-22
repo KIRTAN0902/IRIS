@@ -106,7 +106,7 @@ def test_spending_vs_last_month(db, user):
         db.add(FinanceTransaction(user_id=user.id, kind="EXPENSE", amount=500, category="Food & Dining", account="UPI", occurred_on=first + timedelta(days=day)))
         db.add(FinanceTransaction(user_id=user.id, kind="EXPENSE", amount=200, category="Food & Dining", account="UPI", occurred_on=prev + timedelta(days=day)))
     db.add_all(
-        FinanceTransaction(user_id=user.id, kind="EXPENSE", amount=50, category="Transport", account="UPI", occurred_on=prev + timedelta(days=20))
+        FinanceTransaction(user_id=user.id, kind="EXPENSE", amount=50, category="Transport", account="UPI", occurred_on=prev - timedelta(days=20))
         for _ in range(4)
     )
     db.commit()

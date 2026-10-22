@@ -67,6 +67,10 @@ class AgentResponseSchema(BaseModel):
         default=None,
         description="Honest statement of missing context (e.g. 'Gmail is not connected')",
     )
+    fast_path: bool = Field(
+        False,
+        description="Flag indicating if the response was generated via deterministic fast-path",
+    )
 
 
 class ChatMessageIn(BaseModel):
@@ -76,6 +80,16 @@ class ChatMessageIn(BaseModel):
     voice: bool = Field(False, description="Spoken by voice; the reply will be read aloud")
     defer_memory: bool = Field(
         False, description="Reply first; the client then calls POST /chat/messages/{id}/remember"
+    )
+    # Transient vision payload. It is decoded and discarded before persistence;
+    # only the extracted context and a badge remain in the conversation.
+    image_base64: str | None = Field(
+        None,
+        max_length=20_000_000,
+        description="Optional ephemeral image as base64 or a data URI (never stored)",
+    )
+    mime_type: str | None = Field(
+        None, max_length=100, description="Image MIME type (image/png, image/jpeg, image/webp)"
     )
 
 
@@ -92,6 +106,8 @@ class ChatMessageOut(BaseModel):
     source: str = "AI"
     memories_updated: list[dict[str, Any]] = Field(default_factory=list)
     created_at: datetime
+    fast_path: bool = False
+    visual_context: dict[str, Any] | None = None
 
 
 

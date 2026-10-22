@@ -21,6 +21,7 @@ const CATEGORIES: { label: string; value: MemoryCategory | "ALL" }[] = [
   { label: "Projects", value: "PROJECT" },
   { label: "Constraints", value: "CONSTRAINT" },
   { label: "Instructions", value: "INSTRUCTION" },
+  { label: "Visual context", value: "VISUAL_CONTEXT" },
 ];
 
 const CATEGORY_LABEL: Record<string, string> = {
@@ -32,6 +33,7 @@ const CATEGORY_LABEL: Record<string, string> = {
   PROJECT: "Project",
   CONSTRAINT: "Constraint",
   INSTRUCTION: "Instruction",
+  VISUAL_CONTEXT: "Visual context",
   GENERAL: "Note",
 };
 

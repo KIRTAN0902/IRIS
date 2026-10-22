@@ -7,4 +7,9 @@ contextBridge.exposeInMainWorld('irisDesktop', {
   maximize: () => ipcRenderer.send('window-maximize'),
   close: () => ipcRenderer.send('window-close'),
   openExternal: (url) => shell.openExternal(url),
+  onOpenAgyDrawer: (callback) => {
+    const handler = () => callback();
+    ipcRenderer.on('open-agy-drawer', handler);
+    return () => ipcRenderer.removeListener('open-agy-drawer', handler);
+  },
 });

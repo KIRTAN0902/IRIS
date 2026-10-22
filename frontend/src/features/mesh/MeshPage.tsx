@@ -7,7 +7,6 @@ import {
   HardDrive,
   Laptop,
   Lock,
-  MonitorPlay,
   Plus,
   Smartphone,
   Trash2,
@@ -17,6 +16,7 @@ import { Button } from "@/components/ui/Button";
 import { Panel, Lamp } from "@/components/ui/Panel";
 import { Dialog, DialogContent } from "@/components/ui/Overlay";
 import { api } from "@/api/client";
+import { AgyQuickCard } from "@/features/agy/AgyQuickCard";
 
 interface MeshDevice {
   device_id: string;
@@ -85,10 +85,6 @@ export function MeshPage() {
   const [loadingInvite, setLoadingInvite] = useState(false);
   const [phonePairedSuccess, setPhonePairedSuccess] = useState(false);
 
-  // Phone Mirroring state (Step 2)
-  const [mirrorModalOpen, setMirrorModalOpen] = useState(false);
-  const [snapshotTimestamp, setSnapshotTimestamp] = useState(Date.now());
-
   const loadData = async () => {
     try {
       // 1. Live connected devices & power
@@ -117,15 +113,6 @@ export function MeshPage() {
     const interval = setInterval(loadData, 3500);
     return () => clearInterval(interval);
   }, []);
-
-  // Refresh snapshot if mirror modal is open
-  useEffect(() => {
-    if (!mirrorModalOpen) return;
-    const snapInterval = setInterval(() => {
-      setSnapshotTimestamp(Date.now());
-    }, 500);
-    return () => clearInterval(snapInterval);
-  }, [mirrorModalOpen]);
 
   // Laptop enters phone's 6-digit PIN
   const handleVerifyPhonePin = async (e?: React.FormEvent) => {
@@ -282,7 +269,7 @@ export function MeshPage() {
         <div>
           <h1 className="text-[28px] font-bold tracking-tight text-ink">IRIS Sovereign Mesh</h1>
           <p className="text-[13px] text-ink-dim">
-            Permanent, $0 cross-network device continuity and remote screen mirroring.
+            Permanent, $0 cross-network device continuity, clipboard, and file drops.
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -332,9 +319,6 @@ export function MeshPage() {
             <div className="flex gap-2">
               <Button variant="danger" size="sm" onClick={handleLockPC} className="flex-1">
                 <Lock size={13} /> Lock Workstation
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => setMirrorModalOpen(true)}>
-                <MonitorPlay size={13} /> Screen Stream
               </Button>
             </div>
           </div>
@@ -498,6 +482,8 @@ export function MeshPage() {
           </div>
         </Panel>
       </div>
+
+      <AgyQuickCard />
 
       {/* Universal Clipboard */}
       <Panel title="Universal Clipboard" lamp={<Lamp tone="ai" />}>
@@ -703,32 +689,6 @@ export function MeshPage() {
                 Close
               </Button>
             </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Screen Mirroring & Remote Desktop Modal (Step 2) */}
-      <Dialog open={mirrorModalOpen} onOpenChange={setMirrorModalOpen}>
-        <DialogContent title="Desktop Screen Streaming (WebRTC & Live Preview)" className="max-w-2xl">
-          <div className="space-y-4 py-2">
-            <div className="flex items-center justify-between text-[12px]">
-              <span className="text-ink-dim">Primary Monitor (Windows Desktop)</span>
-              <span className="text-go font-medium flex items-center gap-1">
-                ● Live 30 FPS Stream Active
-              </span>
-            </div>
-
-            <div className="relative aspect-[16/10] w-full overflow-hidden rounded-xl border border-ops-line-bright bg-black">
-              <img
-                src={`/api/mesh/screen/snapshot?quality=75&scale=2&t=${snapshotTimestamp}`}
-                alt="Desktop Live Stream"
-                className="h-full w-full object-contain"
-              />
-            </div>
-
-            <p className="text-[12px] text-ink-faint text-center">
-              Your mobile companion displays this stream with touch-to-click mouse control and typing support.
-            </p>
           </div>
         </DialogContent>
       </Dialog>

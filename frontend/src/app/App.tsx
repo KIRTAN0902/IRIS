@@ -17,6 +17,7 @@ import { ModulesPage } from "@/features/modules/ModulesPage";
 import { FocusPage } from "@/features/focus/FocusPage";
 import { SettingsPage } from "@/features/settings/SettingsPage";
 import { ContinuityPage } from "@/features/continuity/ContinuityPage";
+import { AgyTerminalDeck } from "@/features/agy/AgyTerminalDeck";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -46,7 +47,8 @@ export function App() {
             <Route path="focus" element={<FocusPage />} />
             <Route path="laptop" element={<ContinuityPage initialView="laptop" />} />
             <Route path="phone" element={<ContinuityPage initialView="phone" />} />
-            <Route path="terminal" element={<Navigate to="/laptop" replace />} />
+            <Route path="agy" element={<AgyTerminalDeck />} />
+            <Route path="terminal" element={<Navigate to="/agy" replace />} />
             <Route path="settings" element={<SettingsPage />} />
             <Route path="mesh" element={<Navigate to="/settings?tab=mesh" replace />} />
             <Route path="startup" element={<StartupPage />} />

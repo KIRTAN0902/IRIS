@@ -12,4 +12,5 @@ tzdata>=2024.2
 psycopg[binary]>=3.2
 segno>=1.6.0
 pillow>=11.0.0
+pywinpty>=2.0.13; sys_platform == "win32"
 

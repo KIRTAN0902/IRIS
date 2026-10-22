@@ -9,5 +9,19 @@
   "icons": [
     { "src": "/iris-mark.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
     { "src": "/iris-mark-maskable.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    {
+      "name": "Antigravity Terminal",
+      "short_name": "Antigravity",
+      "description": "The persistent agy session deck",
+      "url": "/agy"
+    },
+    {
+      "name": "Ask IRIS",
+      "short_name": "Ask IRIS",
+      "description": "Open the IRIS console",
+      "url": "/"
+    }
   ]
 }

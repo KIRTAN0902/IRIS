@@ -621,6 +621,64 @@ class LaptopRelayDaemon:
                         msg_type="COMMAND_RESULT",
                         payload={"req_id": req_id, "command": cmd, "result": res},
                     )
+            elif cmd in {"AGY_ATTACH_DIR", "AGY_SEND_INPUT", "AGY_SLASH_CMD", "AGY_GET_STATUS"}:
+                from app.services.agy_bridge import AgyError, agy_manager
+
+                req_id = payload.get("req_id")
+                res: dict[str, Any]
+                try:
+                    if cmd == "AGY_ATTACH_DIR":
+                        session = await asyncio.to_thread(
+                            agy_manager.spawn_or_attach,
+                            payload.get("directory"),
+                            payload.get("alias"),
+                        )
+                        res = {"success": True, "session": session.to_dict()}
+                    elif cmd == "AGY_SEND_INPUT":
+                        key = payload.get("session_key") or agy_manager.current_session_key
+                        text = payload.get("input", "")
+                        if text.strip().startswith("/"):
+                            result = await asyncio.to_thread(
+                                agy_manager.send_raw_input, key, text
+                            )
+                        else:
+                            result = await asyncio.to_thread(
+                                agy_manager.send_prompt, key, text
+                            )
+                        res = {"success": True, **result}
+                    elif cmd == "AGY_SLASH_CMD":
+                        key = payload.get("session_key") or agy_manager.current_session_key
+                        command = payload.get("command", "")
+                        if not command.startswith("/"):
+                            command = f"/{command}"
+                        res = {
+                            "success": True,
+                            **await asyncio.to_thread(
+                                agy_manager.send_raw_input, key, command
+                            ),
+                        }
+                    else:
+                        session = agy_manager.find_session(
+                            payload.get("session_key") or agy_manager.current_session_key
+                        )
+                        res = (
+                            {"success": True, "session": session.to_dict(),
+                             "recent_output": session.recent(120)}
+                            if session
+                            else {"success": False, "error": "No active Antigravity session."}
+                        )
+                except AgyError as exc:
+                    res = {"success": False, "error": str(exc)}
+                logger.info("Remote %s executed: success=%s", cmd, res.get("success"))
+                if req_id and sender and sender != "system":
+                    push_relay_message(
+                        db=db,
+                        user_id=1,
+                        sender_device_id=LAPTOP_HOST_DEVICE_ID,
+                        target_device_id=sender,
+                        msg_type="AGY_RESULT",
+                        payload={"req_id": req_id, "command": cmd, "result": res},
+                    )
 
         elif msg_type == "TERMINAL_EXEC":
             req_id = payload.get("req_id")

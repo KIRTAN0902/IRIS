@@ -4,6 +4,7 @@ import { Search } from "lucide-react";
 import { MobileBottomNav } from "@/components/layout/TopStrip";
 import { MobileTopBar, Sidebar } from "@/components/layout/Sidebar";
 import { AskIrisConsole } from "@/features/ai/AskIrisConsole";
+import { AgyDrawer } from "@/features/agy/AgyDrawer";
 import { useFocusSessions } from "@/hooks/queries";
 import { useUiStore } from "@/stores";
 
@@ -50,6 +51,7 @@ export function AppShell() {
       </div>
       <MobileBottomNav />
       <AskIrisConsole />
+      <AgyDrawer />
     </div>
   );
 }

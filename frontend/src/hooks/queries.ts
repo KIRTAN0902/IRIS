@@ -23,6 +23,7 @@ import {
   startupApi,
   tasksApi,
   usersApi,
+  visionApi,
   type TaskFilters,
 } from "@/api/endpoints";
 import type {
@@ -269,6 +270,24 @@ export const useAskIRIS = () =>
     mutationFn: (vars: { question: string; conversation_id?: number | null }) =>
       aiApi.ask(vars.question, vars.conversation_id ?? undefined),
   });
+
+export const useIngestVision = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: visionApi.ingest,
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: qk.chatConversation(data.conversation_id) });
+      qc.invalidateQueries({ queryKey: qk.chatConversations() });
+      qc.invalidateQueries({ queryKey: ["memories"] });
+      qc.invalidateQueries({ queryKey: qk.todayState() });
+      qc.invalidateQueries({ queryKey: ["tasks"] });
+      qc.invalidateQueries({ queryKey: qk.attention() });
+      qc.invalidateQueries({ queryKey: qk.decisions() });
+      qc.invalidateQueries({ queryKey: ["time-blocks"] });
+      qc.invalidateQueries({ queryKey: ["goals"] });
+    },
+  });
+};
 
 export const useAIStatus = () =>
   useQuery({

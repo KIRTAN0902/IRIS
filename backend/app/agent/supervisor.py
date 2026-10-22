@@ -20,7 +20,7 @@ from __future__ import annotations
 import json
 import os
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 import httpx
@@ -37,10 +37,13 @@ from app.agent.tools.tasks import CompleteTaskTool
 from app.core.config import settings
 from app.core.logging import get_logger
 from app.intelligence.decision_engine import deterministic_decision
-from app.models.enums import TaskStatus
+from app.models.ai_memory import AIMemory
+from app.models.enums import TaskStatus, TimeBlockStatus
 from app.models.task import Task
+from app.models.time_block import TimeBlock
 from app.models.user import User
 from app.services import habit_service
+from app.services.agy_bridge import NATIVE_SLASH_COMMANDS, AgyError, agy_manager
 from app.services.memory_service import memory_service
 from app.utils.datetime import to_local, utcnow
 
@@ -66,9 +69,79 @@ class IrisSupervisor:
 
         Returns (response_schema, actions_executed) if handled; otherwise (None, []).
         """
+        resp, actions = self._try_fast_path_impl(db, user, context, user_message)
+        if resp is not None:
+            resp.fast_path = True
+            for a in actions:
+                if isinstance(a, dict):
+                    a["fast_path"] = True
+        return resp, actions
+
+    def _try_fast_path_impl(
+        self,
+        db: Session,
+        user: User,
+        context: dict[str, Any],
+        user_message: str,
+    ) -> tuple[AgentResponseSchema | None, list[dict[str, Any]]]:
         msg = user_message.strip()
         msg_lower = msg.lower()
         clean_msg = msg_lower.rstrip("?.! ").strip()
+
+        # A0. Persistent Antigravity terminal fast-paths (0 LLM tokens)
+        session_words = msg.split()
+        native_command = (
+            session_words[0].lower() if session_words and session_words[0].startswith("/") else ""
+        )
+        if native_command in NATIVE_SLASH_COMMANDS:
+            return self._fast_agy_slash(db, user, native_command)
+
+        agy_match = re.match(r"^agy(?:\s+(.*))?$", msg, re.IGNORECASE | re.DOTALL)
+        if agy_match:
+            return self._fast_agy_command(db, user, (agy_match.group(1) or "").strip())
+
+        bare_attach_match = re.match(
+            r"^(?:attach(?:\s+to)?|switch(?:\s+to)?|cd(?:\s+into|\s+to)?|use)\s+(.+)$",
+            clean_msg,
+            re.IGNORECASE | re.DOTALL,
+        )
+        if bare_attach_match:
+            target_arg = bare_attach_match.group(1).strip()
+            if target_arg.lower() in {
+                "antigravity",
+                "agy",
+                "session",
+                "agy session",
+                "antigravity session",
+                "workspace",
+            }:
+                return self._fast_agy_command(db, user, "")
+            return self._fast_agy_command(db, user, f"attach {target_arg}")
+
+        if clean_msg in {
+            "attach antigravity",
+            "attach agy",
+            "open antigravity session",
+            "start agy session",
+        }:
+            return self._fast_agy_command(db, user, "")
+
+        changes_match = re.match(
+            r"^(?:what did we change in|what changed in|last changes in|show agy diff for|show changes for)\s+(.+)$",
+            clean_msg,
+        )
+        if changes_match:
+            return self._fast_agy_changes(db, user, changes_match.group(1))
+
+        expense_match = re.match(
+            r"^(?:spent|paid|expense)\s+(\d+(?:\.\d+)?)\s+(?:on|for)\s+(.+)$",
+            clean_msg,
+        )
+        if expense_match:
+            return self._fast_log_expense(db, user, expense_match.group(1), expense_match.group(2))
+
+        if "reflow schedule" in clean_msg or "pushed back by" in clean_msg:
+            return self._fast_reflow_schedule(db, user, clean_msg)
 
         # A. Quick Time / Date queries
         time_triggers = {
@@ -505,6 +578,316 @@ class IrisSupervisor:
 
         return (None, [])
 
+    # --- 1b. Antigravity & deterministic action helpers ---------------------
+
+    def _agy_response(
+        self,
+        message: str,
+        summary: str,
+        evidence: list[str] | None = None,
+        actions: list[dict[str, Any]] | None = None,
+    ) -> tuple[AgentResponseSchema, list[dict[str, Any]]]:
+        return (
+            AgentResponseSchema(
+                thought=summary,
+                actions=[],
+                message=message,
+                actions_summary=[summary],
+                evidence=evidence or [summary],
+                fast_path=True,
+            ),
+            actions or [],
+        )
+
+    def _ensure_agy_session(self):
+        session = agy_manager.find_session(agy_manager.current_session_key)
+        if session is not None and session.alive:
+            return session
+        return agy_manager.spawn_or_attach(None, None)
+
+    def _fast_agy_slash(
+        self, db: Session, user: User, command: str
+    ) -> tuple[AgentResponseSchema, list[dict[str, Any]]]:
+        try:
+            session = self._ensure_agy_session()
+            agy_manager.send_raw_input(session.key, command)
+        except AgyError as exc:
+            return self._agy_response(
+                f"⚠️ Antigravity is unavailable: {exc}",
+                "Antigravity attach failed",
+                [str(exc)],
+            )
+        if command == "/clear":
+            session.buffer.clear()
+        output = session.recent(24).strip()
+        body = f"**Antigravity · {session.alias} · `{command}`**"
+        if output:
+            body += f"\n\n```text\n{output}\n```"
+        return self._agy_response(
+            body,
+            f"Ran {command} in {session.alias}",
+            [f"Session: {session.directory}", f"Command: {command}"],
+            [
+                {
+                    "tool_name": "agy_run_slash_command",
+                    "success": True,
+                    "summary": f"Ran {command} in {session.alias}",
+                }
+            ],
+        )
+
+    def _fast_agy_command(
+        self, db: Session, user: User, rest: str
+    ) -> tuple[AgentResponseSchema, list[dict[str, Any]]]:
+        try:
+            target = re.match(
+                r"^(?:attach(?:\s+to)?|switch(?:\s+to)?|cd(?:\s+into|\s+to)?|use)\s+(.+)$",
+                rest,
+                re.IGNORECASE | re.DOTALL,
+            )
+            if target:
+                session = agy_manager.spawn_or_attach(target.group(1).strip(), None)
+                return self._agy_response(
+                    f"🔗 Attached to Antigravity session **{session.alias}** in `{session.directory}`.",
+                    f"Attached to {session.alias}",
+                    [f"Directory: {session.directory}"],
+                    [
+                        {
+                            "tool_name": "agy_attach_directory",
+                            "success": True,
+                            "summary": f"Attached to {session.alias}",
+                            "data": {
+                                "key": session.key,
+                                "alias": session.alias,
+                                "directory": session.directory,
+                            },
+                        }
+                    ],
+                )
+            session = self._ensure_agy_session()
+            if not rest:
+                return self._agy_response(
+                    f"🔗 Antigravity session **{session.alias}** is ready in `{session.directory}`. "
+                    "Send a prompt or a native command such as `/models`.",
+                    f"Attached to {session.alias}",
+                    [f"Directory: {session.directory}"],
+                    [
+                        {
+                            "tool_name": "agy_attach_directory",
+                            "success": True,
+                            "summary": f"Attached to {session.alias}",
+                            "data": {
+                                "key": session.key,
+                                "alias": session.alias,
+                                "directory": session.directory,
+                            },
+                        }
+                    ],
+                )
+            if rest.startswith("/"):
+                return self._fast_agy_slash(db, user, rest.split()[0].lower())
+            agy_manager.send_prompt(session.key, rest)
+            return self._agy_response(
+                f"⚡ Sent to Antigravity in **{session.alias}**: `{rest[:240]}`\n"
+                "It is working now; I will report the git summary when it settles.",
+                f"Sent prompt to {session.alias}",
+                [f"Session: {session.directory}"],
+                [
+                    {
+                        "tool_name": "agy_execute_prompt",
+                        "success": True,
+                        "summary": f"Sent prompt to {session.alias}",
+                    }
+                ],
+            )
+        except AgyError as exc:
+            target_err = re.match(
+                r"^(?:attach(?:\s+to)?|switch(?:\s+to)?|cd(?:\s+into|\s+to)?|use)\s+(.+)$",
+                rest,
+                re.IGNORECASE | re.DOTALL,
+            )
+            action_list = []
+            if target_err or not rest:
+                action_list.append(
+                    {
+                        "tool_name": "agy_attach_directory",
+                        "success": False,
+                        "summary": f"Failed to attach: {exc}",
+                        "error": str(exc),
+                    }
+                )
+            return self._agy_response(
+                f"⚠️ Antigravity is unavailable: {exc}",
+                "Antigravity command failed",
+                [str(exc)],
+                action_list if action_list else None,
+            )
+
+    def _fast_agy_changes(
+        self, db: Session, user: User, raw_project: str
+    ) -> tuple[AgentResponseSchema, list[dict[str, Any]]]:
+        project = re.sub(r"\b(project|repo|repository|code|workspace)\b", "", raw_project).strip()
+        project = project or raw_project.strip()
+        slug = re.sub(r"\s+", "_", project.lower())
+        memory = (
+            db.query(AIMemory)
+            .filter(
+                AIMemory.user_id == user.id,
+                AIMemory.category.ilike("coding_session"),
+                AIMemory.key.ilike(f"agy:{slug}:%"),
+            )
+            .order_by(AIMemory.updated_at.desc())
+            .first()
+        )
+        if memory is None:
+            memory = (
+                db.query(AIMemory)
+                .filter(
+                    AIMemory.user_id == user.id,
+                    AIMemory.category.ilike("coding_session"),
+                    AIMemory.content.ilike(f"%{project}%"),
+                )
+                .order_by(AIMemory.updated_at.desc())
+                .first()
+            )
+        if memory is None:
+            session = agy_manager.find_session(slug) or agy_manager.find_session(project)
+            if session and session.last_summary:
+                return self._agy_response(
+                    f"**{session.alias}** · {session.last_summary}\n\n```text\n{session.last_diff_stat or 'No diff stat'}\n```",
+                    f"Read live diff for {session.alias}",
+                    [f"Session: {session.directory}"],
+                )
+            return self._agy_response(
+                f"I have no harvested coding changes for **{project}** yet. "
+                f"Say `agy switch {project}` and give me a task.",
+                f"No coding memory for {project}",
+                [f"Project: {project}"],
+            )
+        try:
+            payload = json.loads(memory.content)
+        except (TypeError, ValueError):
+            payload = {"summary": memory.content[:800]}
+        summary = payload.get("summary") or "No summary stored."
+        prompt = payload.get("prompt") or ""
+        diff_stat = payload.get("diff_stat") or ""
+        body = f"**{project} · last Antigravity task**\n{summary}"
+        if prompt:
+            body += f"\n\n> {prompt[:400]}"
+        if diff_stat:
+            body += f"\n\n```text\n{diff_stat[:2000]}\n```"
+        return self._agy_response(
+            body,
+            f"Recalled changes for {project}",
+            [f"Memory #{memory.id}", f"Project: {project}"],
+        )
+
+    def _fast_log_expense(
+        self, db: Session, user: User, amount_raw: str, clue: str
+    ) -> tuple[AgentResponseSchema, list[dict[str, Any]]]:
+        amount = float(amount_raw)
+        if amount <= 0:
+            return self._agy_response(
+                "Expense amount must be greater than zero.",
+                "Rejected zero expense",
+            )
+        clue = " ".join(clue.split()).strip(" .")
+        try:
+            from app.schemas.finance import TransactionCreate
+            from app.services import finance_service
+
+            txn = finance_service.create_transaction(
+                db,
+                user,
+                TransactionCreate(
+                    kind="EXPENSE",
+                    amount=amount,
+                    category=clue[:60],
+                    note=clue[:255],
+                ),
+            )
+            today = finance_service.today_for(user)
+            todays_total = sum(
+                t.amount
+                for t in finance_service.list_transactions(
+                    db, user, kind="EXPENSE", limit=500
+                )
+                if t.occurred_on == today
+            )
+        except Exception as exc:
+            logger.warning("Fast expense path failed: %s", exc)
+            return self._agy_response(
+                f"Could not log that expense: {exc}",
+                "Expense logging failed",
+                [str(exc)],
+            )
+        return self._agy_response(
+            f"💸 Logged **₹{amount:,.2f}** for **{clue}**.\nToday's expenses: **₹{todays_total:,.2f}**.",
+            f"Logged ₹{amount:,.2f} expense for {clue}",
+            [f"Transaction #{txn.id}", f"Category: {txn.category}"],
+            [
+                {
+                    "tool_name": "log_expense",
+                    "success": True,
+                    "summary": f"Logged ₹{amount:,.2f} for {clue}",
+                    "data": {"transaction_id": txn.id, "amount": amount},
+                }
+            ],
+        )
+
+    def _fast_reflow_schedule(
+        self, db: Session, user: User, clean_msg: str
+    ) -> tuple[AgentResponseSchema, list[dict[str, Any]]]:
+        match = re.search(
+            r"(?:pushed back by|reflow schedule(?: by)?)\s*(\d+)\s*(?:m|min|mins|minutes)?",
+            clean_msg,
+        )
+        minutes = int(match.group(1)) if match else 15
+        minutes = max(5, min(minutes, 480))
+        now = utcnow()
+        try:
+            from app.services import schedule_service
+
+            blocks = schedule_service.list_time_blocks(db, user.id, start=now)
+            movable = [
+                block
+                for block in blocks
+                if block.status == TimeBlockStatus.SCHEDULED.value and block.start_time >= now
+            ]
+            delta = timedelta(minutes=minutes)
+            for block in movable:
+                block.start_time += delta
+                block.end_time += delta
+            db.commit()
+        except Exception as exc:
+            db.rollback()
+            logger.warning("Fast schedule reflow failed: %s", exc)
+            return self._agy_response(
+                f"Could not reflow the schedule: {exc}",
+                "Schedule reflow failed",
+            )
+        if not movable:
+            return self._agy_response(
+                f"No upcoming scheduled blocks to push back by {minutes}m.",
+                "No movable schedule blocks",
+            )
+        nxt = min(movable, key=lambda block: block.start_time)
+        local_start = to_local(nxt.start_time, user.timezone or "UTC").strftime("%a %I:%M %p")
+        return self._agy_response(
+            f"⏩ Pushed **{len(movable)}** upcoming block(s) back by **{minutes}m** "
+            f"(movable only). Next up at **{local_start}**.",
+            f"Reflowed {len(movable)} blocks by {minutes}m",
+            [f"Moved {len(movable)} SCHEDULED blocks", f"Delta: {minutes}m"],
+            [
+                {
+                    "tool_name": "reflow_schedule",
+                    "success": True,
+                    "summary": f"Pushed {len(movable)} blocks back by {minutes}m",
+                    "data": {"blocks": len(movable), "minutes": minutes},
+                }
+            ],
+        )
+
     # --- 2. Intent Routing ----------------------------------------------------
 
     def route_intent(self, user_message: str) -> list[str]:
@@ -669,6 +1052,186 @@ class IrisSupervisor:
 
     # --- 3. Sub-Agent Dispatch -----------------------------------------------
 
+    def slice_context_for_domain(
+        self,
+        db: Session,
+        user: User,
+        domain: str,
+        context: dict[str, Any] | None,
+    ) -> dict[str, Any]:
+        """Give each sub-agent only the state slice it needs.
+
+        Keeps routing latency and prompt tokens bounded by the agent's domain
+        instead of serializing the entire life OS on every delegation.
+        """
+        tz = user.timezone or "UTC"
+        now = utcnow()
+        shared: dict[str, Any] = {
+            "user_name": user.name,
+            "timezone": tz,
+            "now_local": to_local(now, tz).isoformat(),
+        }
+
+        if domain == "operator":
+            session = agy_manager.find_session(agy_manager.current_session_key)
+            coding_memories = (
+                db.query(AIMemory)
+                .filter(AIMemory.user_id == user.id, AIMemory.category.ilike("coding_session"))
+                .order_by(AIMemory.updated_at.desc())
+                .limit(5)
+                .all()
+            )
+            shared.update(
+                {
+                    "platform": os.name,
+                    "working_directory": session.directory
+                    if session
+                    else settings.agy_default_directory,
+                    "agy_sessions": [
+                        {
+                            "alias": item.alias,
+                            "directory": item.directory,
+                            "state": item.state,
+                            "last_summary": item.last_summary,
+                        }
+                        for item in agy_manager.active_sessions.values()
+                    ],
+                    "recent_coding_sessions": [
+                        {
+                            "key": item.key,
+                            "content": item.content[:1200],
+                            "updated_at": item.updated_at.isoformat() if item.updated_at else None,
+                        }
+                        for item in coding_memories
+                    ],
+                }
+            )
+        elif domain == "planner":
+            from app.services import schedule_service
+
+            blocks = schedule_service.list_time_blocks(
+                db, user.id, start=now, end=now + timedelta(days=2)
+            )
+            tasks = (
+                db.query(Task)
+                .filter(
+                    Task.user_id == user.id,
+                    Task.status.in_([TaskStatus.TODO.value, TaskStatus.IN_PROGRESS.value]),
+                )
+                .order_by(Task.deadline.asc().nullslast(), Task.priority.desc())
+                .limit(20)
+                .all()
+            )
+            shared.update(
+                {
+                    "upcoming_blocks": [
+                        {
+                            "id": block.id,
+                            "title": block.task.title if block.task else block.type,
+                            "start": block.start_time.isoformat(),
+                            "end": block.end_time.isoformat(),
+                            "status": block.status,
+                        }
+                        for block in blocks
+                    ],
+                    "open_tasks": [
+                        {
+                            "id": task.id,
+                            "title": task.title,
+                            "status": task.status,
+                            "priority": task.priority,
+                            "deadline": task.deadline.isoformat() if task.deadline else None,
+                            "estimated_duration": task.estimated_duration,
+                        }
+                        for task in tasks
+                    ],
+                }
+            )
+        elif domain == "scribe":
+            from app.models.lead import Lead
+            from app.models.startup import Startup
+            from app.services import diary_service, finance_service
+
+            brief = habit_service.situation_brief(db, user) or []
+            transactions = finance_service.list_transactions(db, user, limit=10)
+            lead_counts: dict[str, int] = {}
+            rows = (
+                db.query(Lead.status)
+                .join(Startup, Lead.startup_id == Startup.id)
+                .filter(Startup.user_id == user.id)
+                .all()
+            )
+            for (status_value,) in rows:
+                lead_counts[status_value] = lead_counts.get(status_value, 0) + 1
+            shared.update(
+                {
+                    "habits": brief[:10],
+                    "recent_expenses": [
+                        {
+                            "amount": txn.amount,
+                            "category": txn.category,
+                            "kind": txn.kind,
+                            "occurred_on": txn.occurred_on.isoformat() if txn.occurred_on else None,
+                        }
+                        for txn in transactions
+                    ],
+                    "diary": diary_service.get_diary_summary(db, user.id),
+                    "crm_pipeline": lead_counts,
+                }
+            )
+        elif domain == "bubba":
+            from app.models.email_account import EmailAccount
+            from app.models.lead import Lead
+            from app.models.startup import Startup
+
+            accounts = (
+                db.query(EmailAccount)
+                .filter(EmailAccount.user_id == user.id, EmailAccount.is_active.is_(True))
+                .all()
+            )
+            followups = (
+                db.query(Lead)
+                .join(Startup, Lead.startup_id == Startup.id)
+                .filter(
+                    Startup.user_id == user.id,
+                    Lead.next_follow_up.isnot(None),
+                    Lead.next_follow_up <= now,
+                )
+                .order_by(Lead.next_follow_up.asc())
+                .limit(10)
+                .all()
+            )
+            shared.update(
+                {
+                    "email_accounts": [
+                        {
+                            "alias": account.alias,
+                            "email_address": account.email_address,
+                            "provider": account.provider,
+                        }
+                        for account in accounts
+                    ],
+                    "leads_needing_follow_up": [
+                        {
+                            "id": lead.id,
+                            "name": lead.name,
+                            "company": lead.company,
+                            "status": lead.status,
+                            "next_follow_up": lead.next_follow_up.isoformat()
+                            if lead.next_follow_up
+                            else None,
+                        }
+                        for lead in followups
+                    ],
+                }
+            )
+
+        if context:
+            for key in ("force_agent", "conversation_id"):
+                if key in context:
+                    shared[key] = context[key]
+        return shared
+
     async def dispatch_to_subagent(
         self,
         domain: str,
@@ -694,7 +1257,10 @@ class IrisSupervisor:
                 error="Invalid domain",
             )
 
-        return await agent.execute(db=db, user=user, instruction=instruction, context=context)
+        sliced_context = self.slice_context_for_domain(db, user, domain, context)
+        return await agent.execute(
+            db=db, user=user, instruction=instruction, context=sliced_context
+        )
 
     # --- 4. Synthesis & Response Formatting ----------------------------------
 

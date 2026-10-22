@@ -30,13 +30,19 @@ async def lifespan(app: FastAPI):
         logging.getLogger(__name__).warning("Could not initialize default user in lifespan: %s", exc)
 
     # Start sovereign laptop relay daemon if on local host (not serverless)
+    import asyncio
     import os
+
+    from app.services.agy_bridge import agy_manager
     from app.services.mesh_relay_service import relay_daemon
+
+    agy_manager.start(asyncio.get_running_loop())
     if not os.environ.get("VERCEL") and not os.environ.get("AWS_LAMBDA_FUNCTION_NAME"):
         await relay_daemon.start()
 
     yield
 
+    await agy_manager.shutdown()
     if not os.environ.get("VERCEL") and not os.environ.get("AWS_LAMBDA_FUNCTION_NAME"):
         await relay_daemon.stop()
 
@@ -82,6 +88,7 @@ def create_app() -> FastAPI:
     register_exception_handlers(app)
 
     from app.api.routes import (
+        agy,
         ai,
         analytics,
         assistant,
@@ -91,9 +98,9 @@ def create_app() -> FastAPI:
         drive,
         email,
         finance,
-        habits,
         focus,
         goals,
+        habits,
         health,
         intelligence,
         mesh,
@@ -103,6 +110,7 @@ def create_app() -> FastAPI:
         startup,
         tasks,
         users,
+        vision,
         voice,
         workouts,
     )
@@ -127,6 +135,8 @@ def create_app() -> FastAPI:
     app.include_router(drive.router, prefix=api)
     app.include_router(coding.router, prefix=api)
     app.include_router(mesh.router, prefix=api)
+    app.include_router(agy.router, prefix=api)
+    app.include_router(vision.router, prefix=api)
     app.include_router(finance.router, prefix=api)
     app.include_router(habits.router, prefix=api)
     app.include_router(workouts.router, prefix=api)

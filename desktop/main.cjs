@@ -219,6 +219,15 @@ function createTray() {
     },
     { type: 'separator' },
     {
+      label: 'Open Antigravity Terminal (Alt+G)',
+      type: 'normal',
+      click: () => {
+        showWindow();
+        if (mainWindow) mainWindow.webContents.send('open-agy-drawer');
+      },
+    },
+    { type: 'separator' },
+    {
       label: 'Reload App (Ctrl+R)',
       click: () => {
         if (mainWindow) mainWindow.reload();
@@ -350,6 +359,12 @@ app.whenReady().then(() => {
 
   globalShortcut.register('CommandOrControl+Alt+I', () => {
     toggleWindow();
+  });
+
+  globalShortcut.register('Alt+G', () => {
+    showWindow();
+    if (mainWindow) mainWindow.webContents.send('open-agy-drawer');
+    log('Alt+G: requested Antigravity drawer');
   });
 
   app.on('activate', () => {

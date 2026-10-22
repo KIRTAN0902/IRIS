@@ -225,42 +225,37 @@
       font-size: 0.82rem;
     }
 
-    /* Screen Streaming Styles */
-    .screen-container {
-      position: relative;
-      width: 100%;
-      background: #000;
-      border-radius: 12px;
-      overflow: hidden;
+    /* Antigravity Terminal Card */
+    .agy-terminal {
+      background: #080A0F;
       border: 1px solid var(--card-border);
-      aspect-ratio: 16 / 10;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      touch-action: none;
+      border-radius: 12px;
+      padding: 10px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 0.76rem;
+      color: #C8D6E2;
+      max-height: 230px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+      line-height: 1.5;
     }
-    #remoteVideo, #remoteSnapshot {
-      width: 100%;
-      height: 100%;
-      object-fit: contain;
-      user-select: none;
-    }
-    .screen-overlay-controls {
-      position: absolute;
-      bottom: 8px;
-      right: 8px;
+    .agy-pills {
       display: flex;
       gap: 6px;
-      z-index: 10;
+      overflow-x: auto;
+      padding: 2px 0 6px;
     }
-    .icon-btn {
-      background: rgba(0, 0, 0, 0.6);
-      backdrop-filter: blur(6px);
-      border: 1px solid rgba(255, 255, 255, 0.2);
-      color: #fff;
-      padding: 6px 10px;
-      border-radius: 8px;
-      font-size: 0.75rem;
+    .agy-pill {
+      flex: 0 0 auto;
+      background: #0D1117;
+      border: 1px solid #243040;
+      color: #8FA6BB;
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 0.7rem;
+      cursor: pointer;
     }
 
     /* One-Time Pairing Modal */
@@ -435,45 +430,44 @@
 
   <div class="grid">
 
-    <!-- Card 1: Remote Desktop Screen Mirroring (Step 2) -->
+    <!-- Card 1: Antigravity Remote Terminal -->
     <div class="card">
       <div class="card-header">
-        <span class="card-title">🖥️ Laptop Screen (Live)</span>
-        <div style="display: flex; gap: 6px;">
-          <button id="btnToggleScreen" onclick="toggleScreenStream()" class="btn-emerald" style="flex:0; padding:4px 10px; font-size:0.75rem;">
-            ▶ View Desktop
-          </button>
-        </div>
+        <span class="card-title">⌘ Antigravity Terminal</span>
+        <span id="agyState" style="font-family: monospace; font-size: 0.7rem; color: var(--text-dim);">OFFLINE</span>
       </div>
 
-      <div class="screen-container" id="screenViewerBox" style="display: none;">
-        <video id="remoteVideo" autoplay playsinline muted style="display: none;"></video>
-        <img id="remoteSnapshot" alt="Laptop Desktop" style="display: block;">
-        <div class="screen-overlay-controls">
-          <button class="icon-btn" onclick="toggleVirtualKeyboard()" title="Type on Laptop">⌨️ Key</button>
-          <button class="icon-btn" onclick="requestFullScreenViewer()" title="Fullscreen">⛶ Full</button>
-        </div>
+      <div class="status-row">
+        <span style="color: var(--text-dim);">Session</span>
+        <span id="agySession" style="font-family: monospace;">Not attached</span>
       </div>
 
-      <!-- Virtual Keyboard Drawer -->
-      <div id="kbDrawer" style="display: none; flex-direction: column; gap: 8px;">
-        <div style="display: flex; gap: 6px;">
-          <input type="text" id="kbTextInput" placeholder="Type text to send to Laptop..." onkeydown="handleKbEnter(event)">
-          <button onclick="sendKbText()" class="btn-primary" style="flex:0; padding:8px 14px;">Send</button>
-        </div>
-        <div style="display: flex; gap: 6px;">
-          <button onclick="sendSpecialKey('Enter')" class="btn-secondary" style="font-size:0.75rem;">Enter ↵</button>
-          <button onclick="sendSpecialKey('Backspace')" class="btn-secondary" style="font-size:0.75rem;">Backspace ⌫</button>
-          <button onclick="sendSpecialKey('Escape')" class="btn-secondary" style="font-size:0.75rem;">Esc</button>
-          <button onclick="sendSpecialKey('Space')" class="btn-secondary" style="font-size:0.75rem;">Space</button>
-        </div>
+      <div style="display: flex; gap: 6px; margin: 6px 0;">
+        <input type="text" id="agyDirectory" placeholder="Workspace alias or path (iris, marketory…)" value="iris" />
+        <button onclick="agyAttach()" class="btn-emerald" style="flex:0; padding: 8px 12px;">Attach</button>
       </div>
 
-      <div style="display: flex; gap: 8px;">
-        <button onclick="sharePhoneScreen()" class="btn-secondary" style="font-size: 0.8rem;">
-          📱 Broadcast My Phone Screen
-        </button>
+      <div class="agy-pills">
+        <button class="agy-pill" onclick="agySlash('/resume')">/resume</button>
+        <button class="agy-pill" onclick="agySlash('/models')">/models</button>
+        <button class="agy-pill" onclick="agySlash('/usage')">/usage</button>
+        <button class="agy-pill" onclick="agySlash('/status')">/status</button>
+        <button class="agy-pill" onclick="agySlash('/compact')">/compact</button>
+        <button class="agy-pill" onclick="agySlash('/help')">/help</button>
       </div>
+
+      <div class="agy-terminal" id="agyOutput">Attach a workspace to start a persistent agy session.</div>
+
+      <div style="display: flex; gap: 6px; margin-top: 8px;">
+        <input type="text" id="agyPrompt" placeholder="Ask Antigravity to build or fix something…" onkeydown="handleAgyEnter(event)" />
+        <button onclick="agySend()" class="btn-primary" style="flex:0; padding: 8px 14px;">Send</button>
+      </div>
+
+      <div class="status-row" style="margin-top: 8px;">
+        <span style="color: var(--text-dim);">Last completed task</span>
+        <button id="agyDiffBtn" onclick="toggleAgyDiff()" class="btn-secondary" style="flex:0; padding: 3px 8px; font-size: 0.7rem;">Git Diff</button>
+      </div>
+      <div id="agyDiff" class="agy-terminal" style="display: none; margin-top: 6px;"></div>
     </div>
 
     <!-- Card 2: System Status & Hardware Control -->
@@ -537,7 +531,23 @@
       <div id="vaultList" style="display: flex; flex-direction: column; gap: 6px;"></div>
     </div>
 
-    <!-- Card 5: Autonomous Coding Trigger -->
+    <!-- Card 5: Ephemeral Vision -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">📷 Vision Context</span>
+        <span id="visionState" style="font-family: monospace; font-size: 0.7rem; color: var(--text-dim);">EPHEMERAL</span>
+      </div>
+      <div class="file-drop-area" onclick="document.getElementById('visionInput').click()">
+        <input type="file" id="visionInput" accept="image/*" capture="environment" style="display: none;" onchange="analyzeVisionImage(this.files[0]); this.value='';">
+        <div style="font-size: 1.5rem; margin-bottom: 4px;">📷</div>
+        <div style="font-size: 0.85rem; font-weight: 500;">Capture or pick an image</div>
+        <div style="font-size: 0.72rem; color: var(--text-dim);">Read once in memory · never stored</div>
+      </div>
+      <input type="text" id="visionPrompt" placeholder="Optional: log this receipt, explain this code…">
+      <div id="visionOutput" class="task-status-box" style="display: none; white-space: pre-wrap;"></div>
+    </div>
+
+    <!-- Card 6: Autonomous Coding Trigger -->
     <div class="card">
       <div class="card-header">
         <span class="card-title">⚡ Autonomous Antigravity</span>
@@ -576,9 +586,8 @@
     let alarmGain = null;
     let audioCtx = null;
     let isAlarmPlaying = false;
-    let isStreaming = false;
-    let peerConn = null;
-    let snapshotInterval = null;
+    let agyCurrentSession = null;
+    let agyLastDiff = "";
 
     // --- Pairing Logic (Phone Displays PIN, Laptop Enters It) ---
     let pendingInviteToken = "";
@@ -835,6 +844,7 @@
           fetchClipboard();
           loadVaultFiles();
           reportPhoneBattery();
+          loadAgyStatus();
         };
 
         ws.onmessage = (event) => {
@@ -886,173 +896,103 @@
       } else if (msg.type === "FILE_DROP") {
         showToast("File dropped: " + (msg.payload?.filename || "file"));
         loadVaultFiles();
-      }
-    }
-
-    // --- Step 2: Screen Streaming & Remote Input ---
-    async function toggleScreenStream() {
-      const viewer = document.getElementById("screenViewerBox");
-      const btn = document.getElementById("btnToggleScreen");
-
-      if (isStreaming) {
-        // Stop stream
-        isStreaming = false;
-        viewer.style.display = "none";
-        btn.textContent = "▶ View Desktop";
-        btn.className = "btn-emerald";
-        if (snapshotInterval) clearInterval(snapshotInterval);
-        if (peerConn) {
-          peerConn.close();
-          peerConn = null;
-        }
-        return;
-      }
-
-      // Start stream
-      isStreaming = true;
-      viewer.style.display = "flex";
-      btn.textContent = "⏹ Stop View";
-      btn.className = "btn-danger";
-
-      // 1. Start snapshot fallback immediate polling
-      startSnapshotFallback();
-
-      // 2. Negotiate WebRTC PeerConnection for 30fps smooth streaming
-      tryWebRTCStream();
-    }
-
-    function startSnapshotFallback() {
-      const img = document.getElementById("remoteSnapshot");
-      img.style.display = "block";
-      const refreshSnapshot = () => {
-        if (!isStreaming) return;
-        img.src = `/api/mesh/screen/snapshot?quality=60&scale=2&t=${Date.now()}`;
-      };
-      refreshSnapshot();
-      snapshotInterval = setInterval(refreshSnapshot, 400);
-    }
-
-    async function tryWebRTCStream() {
-      try {
-        const config = {
-          iceServers: [{ urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"] }]
-        };
-        peerConn = new RTCPeerConnection(config);
-        const video = document.getElementById("remoteVideo");
-        const img = document.getElementById("remoteSnapshot");
-
-        peerConn.addTransceiver("video", { direction: "recvonly" });
-
-        peerConn.ontrack = (event) => {
-          if (event.streams && event.streams[0]) {
-            video.srcObject = event.streams[0];
-            video.style.display = "block";
-            img.style.display = "none";
-            if (snapshotInterval) clearInterval(snapshotInterval);
+      } else if (msg.type === "AGY_RESULT") {
+        const result = msg.payload?.result || {};
+        if (result.success) {
+          if (result.session) {
+            agyCurrentSession = result.session;
+            document.getElementById("agySession").textContent =
+              `${result.session.alias} · ${result.session.directory}`;
+            document.getElementById("agyState").textContent = result.session.state || "IDLE";
           }
-        };
+          if (result.recent_output) {
+            document.getElementById("agyOutput").textContent = result.recent_output;
+          }
+        } else {
+          showToast("Antigravity: " + (result.error || "command failed"));
+        }
+      } else if (msg.type === "AGY_COMPLETION_CARD" || msg.type === "AGY_TASK_COMPLETED") {
+        const card = msg.payload || {};
+        const summary = card.summary || "Task complete.";
+        document.getElementById("agyOutput").textContent =
+          `${summary}\n\n${card.diff_stat || ""}`.trim();
+        document.getElementById("agyState").textContent = "IDLE";
+        agyLastDiff = card.diff || "";
+        showToast("Antigravity: " + summary);
+      }
+    }
 
-        const offer = await peerConn.createOffer();
-        await peerConn.setLocalDescription(offer);
+    // --- Antigravity Persistent Terminal ---
+    async function loadAgyStatus() {
+      try {
+        const res = await fetch("/api/agy/sessions");
+        if (!res.ok) return;
+        const data = await res.json();
+        const key = data.current_session_key;
+        const session = (data.sessions || []).find((item) => item.key === key) || data.sessions?.[0];
+        if (!session) return;
+        agyCurrentSession = session;
+        document.getElementById("agySession").textContent =
+          `${session.alias} · ${session.directory}`;
+        document.getElementById("agyState").textContent = session.state;
+        document.getElementById("agyDirectory").value = session.alias;
+        const statusRes = await fetch(`/api/agy/session/${encodeURIComponent(session.key)}`);
+        if (statusRes.ok) {
+          const status = await statusRes.json();
+          document.getElementById("agyOutput").textContent =
+            status.recent_output || "Session ready.";
+          agyLastDiff = status.last_diff || "";
+        }
+      } catch (e) {}
+    }
 
-        const res = await fetch("/api/mesh/screen/webrtc/offer", {
+    async function sendAgyCommand(command, parameters = {}) {
+      const reqId = Math.random().toString(36).slice(2, 10);
+      try {
+        const res = await fetch("/api/mesh/command", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            session_id: `session_${DEVICE_ID}`,
-            sdp: offer.sdp,
-            type: offer.type,
+            command,
+            parameters: { ...parameters, req_id: reqId, sender_device: DEVICE_ID },
           }),
         });
-
-        if (res.ok) {
-          const answer = await res.json();
-          await peerConn.setRemoteDescription(new RTCSessionDescription(answer));
-        }
-      } catch(e) {
-        console.warn("WebRTC fallback to snapshot stream:", e);
+        if (!res.ok) throw new Error("dispatch failed");
+        document.getElementById("agyState").textContent = "DISPATCHED";
+      } catch (e) {
+        showToast("Antigravity relay unavailable");
       }
     }
 
-    // Touch click mapping on screen
-    const screenViewerBox = document.getElementById("screenViewerBox");
-    screenViewerBox.addEventListener("click", (e) => {
-      const rect = screenViewerBox.getBoundingClientRect();
-      const xRatio = (e.clientX - rect.left) / rect.width;
-      const yRatio = (e.clientY - rect.top) / rect.height;
-      if (xRatio >= 0 && xRatio <= 1 && yRatio >= 0 && yRatio <= 1) {
-        sendMouseClick(xRatio, yRatio, "left");
-      }
-    });
-
-    async function sendMouseClick(x, y, button = "left") {
-      try {
-        await fetch("/api/mesh/screen/input/mouse", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "click", x: x, y: y, button: button }),
-        });
-      } catch(e) {}
+    function agyAttach() {
+      const directory = document.getElementById("agyDirectory").value.trim() || "iris";
+      sendAgyCommand("AGY_ATTACH_DIR", { directory });
+      document.getElementById("agyOutput").textContent = `Attaching to ${directory}…`;
     }
 
-    function toggleVirtualKeyboard() {
-      const kb = document.getElementById("kbDrawer");
-      kb.style.display = kb.style.display === "none" ? "flex" : "none";
-      if (kb.style.display === "flex") {
-        document.getElementById("kbTextInput").focus();
-      }
-    }
-
-    async function sendKbText() {
-      const input = document.getElementById("kbTextInput");
-      const text = input.value;
+    function agySend() {
+      const input = document.getElementById("agyPrompt");
+      const text = input.value.trim();
       if (!text) return;
-      try {
-        await fetch("/api/mesh/screen/input/keyboard", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ text: text }),
-        });
-        showToast("Sent to laptop!");
-        input.value = "";
-      } catch(e) {}
+      sendAgyCommand("AGY_SEND_INPUT", { input: text });
+      document.getElementById("agyOutput").textContent = `> ${text}\n\nWorking…`;
+      input.value = "";
     }
 
-    function handleKbEnter(e) {
-      if (e.key === "Enter") {
-        sendKbText();
-      }
+    function handleAgyEnter(event) {
+      if (event.key === "Enter") agySend();
     }
 
-    async function sendSpecialKey(keyName) {
-      try {
-        await fetch("/api/mesh/screen/input/keyboard", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ key: keyName }),
-        });
-        showToast(`Sent ${keyName}`);
-      } catch(e) {}
+    function agySlash(command) {
+      sendAgyCommand("AGY_SLASH_CMD", { command });
+      document.getElementById("agyOutput").textContent = `> ${command}`;
     }
 
-    function requestFullScreenViewer() {
-      const elem = document.getElementById("screenViewerBox");
-      if (elem.requestFullscreen) elem.requestFullscreen();
-      else if (elem.webkitRequestFullscreen) elem.webkitRequestFullscreen();
-    }
-
-    // Share Phone Screen back to Laptop
-    async function sharePhoneScreen() {
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
-        showToast("Screen broadcast requires HTTPS or Chrome/Safari");
-        return;
-      }
-      try {
-        const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
-        showToast("📱 Broadcasting screen to IRIS Dashboard!");
-      } catch(e) {
-        showToast("Screen share cancelled");
-      }
+    function toggleAgyDiff() {
+      const box = document.getElementById("agyDiff");
+      const show = box.style.display === "none";
+      box.style.display = show ? "block" : "none";
+      box.textContent = agyLastDiff || "No harvested diff yet. Complete a task first.";
     }
 
     // Fetch Device & Host Power Status
@@ -1155,6 +1095,59 @@
       } else {
         document.getElementById("phoneBattery").textContent = "Available in mobile browser";
       }
+    }
+
+    // Ephemeral Vision — image bytes are read in RAM and never uploaded to storage.
+    async function analyzeVisionImage(file) {
+      if (!file) return;
+      const state = document.getElementById("visionState");
+      const output = document.getElementById("visionOutput");
+      const promptInput = document.getElementById("visionPrompt");
+      if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) {
+        showToast("Use a PNG, JPEG or WebP image");
+        return;
+      }
+      if (file.size > 10 * 1024 * 1024) {
+        showToast("Image is larger than 10 MB");
+        return;
+      }
+
+      state.textContent = "READING";
+      output.style.display = "none";
+      const reader = new FileReader();
+      reader.onload = async () => {
+        const prompt = promptInput.value.trim() || "Extract the useful context from this image and act on it.";
+        try {
+          const res = await fetch("/api/vision/ingest", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              image_base64: String(reader.result),
+              mime_type: file.type,
+              prompt: prompt,
+            }),
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.detail || data.error?.message || "Vision failed");
+          const visual = data.visual_context || {};
+          output.style.display = "block";
+          output.textContent = `${data.answer}\n\n${visual.detected_domain || "PERSONAL"} · ${visual.model || "vision"} · not stored`;
+          promptInput.value = "";
+          showToast("Visual context processed");
+          state.textContent = "DONE";
+        } catch (e) {
+          output.style.display = "block";
+          output.textContent = "Vision error: " + e.message;
+          state.textContent = "ERROR";
+        } finally {
+          reader.result = null;
+        }
+      };
+      reader.onerror = () => {
+        state.textContent = "ERROR";
+        showToast("Could not read image");
+      };
+      reader.readAsDataURL(file);
     }
 
     // AirDrop File Vault

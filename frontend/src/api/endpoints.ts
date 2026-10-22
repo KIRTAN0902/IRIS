@@ -47,6 +47,7 @@ import type {
   ChatMessageOut,
   ConversationDetailOut,
   ConversationOut,
+  VisionIngestResponse,
 
   TaskCreate,
   TaskOut,
@@ -244,6 +245,19 @@ export const aiApi = {
   messages: (conversationId: number) =>
     api.get<MessageRow[]>(`/ai/conversations/${conversationId}/messages`),
   status: () => api.get<AIStatusOut>("/ai/status"),
+};
+
+// --- Ephemeral Vision ---------------------------------------------------------
+
+export const visionApi = {
+  /** Analyze an image in RAM. The backend never persists the image itself. */
+  ingest: (payload: {
+    image_base64: string;
+    mime_type: string;
+    prompt?: string;
+    conversation_id?: number | null;
+    domain_hint?: string;
+  }) => api.post<VisionIngestResponse>("/vision/ingest", payload),
 };
 
 // --- Intelligence (Phase 3) ---------------------------------------------------------------

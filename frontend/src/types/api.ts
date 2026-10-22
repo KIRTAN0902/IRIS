@@ -495,6 +495,38 @@ export interface AskIRISResponse extends AIMeta {
   conversation_id: number;
 }
 
+export interface VisualActionableItem {
+  kind: string;
+  title?: string;
+  amount?: number | null;
+  merchant?: string | null;
+  category?: string | null;
+  due_date?: string | null;
+}
+
+/** Text-only telemetry derived from an ephemeral image; never includes image data. */
+export interface VisualContext {
+  summary: string;
+  extracted_text_or_code: string;
+  detected_domain: string;
+  actionable_items: VisualActionableItem[];
+  memory_facts: string[];
+  provider: string;
+  model: string;
+  image_persisted: boolean;
+}
+
+export interface VisionIngestResponse {
+  answer: string;
+  conversation_id: number;
+  source: AISource | string;
+  actions_taken: ActionExecuted[];
+  visual_context: VisualContext;
+  memory_id: number;
+  image_persisted: boolean;
+  message: ChatMessageOut;
+}
+
 export interface ConversationRow {
   id: number;
   title: string;
@@ -723,6 +755,9 @@ export interface ChatMessageIn {
   voice?: boolean;
   /** Reply without waiting for memory extraction; then call chatApi.remember(). */
   defer_memory?: boolean;
+  /** Ephemeral image payload; the backend drops it after analysis. */
+  image_base64?: string;
+  mime_type?: string;
 }
 
 export interface AIMemoryUpdated {
@@ -750,6 +785,8 @@ export interface ChatMessageOut {
   source: AISource | string;
   memories_updated?: AIMemoryUpdated[];
   created_at: Iso;
+  fast_path?: boolean;
+  visual_context?: VisualContext | null;
 }
 
 export interface ConversationOut {
@@ -781,6 +818,7 @@ export type MemoryCategory =
   | "PROJECT"
   | "CONSTRAINT"
   | "INSTRUCTION"
+  | "VISUAL_CONTEXT"
   | "GENERAL";
 
 export interface AIMemoryOut {

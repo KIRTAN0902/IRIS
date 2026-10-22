@@ -127,3 +127,39 @@ def test_memory_extracted_inline_by_default(client: TestClient, db: Session, mon
     conv = client.post("/api/chat/conversations").json()
     client.post(f"/api/chat/conversations/{conv['id']}/messages", json={"content": "hello"})
     assert len(calls) == 1
+
+
+def test_fast_path_chat_api_skips_memory_extraction(client: TestClient, db: Session, monkeypatch):
+    from app.services.agy_bridge import AgySession, agy_manager
+    from app.services.memory_service import memory_service
+
+    session = AgySession(key="notebook", directory=r"C:\kirtan\Notebook", alias="notebook")
+    session.state = "IDLE"
+    monkeypatch.setattr(agy_manager, "spawn_or_attach", lambda *args, **kwargs: session)
+
+    calls = []
+
+    async def fake_extract(**kwargs):
+        calls.append(kwargs)
+        return []
+
+    monkeypatch.setattr(memory_service, "extract_and_store_from_conversation", fake_extract)
+    conv = client.post("/api/chat/conversations").json()
+
+    # Even with defer_memory=False, fast-path message must skip extraction completely
+    res = client.post(
+        f"/api/chat/conversations/{conv['id']}/messages",
+        json={"content": "attach notebook", "defer_memory": False},
+    )
+    assert res.status_code == 200
+    msg = res.json()
+    assert msg["fast_path"] is True
+    assert msg["memories_updated"] == []
+    assert len(calls) == 0
+
+    # /remember call on fast-path turn returns immediately without LLM extraction
+    remember_res = client.post(f"/api/chat/messages/{msg['id']}/remember")
+    assert remember_res.status_code == 200
+    assert remember_res.json() == {"memories_updated": []}
+    assert len(calls) == 0
+

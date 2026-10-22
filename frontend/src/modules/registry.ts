@@ -27,6 +27,7 @@ import {
   Rocket,
   Settings,
   Smartphone,
+  SquareTerminal,
   Target,
   Wallet,
 } from "lucide-react";
@@ -85,6 +86,14 @@ export const DIARY_NAV_ITEM: NavItem = {
   route: "/diary",
   glyph: "📖",
   icon: BookOpen,
+};
+
+export const AGY_NAV_ITEM: NavItem = {
+  id: "agy",
+  name: "Antigravity",
+  route: "/agy",
+  glyph: "⌘",
+  icon: SquareTerminal,
 };
 
 /**
@@ -146,6 +155,7 @@ export const PRIMARY_NAV_ITEMS_DESKTOP: NavItem[] = [
 export const PRIMARY_NAV_ITEMS: NavItem[] = PRIMARY_NAV_ITEMS_DESKTOP;
 
 export const MORE_NAV_ITEMS: NavItem[] = [
+  AGY_NAV_ITEM,
   DIARY_NAV_ITEM,
   {
     id: "gym",
@@ -196,6 +206,15 @@ export const MODULES: ModuleDefinition[] = [
     category: "command",
     enabled: true,
     glyph: "◎",
+  },
+  {
+    id: "agy",
+    name: "Antigravity",
+    icon: SquareTerminal,
+    route: "/agy",
+    category: "command",
+    enabled: true,
+    glyph: "⌘",
   },
   {
     id: "schedule",
