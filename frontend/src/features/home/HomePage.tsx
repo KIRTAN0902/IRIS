@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useSearchParams } from "react-router-dom";
-import { ArrowUp, Mic, Play, X } from "lucide-react";
+import { ArrowUp, Mic, Play, Plus, X } from "lucide-react";
 import {
   useCompleteTask,
   useConversation,
@@ -50,6 +50,9 @@ function Conversation({
   const sendMsg = useSendMessage();
   const [input, setInput] = useState("");
   const [lastSent, setLastSent] = useState("");
+  const [lastSentImage, setLastSentImage] = useState<string | null>(null);
+  const [image, setImage] = useState<{ file: File; preview: string } | null>(null);
+  const [imageError, setImageError] = useState<string | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
   // The conversation this component just created from a new chat: switching to
   // it must not reset the in-flight reply.
@@ -66,22 +69,76 @@ function Conversation({
     if (conversationId !== null && conversationId === createdRef.current) return;
     setInput("");
     setLastSent("");
+    setLastSentImage(null);
+    if (image) URL.revokeObjectURL(image.preview);
+    setImage(null);
+    setImageError(null);
     sendMsg.reset();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversationId]);
 
   useEffect(() => {
+    return () => {
+      if (image) URL.revokeObjectURL(image.preview);
+    };
+  }, [image]);
+
+  useEffect(() => {
     if (messages.length || sendMsg.isPending) endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages.length, sendMsg.isPending]);
+
+  const selectImage = (file: File) => {
+    const validTypes = ["image/png", "image/jpeg", "image/jpg", "image/webp"];
+    if (!validTypes.includes(file.type)) {
+      setImageError("Please upload a PNG, JPEG, or WebP image.");
+      return;
+    }
+    const maxBytes = 10 * 1024 * 1024;
+    if (file.size > maxBytes) {
+      setImageError("Image is larger than 10 MB.");
+      return;
+    }
+    setImageError(null);
+    if (image) URL.revokeObjectURL(image.preview);
+    setImage({ file, preview: URL.createObjectURL(file) });
+  };
+
+  const removeImage = () => {
+    if (image) URL.revokeObjectURL(image.preview);
+    setImage(null);
+    setImageError(null);
+  };
 
   /** Send a message (creating the conversation first if needed); resolves with IRIS's reply. */
   const send = async (text?: string, voice = false): Promise<ChatMessageOut | null> => {
     const content = (text ?? input).trim();
-    if (!content || sendMsg.isPending) return null;
+    if ((!content && !image) || sendMsg.isPending) return null;
+
+    const currentImage = image;
+    let imageBase64: string | undefined;
+    let mimeType: string | undefined;
+
+    if (currentImage) {
+      try {
+        imageBase64 = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(String(reader.result));
+          reader.onerror = reject;
+          reader.readAsDataURL(currentImage.file);
+        });
+        mimeType = currentImage.file.type;
+      } catch {
+        setImageError("Failed to read image file.");
+        return null;
+      }
+    }
+
+    const effectiveContent = content || (currentImage ? "Analyze this image" : "");
     let id = idRef.current;
     if (!id) {
       try {
-        id = (await createConv.mutateAsync(content.slice(0, 60))).id;
+        const title = (content || currentImage?.file.name || "Image inquiry").slice(0, 60);
+        id = (await createConv.mutateAsync(title)).id;
         createdRef.current = id;
         idRef.current = id;
         onCreated(id);
@@ -89,10 +146,19 @@ function Conversation({
         return null;
       }
     }
-    setLastSent(content);
+    setLastSent(effectiveContent);
+    setLastSentImage(currentImage?.preview ?? null);
     setInput("");
+    setImage(null);
+    setImageError(null);
     try {
-      return await sendMsg.mutateAsync({ conversationId: id, content, voice });
+      return await sendMsg.mutateAsync({
+        conversationId: id,
+        content: effectiveContent,
+        voice,
+        image_base64: imageBase64,
+        mime_type: mimeType,
+      });
     } catch {
       return null;
     }
@@ -112,6 +178,10 @@ function Conversation({
         onSend={() => send()}
         onVoice={voice.start}
         disabled={busy}
+        image={image}
+        onSelectImage={selectImage}
+        onRemoveImage={removeImage}
+        imageError={imageError}
       />
       {voice.notice && !talking && (
         <p className="mt-2 px-4 text-center text-[13px] text-ink-faint" role="status">
@@ -151,7 +221,7 @@ function Conversation({
         {busy && (
           <>
             {lastSent && !messages.some((m) => m.role === "USER" && m.content === lastSent) && (
-              <UserNote content={lastSent} />
+              <UserNote content={lastSent} imagePreview={lastSentImage} />
             )}
             <p className="text-[14px] text-ink-faint animate-pulse">IRIS is thinking…</p>
           </>
@@ -184,6 +254,10 @@ function Composer({
   onVoice,
   disabled,
   autoFocus = true,
+  image,
+  onSelectImage,
+  onRemoveImage,
+  imageError,
 }: {
   value: string;
   onChange: (v: string) => void;
@@ -191,8 +265,13 @@ function Composer({
   onVoice: () => void;
   disabled: boolean;
   autoFocus?: boolean;
+  image: { file: File; preview: string } | null;
+  onSelectImage: (file: File) => void;
+  onRemoveImage: () => void;
+  imageError?: string | null;
 }) {
   const ref = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const el = ref.current;
@@ -201,56 +280,140 @@ function Composer({
     el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
   }, [value]);
 
-  const ready = Boolean(value.trim()) && !disabled;
+  const ready = (Boolean(value.trim()) || Boolean(image)) && !disabled;
+
+  const handlePaste = (e: React.ClipboardEvent) => {
+    const file = Array.from(e.clipboardData.files).find((f) => f.type.startsWith("image/"));
+    if (file) {
+      e.preventDefault();
+      onSelectImage(file);
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    const file = Array.from(e.dataTransfer.files).find((f) => f.type.startsWith("image/"));
+    if (file) {
+      onSelectImage(file);
+    }
+  };
+
   return (
     <form
       onClick={() => ref.current?.focus()}
+      onPaste={handlePaste}
+      onDragOver={(e) => e.preventDefault()}
+      onDrop={handleDrop}
       onSubmit={(e) => {
         e.preventDefault();
         if (ready) onSend();
       }}
-      className="flex items-end gap-2 rounded-3xl border border-ops-line-bright bg-ops-void px-4 py-2.5 focus-within:border-ink-faint cursor-text relative z-10"
+      className="flex flex-col rounded-3xl border border-ops-line-bright bg-ops-void p-2.5 focus-within:border-ink-faint cursor-text relative z-10 transition-colors shadow-sm"
     >
-      <textarea
-        ref={ref}
-        value={value}
-        autoFocus={autoFocus}
-        onChange={(e) => onChange(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" && !e.shiftKey) {
-            e.preventDefault();
-            if (ready) onSend();
-          }
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/png,image/jpeg,image/webp,image/jpg"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) onSelectImage(file);
+          e.target.value = "";
         }}
-        placeholder="Ask IRIS anything"
-        rows={1}
-        className="min-h-[28px] max-h-52 flex-1 resize-none bg-transparent py-1 text-[15px] leading-relaxed text-ink placeholder:text-ink-faint focus:outline-none"
       />
-      <button
-        type="button"
-        onClick={(e) => {
-          e.stopPropagation();
-          onVoice();
-        }}
-        disabled={disabled}
-        aria-label="Talk to IRIS"
-        title="Talk to IRIS"
-        className="mb-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-ink-dim transition-colors hover:bg-ops-raised hover:text-ink disabled:opacity-40 cursor-pointer"
-      >
-        <Mic size={17} strokeWidth={2} />
-      </button>
-      <button
-        type="submit"
-        disabled={!ready}
-        onClick={(e) => e.stopPropagation()}
-        aria-label="Send"
-        className={cn(
-          "mb-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-opacity",
-          ready ? "bg-ink text-ops-ground cursor-pointer hover:opacity-85" : "bg-ops-raised text-ink-faint",
-        )}
-      >
-        <ArrowUp size={16} strokeWidth={2.5} />
-      </button>
+
+      {image && (
+        <div className="mb-2 ml-1 flex items-center gap-2.5 rounded-2xl border border-ops-line bg-ops-raised/60 px-3 py-1.5 w-fit max-w-[95%]">
+          <img
+            src={image.preview}
+            alt="Upload preview"
+            className="h-10 w-10 shrink-0 rounded-lg border border-ops-line object-cover"
+          />
+          <div className="min-w-0 flex-1 pr-1">
+            <p className="truncate text-[12px] text-ink font-medium max-w-[200px] sm:max-w-[280px]">
+              {image.file.name}
+            </p>
+            <p className="text-[10px] text-ink-faint">
+              {(image.file.size / 1024).toFixed(0)} KB · Ephemeral vision
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onRemoveImage();
+            }}
+            aria-label="Remove attached image"
+            title="Remove image"
+            className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-ink-faint hover:bg-ops-raised hover:text-ink transition-colors cursor-pointer"
+          >
+            <X size={13} />
+          </button>
+        </div>
+      )}
+
+      {imageError && (
+        <p className="mb-1.5 px-3 text-[12px] text-caution">{imageError}</p>
+      )}
+
+      <div className="flex items-end gap-1.5">
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            fileInputRef.current?.click();
+          }}
+          disabled={disabled}
+          aria-label="Upload image"
+          title="Upload image (+)"
+          className="mb-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-ink-dim transition-colors hover:bg-ops-raised hover:text-ink disabled:opacity-40 cursor-pointer"
+        >
+          <Plus size={18} strokeWidth={2.2} />
+        </button>
+
+        <textarea
+          ref={ref}
+          value={value}
+          autoFocus={autoFocus}
+          onChange={(e) => onChange(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              if (ready) onSend();
+            }
+          }}
+          placeholder={image ? "Ask a question about this image (or press send)…" : "Ask IRIS anything"}
+          rows={1}
+          className="min-h-[28px] max-h-52 flex-1 resize-none bg-transparent py-1 px-1 text-[15px] leading-relaxed text-ink placeholder:text-ink-faint focus:outline-none"
+        />
+
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onVoice();
+          }}
+          disabled={disabled}
+          aria-label="Talk to IRIS"
+          title="Talk to IRIS"
+          className="mb-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-ink-dim transition-colors hover:bg-ops-raised hover:text-ink disabled:opacity-40 cursor-pointer"
+        >
+          <Mic size={17} strokeWidth={2} />
+        </button>
+
+        <button
+          type="submit"
+          disabled={!ready}
+          onClick={(e) => e.stopPropagation()}
+          aria-label="Send"
+          className={cn(
+            "mb-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-opacity",
+            ready ? "bg-ink text-ops-ground cursor-pointer hover:opacity-85" : "bg-ops-raised text-ink-faint",
+          )}
+        >
+          <ArrowUp size={16} strokeWidth={2.5} />
+        </button>
+      </div>
     </form>
   );
 }
@@ -341,13 +504,46 @@ function VoiceOverlay({ voice }: { voice: ReturnType<typeof useVoiceConversation
   );
 }
 
-function UserNote({ content, time }: { content: string; time?: string }) {
+function UserNote({
+  content,
+  time,
+  imagePreview,
+}: {
+  content: string;
+  time?: string;
+  imagePreview?: string | null;
+}) {
+  const hasVisionTag = content.includes("[📷 Visual Context Processed:");
+  const displayContent = hasVisionTag
+    ? content.split("[📷 Visual Context Processed:")[0].trim() || "Shared an image"
+    : content;
+  const visionSummary = hasVisionTag
+    ? content.split("[📷 Visual Context Processed:")[1]?.replace(/\]$/, "").trim()
+    : null;
+
   return (
-    <div className="flex flex-col items-end">
+    <div className="flex flex-col items-end max-w-[85%] ml-auto">
       {time && <p className="mb-1 text-[12px] text-ink-faint tnum">{time}</p>}
-      <p className="max-w-[85%] whitespace-pre-wrap rounded-3xl bg-ops-raised px-4 py-2.5 text-[15px] leading-relaxed text-ink">
-        {content}
-      </p>
+      <div className="rounded-3xl bg-ops-raised px-4 py-2.5 text-[15px] leading-relaxed text-ink space-y-2">
+        {imagePreview && (
+          <img
+            src={imagePreview}
+            alt="Uploaded preview"
+            className="max-h-48 max-w-full rounded-2xl border border-ops-line object-cover"
+          />
+        )}
+        {hasVisionTag && !imagePreview && (
+          <div className="inline-flex items-center gap-1.5 text-[12px] text-ai font-medium">
+            <span>📷 Image attached</span>
+          </div>
+        )}
+        <p className="whitespace-pre-wrap">{displayContent}</p>
+        {visionSummary && (
+          <p className="text-[11px] text-ink-faint border-t border-ops-line/50 pt-1">
+            Context: {visionSummary}
+          </p>
+        )}
+      </div>
     </div>
   );
 }
@@ -370,6 +566,30 @@ function Message({ m }: { m: ChatMessageOut }) {
         {m.source === "DETERMINISTIC" && " · offline engine"}
       </p>
       <Markdown text={m.content} className="text-[15px] leading-relaxed text-ink" />
+
+      {m.visual_context && (
+        <details className="mt-3 border border-ops-line bg-ops-raised/30 px-3 py-2 rounded-xl text-[12px]">
+          <summary className="cursor-pointer text-ink-faint font-medium select-none">
+            Vision Context · {m.visual_context.detected_domain} · {m.visual_context.model}
+          </summary>
+          <div className="mt-2 space-y-1.5 text-ink-dim">
+            <p>{m.visual_context.summary}</p>
+            {m.visual_context.extracted_text_or_code && (
+              <pre className="whitespace-pre-wrap font-mono text-[11px] text-ink-faint bg-ops-void p-2 rounded border border-ops-line/50">
+                {m.visual_context.extracted_text_or_code}
+              </pre>
+            )}
+            {m.visual_context.actionable_items && m.visual_context.actionable_items.length > 0 && (
+              <p className="text-ai">
+                Action items:{" "}
+                {m.visual_context.actionable_items
+                  .map((item) => item.title || item.kind)
+                  .join(", ")}
+              </p>
+            )}
+          </div>
+        </details>
+      )}
 
       {(actions.length > 0 || (m.memories_updated?.length ?? 0) > 0) && (
         <ul className="mt-3 space-y-0.5 text-[13px]">

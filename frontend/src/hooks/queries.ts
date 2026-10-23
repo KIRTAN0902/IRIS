@@ -398,8 +398,26 @@ export const useSendMessage = () => {
   const qc = useQueryClient();
   return useMutation({
     // Reply first; memory is updated by a follow-up call so it never delays the answer.
-    mutationFn: ({ conversationId, content, voice }: { conversationId: number; content: string; voice?: boolean }) =>
-      chatApi.sendMessage(conversationId, { content, voice, defer_memory: true }),
+    mutationFn: ({
+      conversationId,
+      content,
+      voice,
+      image_base64,
+      mime_type,
+    }: {
+      conversationId: number;
+      content: string;
+      voice?: boolean;
+      image_base64?: string;
+      mime_type?: string;
+    }) =>
+      chatApi.sendMessage(conversationId, {
+        content,
+        voice,
+        defer_memory: true,
+        image_base64,
+        mime_type,
+      }),
     onSuccess: (data, variables) => {
       chatApi
         .remember(data.id)

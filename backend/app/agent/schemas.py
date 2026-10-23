@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Self
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class ToolCall(BaseModel):
@@ -76,7 +76,7 @@ class AgentResponseSchema(BaseModel):
 class ChatMessageIn(BaseModel):
     """User input payload for a chat message."""
 
-    content: str = Field(..., min_length=1, max_length=120_000, description="User's input")
+    content: str = Field(default="", max_length=120_000, description="User's input")
     voice: bool = Field(False, description="Spoken by voice; the reply will be read aloud")
     defer_memory: bool = Field(
         False, description="Reply first; the client then calls POST /chat/messages/{id}/remember"
@@ -91,6 +91,12 @@ class ChatMessageIn(BaseModel):
     mime_type: str | None = Field(
         None, max_length=100, description="Image MIME type (image/png, image/jpeg, image/webp)"
     )
+
+    @model_validator(mode="after")
+    def validate_content_or_image(self) -> Self:
+        if not self.content.strip() and not self.image_base64:
+            raise ValueError("Either content or image_base64 must be provided.")
+        return self
 
 
 class ChatMessageOut(BaseModel):

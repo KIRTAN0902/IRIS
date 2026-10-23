@@ -237,3 +237,34 @@ def test_chat_message_accepts_transient_image_and_strips_it(client, db, monkeypa
     assert PNG_B64 not in database_text
     assert PNG_FRAGMENT not in database_text
     assert "Blue Bottle" in database_text
+
+    # Verify conversation detail endpoint preserves visual_context
+    conv_res = client.get(f"/api/chat/conversations/{conversation_id}")
+    assert conv_res.status_code == 200
+    detail = conv_res.json()
+    assert len(detail["messages"]) > 0
+    assistant_msg = next((m for m in detail["messages"] if m["role"] == "ASSISTANT"), None)
+    assert assistant_msg is not None
+    assert assistant_msg["visual_context"] is not None
+    assert assistant_msg["visual_context"]["detected_domain"] == "PERSONAL"
+
+
+def test_chat_message_accepts_image_without_text(client, db, monkeypatch):
+    monkeypatch.setattr(vision_service, "_provider_override", FakeVisionProvider())
+    conversation = client.post("/api/chat/conversations", params={"title": "Vision Empty Prompt"})
+    assert conversation.status_code == 201
+    conversation_id = conversation.json()["id"]
+
+    response = client.post(
+        f"/api/chat/conversations/{conversation_id}/messages",
+        json={
+            "content": "",
+            "image_base64": PNG_B64,
+            "mime_type": "image/png",
+        },
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["visual_context"]["summary"].startswith("Receipt from Blue Bottle")
+    assert body["conversation_id"] == conversation_id
+

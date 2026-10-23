@@ -90,6 +90,7 @@ def get_conversation(
                 memories_updated=meta.get("memories_updated", []),
                 created_at=m.created_at,
                 fast_path=bool(meta.get("fast_path", False)),
+                visual_context=meta.get("visual_context"),
             )
         )
 
@@ -127,13 +128,18 @@ async def send_message(
 
         payload.image_base64 = None
         payload.mime_type = None
+        prompt = (
+            payload.content.strip()
+            if payload.content and payload.content.strip()
+            else "Extract the useful context from this image and act on it."
+        )
         try:
             msg_out, _result, _memory = await vision_service.process_ephemeral_turn(
                 db=db,
                 user=user,
                 image_bytes=image_bytes,
                 mime_type=mime_type,
-                prompt=payload.content,
+                prompt=prompt,
                 conversation_id=conversation_id,
             )
         except VisionError as exc:

@@ -5,7 +5,7 @@ import {
   type ClipboardEvent,
   type DragEvent,
 } from "react";
-import { AlertTriangle, ArrowUpRight, CornerDownLeft, ImagePlus, X } from "lucide-react";
+import { AlertTriangle, ArrowUpRight, CornerDownLeft, Plus, X } from "lucide-react";
 import { useAIStatus, useAskIRIS, useIngestVision, useTodayState } from "@/hooks/queries";
 import { useUiStore } from "@/stores";
 import { Button } from "@/components/ui/Button";
@@ -238,11 +238,11 @@ export function AskIrisConsole() {
                   e.stopPropagation();
                   imageInputRef.current?.click();
                 }}
-                aria-label="Attach a temporary image"
-                title="Attach a temporary image"
+                aria-label="Upload image"
+                title="Upload image (+)"
                 className="text-ink-faint hover:text-ai"
               >
-                <ImagePlus size={16} />
+                <Plus size={16} strokeWidth={2.2} />
               </button>
               <kbd className="border border-ops-line px-1.5 text-[10px] text-ink-faint select-none">
                 esc
