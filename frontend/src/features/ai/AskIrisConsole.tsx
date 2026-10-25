@@ -38,6 +38,12 @@ interface ThreadMessage {
  * Not a chat page: an overlay reachable from EVERY module via Cmd/Ctrl+K,
  * grounded in live context by the backend.
  */
+interface AttachedImage {
+  id: string;
+  file: File;
+  preview: string;
+}
+
 export function AskIrisConsole() {
   const open = useUiStore((s) => s.askOpen);
   const setOpen = useUiStore((s) => s.setAskOpen);
@@ -51,7 +57,7 @@ export function AskIrisConsole() {
   const [question, setQuestion] = useState("");
   const [conversationId, setConversationId] = useState<number | undefined>();
   const [thread, setThread] = useState<ThreadMessage[]>([]);
-  const [image, setImage] = useState<{ file: File; preview: string } | null>(null);
+  const [images, setImages] = useState<AttachedImage[]>([]);
   const [imageError, setImageError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -63,16 +69,17 @@ export function AskIrisConsole() {
       setQuestion("");
       setTimeout(() => inputRef.current?.focus(), 30);
     } else {
-      setImage(null);
+      images.forEach((img) => URL.revokeObjectURL(img.preview));
+      setImages([]);
       setImageError(null);
     }
   }, [open]);
 
   useEffect(() => {
     return () => {
-      if (image) URL.revokeObjectURL(image.preview);
+      images.forEach((img) => URL.revokeObjectURL(img.preview));
     };
-  }, [image]);
+  }, [images]);
 
   // Escape closes from anywhere while the console is open.
   useEffect(() => {
@@ -84,91 +91,125 @@ export function AskIrisConsole() {
     return () => window.removeEventListener("keydown", onKey);
   }, [open, setOpen]);
 
-  const selectImage = (file: File) => {
-    if (!IMAGE_TYPES.includes(file.type)) {
-      setImageError("Use a PNG, JPEG or WebP image.");
-      return;
+  const addImages = (files: File[]) => {
+    let err: string | null = null;
+    const newImgs: AttachedImage[] = [];
+    for (const file of files) {
+      if (!IMAGE_TYPES.includes(file.type)) {
+        err = "Use PNG, JPEG or WebP images.";
+        continue;
+      }
+      if (file.size > MAX_IMAGE_BYTES) {
+        err = `${file.name} is larger than 10 MB.`;
+        continue;
+      }
+      newImgs.push({
+        id: `${file.name}-${file.lastModified}-${Math.random().toString(36).slice(2, 7)}`,
+        file,
+        preview: URL.createObjectURL(file),
+      });
     }
-    if (file.size > MAX_IMAGE_BYTES) {
-      setImageError("Image is larger than 10 MB.");
+    if (err && newImgs.length === 0) {
+      setImageError(err);
       return;
     }
     setImageError(null);
-    setImage({ file, preview: URL.createObjectURL(file) });
+    setImages((prev) => [...prev, ...newImgs]);
   };
 
-  const removeImage = () => {
-    setImage(null);
-    setImageError(null);
+  const removeImage = (id: string) => {
+    setImages((prev) => {
+      const target = prev.find((img) => img.id === id);
+      if (target) URL.revokeObjectURL(target.preview);
+      return prev.filter((img) => img.id !== id);
+    });
     if (imageInputRef.current) imageInputRef.current.value = "";
   };
 
   const handlePaste = (e: ClipboardEvent<HTMLFormElement>) => {
-    const file = Array.from(e.clipboardData.files).find((f) => f.type.startsWith("image/"));
-    if (!file) return;
+    const files = Array.from(e.clipboardData.files).filter((f) => f.type.startsWith("image/"));
+    if (files.length === 0) return;
     e.preventDefault();
-    selectImage(file);
+    addImages(files);
   };
 
   const handleDrop = (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
-    const file = Array.from(e.dataTransfer.files).find((f) => f.type.startsWith("image/"));
-    if (file) selectImage(file);
+    const files = Array.from(e.dataTransfer.files).filter((f) => f.type.startsWith("image/"));
+    if (files.length > 0) addImages(files);
   };
 
   const submit = (q: string) => {
     const text = q.trim();
-    if (busy || (!text && !image)) return;
+    if (busy || (!text && images.length === 0)) return;
 
     setImageError(null);
-    if (image) {
-      const currentImage = image;
-      const prompt = text || "Extract the useful context from this image and act on it.";
+    if (images.length > 0) {
+      const currentImages = [...images];
+      const prompt =
+        text ||
+        (currentImages.length > 1
+          ? "Extract the useful context from these images and act on it."
+          : "Extract the useful context from this image and act on it.");
       setQuestion("");
       setThread((t) => [
         ...t.slice(-8),
-        { role: "USER", content: text || "Shared an image", badge: true },
+        {
+          role: "USER",
+          content: text || (currentImages.length > 1 ? "Shared images" : "Shared an image"),
+          badge: true,
+        },
       ]);
-      setImage(null);
+      setImages([]);
       setSubmitting(true);
 
-      const reader = new FileReader();
-      reader.onload = () => {
-        vision.mutate(
-          {
-            image_base64: String(reader.result),
-            mime_type: currentImage.file.type,
-            prompt,
-            conversation_id: conversationId,
-          },
-          {
-            onSuccess: (res) => {
-              setConversationId(res.conversation_id);
-              setThread((t) => [
-                ...t,
-                {
-                  role: "ASSISTANT",
-                  content: res.answer,
-                  source: res.source === "AI" ? "AI" : "DETERMINISTIC",
-                  visualContext: res.visual_context,
-                },
-              ]);
+      Promise.all(
+        currentImages.map(async (img) => {
+          const b64 = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(String(reader.result));
+            reader.onerror = reject;
+            reader.readAsDataURL(img.file);
+          });
+          return { image_base64: b64, mime_type: img.file.type };
+        })
+      )
+        .then((imagePayloads) => {
+          vision.mutate(
+            {
+              image_base64: imagePayloads[0]?.image_base64,
+              mime_type: imagePayloads[0]?.mime_type,
+              images: imagePayloads,
+              prompt,
+              conversation_id: conversationId,
             },
-            onError: (err) => {
-              setThread((t) => [
-                ...t,
-                { role: "ASSISTANT", content: `IRIS couldn't read that image: ${err.message}` },
-              ]);
-            },
-            onSettled: () => setSubmitting(false),
-          },
-        );
-      };
-      reader.onerror = () => {
-        setSubmitting(false);
-        setThread((t) => [...t, { role: "ASSISTANT", content: "IRIS couldn't read that image." }]);
-      };
-      reader.readAsDataURL(currentImage.file);
+            {
+              onSuccess: (res) => {
+                setConversationId(res.conversation_id);
+                setThread((t) => [
+                  ...t,
+                  {
+                    role: "ASSISTANT",
+                    content: res.answer,
+                    source: res.source === "AI" ? "AI" : "DETERMINISTIC",
+                    visualContext: res.visual_context,
+                  },
+                ]);
+              },
+              onError: (err) => {
+                setThread((t) => [
+                  ...t,
+                  { role: "ASSISTANT", content: `IRIS couldn't read those images: ${err.message}` },
+                ]);
+              },
+              onSettled: () => setSubmitting(false),
+            }
+          );
+        })
+        .catch(() => {
+          setSubmitting(false);
+          setThread((t) => [...t, { role: "ASSISTANT", content: "IRIS couldn't read those images." }]);
+        });
       return;
     }
 
@@ -216,7 +257,7 @@ export function AskIrisConsole() {
                 ref={inputRef}
                 value={question}
                 onChange={(e) => setQuestion(e.target.value)}
-                placeholder={image ? "Add a question about this image (optional)…" : "Ask IRIS anything about your life…"}
+                placeholder={images.length > 0 ? "Add a question about these images (optional)…" : "Ask IRIS anything about your life…"}
                 maxLength={120000}
                 aria-label="Ask IRIS"
                 className="flex-1 bg-transparent text-[15px] text-ink placeholder:text-ink-faint focus:outline-none"
@@ -224,11 +265,12 @@ export function AskIrisConsole() {
               <input
                 ref={imageInputRef}
                 type="file"
-                accept="image/png,image/jpeg,image/webp"
+                multiple
+                accept="image/png,image/jpeg,image/webp,image/jpg"
                 className="sr-only"
                 onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) selectImage(file);
+                  const files = Array.from(e.target.files || []);
+                  if (files.length > 0) addImages(files);
                   e.target.value = "";
                 }}
               />
@@ -238,9 +280,9 @@ export function AskIrisConsole() {
                   e.stopPropagation();
                   imageInputRef.current?.click();
                 }}
-                aria-label="Upload image"
-                title="Upload image (+)"
-                className="text-ink-faint hover:text-ai"
+                aria-label="Upload images"
+                title={images.length > 0 ? "Add more images (+)" : "Upload images (+)"}
+                className="text-ink-faint hover:text-ai cursor-pointer"
               >
                 <Plus size={16} strokeWidth={2.2} />
               </button>
@@ -249,20 +291,45 @@ export function AskIrisConsole() {
               </kbd>
             </form>
 
-            {image && (
-              <div className="flex items-center gap-3 border-b border-ops-line bg-ops-raised/40 px-4 py-2">
-                <img src={image.preview} alt="" className="h-10 w-10 border border-ops-line object-cover" />
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-[12px] text-ink">{image.file.name}</p>
-                  <p className="text-[10px] text-ink-faint">Processed in memory · never stored</p>
-                </div>
+            {images.length > 0 && (
+              <div className="flex flex-wrap items-center gap-2 border-b border-ops-line bg-ops-raised/40 px-4 py-2">
+                {images.map((img) => (
+                  <div
+                    key={img.id}
+                    className="flex items-center gap-2 rounded-xl border border-ops-line bg-ops-raised px-2 py-1"
+                  >
+                    <img
+                      src={img.preview}
+                      alt={img.file.name}
+                      className="h-8 w-8 rounded border border-ops-line object-cover"
+                    />
+                    <div className="min-w-0 pr-1">
+                      <p className="truncate text-[11px] text-ink font-medium max-w-[120px] sm:max-w-[160px]">
+                        {img.file.name}
+                      </p>
+                      <p className="text-[9px] text-ink-faint">
+                        {(img.file.size / 1024).toFixed(0)} KB · Memory only
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => removeImage(img.id)}
+                      aria-label={`Remove ${img.file.name}`}
+                      title="Remove image"
+                      className="text-ink-faint hover:text-ink cursor-pointer"
+                    >
+                      <X size={12} />
+                    </button>
+                  </div>
+                ))}
                 <button
                   type="button"
-                  onClick={removeImage}
-                  aria-label="Remove image"
-                  className="text-ink-faint hover:text-ink"
+                  onClick={() => imageInputRef.current?.click()}
+                  title="Add more images"
+                  className="flex items-center gap-1 rounded-xl border border-dashed border-ops-line hover:border-ops-line-bright px-2.5 py-1 text-[11px] text-ink-dim hover:text-ink cursor-pointer"
                 >
-                  <X size={14} />
+                  <Plus size={12} />
+                  <span>Add more</span>
                 </button>
               </div>
             )}

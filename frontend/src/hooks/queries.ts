@@ -404,12 +404,14 @@ export const useSendMessage = () => {
       voice,
       image_base64,
       mime_type,
+      images,
     }: {
       conversationId: number;
       content: string;
       voice?: boolean;
       image_base64?: string;
       mime_type?: string;
+      images?: { image_base64: string; mime_type?: string }[];
     }) =>
       chatApi.sendMessage(conversationId, {
         content,
@@ -417,6 +419,7 @@ export const useSendMessage = () => {
         defer_memory: true,
         image_base64,
         mime_type,
+        images,
       }),
     onSuccess: (data, variables) => {
       chatApi

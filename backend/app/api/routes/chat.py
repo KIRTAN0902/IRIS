@@ -116,36 +116,68 @@ async def send_message(
     the image is decoded in RAM, sent to Nemotron Super VL, and dropped. Only
     the structured context and a badge are written to conversation history.
     """
+    images_to_process: list[tuple[bytes, str]] = []
+    if payload.images:
+        for item in payload.images:
+            if isinstance(item, str):
+                b64_str, mime_str = item, None
+            elif hasattr(item, "image_base64"):
+                b64_str, mime_str = item.image_base64, item.mime_type
+            elif isinstance(item, dict):
+                b64_str = (
+                    item.get("image_base64")
+                    or item.get("data_url")
+                    or item.get("url")
+                    or ""
+                )
+                mime_str = item.get("mime_type")
+            else:
+                continue
+            if b64_str:
+                try:
+                    b, m = vision_service.decode_base64_image(b64_str, mime_str)
+                    images_to_process.append((b, m))
+                except VisionImageTooLarge as exc:
+                    raise HTTPException(status_code=413, detail=str(exc)) from exc
+                except VisionValidationError as exc:
+                    raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     if payload.image_base64:
         try:
-            image_bytes, mime_type = vision_service.decode_base64_image(
+            b, m = vision_service.decode_base64_image(
                 payload.image_base64, payload.mime_type
             )
+            images_to_process.append((b, m))
         except VisionImageTooLarge as exc:
             raise HTTPException(status_code=413, detail=str(exc)) from exc
         except VisionValidationError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    if images_to_process:
         payload.image_base64 = None
         payload.mime_type = None
+        payload.images = None
         prompt = (
             payload.content.strip()
             if payload.content and payload.content.strip()
-            else "Extract the useful context from this image and act on it."
+            else (
+                "Extract the useful context from these images and act on it."
+                if len(images_to_process) > 1
+                else "Extract the useful context from this image and act on it."
+            )
         )
         try:
             msg_out, _result, _memory = await vision_service.process_ephemeral_turn(
                 db=db,
                 user=user,
-                image_bytes=image_bytes,
-                mime_type=mime_type,
+                images=images_to_process,
                 prompt=prompt,
                 conversation_id=conversation_id,
             )
         except VisionError as exc:
             raise HTTPException(status_code=502, detail=str(exc)) from exc
         finally:
-            image_bytes = b""
+            images_to_process.clear()
         return msg_out
 
     msg_out, _ = await default_agent.run_turn(

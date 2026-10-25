@@ -749,6 +749,11 @@ export interface ActionExecuted {
   data?: unknown;
 }
 
+export interface ImageAttachmentPayload {
+  image_base64: string;
+  mime_type?: string;
+}
+
 export interface ChatMessageIn {
   content: string;
   /** Spoken by voice: IRIS keeps the reply short enough to read aloud. */
@@ -758,6 +763,8 @@ export interface ChatMessageIn {
   /** Ephemeral image payload; the backend drops it after analysis. */
   image_base64?: string;
   mime_type?: string;
+  /** Ephemeral multiple image payloads. */
+  images?: ImageAttachmentPayload[];
 }
 
 export interface AIMemoryUpdated {

@@ -250,10 +250,11 @@ export const aiApi = {
 // --- Ephemeral Vision ---------------------------------------------------------
 
 export const visionApi = {
-  /** Analyze an image in RAM. The backend never persists the image itself. */
+  /** Analyze one or more images in RAM. The backend never persists the image itself. */
   ingest: (payload: {
-    image_base64: string;
-    mime_type: string;
+    image_base64?: string;
+    mime_type?: string;
+    images?: Array<{ image_base64: string; mime_type?: string }>;
     prompt?: string;
     conversation_id?: number | null;
     domain_hint?: string;

@@ -279,6 +279,18 @@ class GeminiProvider(AIProvider):
                     )
                     continue
 
+        # If native SDK calls fail (e.g. 503 UNAVAILABLE or schema incompatibility),
+        # fall back to prompt-driven chat JSON generation.
+        try:
+            logger.info("Falling back to chat backend for structured generation: provider=%s", self.name)
+            return await super().generate_structured(
+                system=system,
+                prompt=prompt,
+                schema=schema,
+            )
+        except Exception as fallback_exc:
+            logger.warning("Chat backend structured fallback also failed: %s", fallback_exc)
+
         if isinstance(last_exc, TimeoutError):
             logger.warning("AI request timeout: provider=%s, model=%s", self.name, self._model)
             raise AIConnectionError(

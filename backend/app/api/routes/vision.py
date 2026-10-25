@@ -31,7 +31,7 @@ def _field(fields: dict[str, str], key: str) -> str | None:
     return value.strip() if value and value.strip() else None
 
 
-def _parse_multipart(content_type: str, body: bytes) -> tuple[bytes, str, dict[str, str]]:
+def _parse_multipart(content_type: str, body: bytes) -> tuple[list[tuple[bytes, str]], dict[str, str]]:
     """Parse multipart form-data entirely in memory (never spool to disk)."""
     envelope = (
         b"Content-Type: "
@@ -43,23 +43,21 @@ def _parse_multipart(content_type: str, body: bytes) -> tuple[bytes, str, dict[s
     if not message.is_multipart():
         raise VisionValidationError("Malformed multipart image payload.")
 
-    image_bytes: bytes | None = None
-    image_mime = ""
+    images: list[tuple[bytes, str]] = []
     fields: dict[str, str] = {}
     for part in message.iter_parts():
         name = part.get_param("name", header="content-disposition") or ""
         filename = part.get_filename()
         payload = part.get_payload(decode=True) or b""
-        if filename or name in {"image", "file"}:
-            image_bytes = payload
+        if filename or name in {"image", "file", "images"}:
             image_mime = (part.get_content_type() or "").lower()
+            images.append((payload, image_mime))
         elif name:
             fields[str(name)] = payload.decode("utf-8", errors="replace").strip()
 
-    if not image_bytes:
-        raise VisionValidationError("No image field found. Use 'image' or 'file'.")
-    fields["mime_type"] = _field(fields, "mime_type") or image_mime
-    return image_bytes, fields["mime_type"], fields
+    if not images:
+        raise VisionValidationError("No image field found. Use 'image', 'file', or 'images'.")
+    return images, fields
 
 
 @router.post("/ingest", summary="Analyze an ephemeral image and act on its context")
@@ -75,16 +73,18 @@ async def ingest_image(
         declared_length = int(request.headers.get("content-length") or 0)
     except ValueError:
         declared_length = 0
-    if declared_length and declared_length > (max_image * 2) + 1_000_000:
+    if declared_length and declared_length > (max_image * 4) + 1_000_000:
         raise HTTPException(
             status_code=413,
-            detail=f"Image exceeds the {vision_service.max_image_bytes // (1024 * 1024)} MB limit.",
+            detail=f"Image payload exceeds the {vision_service.max_image_bytes // (1024 * 1024)} MB limit.",
         )
 
     fields: dict[str, str] = {}
+    images_to_process: list[tuple[bytes, str]] = []
+
     if content_type.startswith("multipart/form-data"):
         try:
-            image_bytes, mime_type, fields = _parse_multipart(
+            images_to_process, fields = _parse_multipart(
                 request.headers.get("content-type") or "", await request.body()
             )
         except VisionValidationError as exc:
@@ -96,15 +96,39 @@ async def ingest_image(
             raise HTTPException(status_code=400, detail="Invalid JSON body.") from exc
         if not isinstance(data, dict):
             raise HTTPException(status_code=400, detail="JSON body must be an object.")
-        encoded = data.get("image_base64") or data.get("image") or ""
-        try:
-            image_bytes, mime_type = vision_service.decode_base64_image(
-                str(encoded), str(data.get("mime_type") or "") or None
-            )
-        except VisionImageTooLarge as exc:
-            raise HTTPException(status_code=413, detail=str(exc)) from exc
-        except VisionValidationError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+        # Support both single image (image_base64) and multiple images (images list)
+        items = []
+        if isinstance(data.get("images"), list):
+            items.extend(data["images"])
+        if data.get("image_base64") or data.get("image"):
+            items.append({
+                "image_base64": data.get("image_base64") or data.get("image"),
+                "mime_type": data.get("mime_type"),
+            })
+
+        if not items:
+            raise HTTPException(status_code=400, detail="No image provided in request.")
+
+        for item in items:
+            if isinstance(item, str):
+                b64_str, mime_str = item, None
+            elif isinstance(item, dict):
+                b64_str = item.get("image_base64") or item.get("data_url") or item.get("url") or ""
+                mime_str = item.get("mime_type")
+            else:
+                continue
+            if b64_str:
+                try:
+                    img_bytes, mime = vision_service.decode_base64_image(
+                        str(b64_str), str(mime_str or "") or None
+                    )
+                    images_to_process.append((img_bytes, mime))
+                except VisionImageTooLarge as exc:
+                    raise HTTPException(status_code=413, detail=str(exc)) from exc
+                except VisionValidationError as exc:
+                    raise HTTPException(status_code=400, detail=str(exc)) from exc
+
         fields = {
             "prompt": str(data.get("prompt") or ""),
             "conversation_id": str(data.get("conversation_id") or ""),
@@ -113,10 +137,14 @@ async def ingest_image(
     else:
         raise HTTPException(
             status_code=415,
-            detail="Use multipart/form-data or application/json with image_base64.",
+            detail="Use multipart/form-data or application/json with image_base64/images.",
         )
 
-    prompt = _field(fields, "prompt") or "Extract the useful context from this image and act on it."
+    prompt = _field(fields, "prompt") or (
+        "Extract the useful context from these images and act on it."
+        if len(images_to_process) > 1
+        else "Extract the useful context from this image and act on it."
+    )
     domain_hint = _field(fields, "domain_hint")
     conversation_raw = _field(fields, "conversation_id")
     try:
@@ -128,8 +156,7 @@ async def ingest_image(
         response, result, memory = await vision_service.process_ephemeral_turn(
             db=db,
             user=user,
-            image_bytes=image_bytes,
-            mime_type=mime_type,
+            images=images_to_process,
             prompt=prompt,
             conversation_id=conversation_id,
             domain_hint=domain_hint,
@@ -141,7 +168,7 @@ async def ingest_image(
     except VisionError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     finally:
-        image_bytes = b""
+        images_to_process.clear()
 
     return {
         "answer": response.content,

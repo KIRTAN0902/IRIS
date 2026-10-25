@@ -32,10 +32,10 @@ ALLOWED_MIME_TYPES = {"image/png", "image/jpeg", "image/webp"}
 DETECTED_DOMAINS = {"COLLEGE", "INTERNSHIP", "STARTUP", "PERSONAL", "OPERATOR"}
 
 _SYSTEM_PROMPT = """You are IRIS's ephemeral vision extractor.
-Analyze the attached image and return ONLY one JSON object with exactly these keys:
+Analyze the attached image(s) and return ONLY one JSON object with exactly these keys:
 {
-  "summary": "1-2 concise sentences describing the image",
-  "extracted_text_or_code": "OCR text, code, equations, stack traces, or table cells",
+  "summary": "1-2 concise sentences describing the image(s) and visual context",
+  "extracted_text_or_code": "OCR text, code, equations, stack traces, or table cells across all images",
   "detected_domain": "COLLEGE | INTERNSHIP | STARTUP | PERSONAL | OPERATOR",
   "actionable_items": [
     {"kind": "task|expense|deadline|code_fix|note", "title": "...", "amount": null,
@@ -44,7 +44,7 @@ Analyze the attached image and return ONLY one JSON object with exactly these ke
   "memory_facts": ["high-value durable facts worth remembering"]
 }
 Rules:
-- Prefer verifiable text from the image over speculation.
+- Prefer verifiable text from the image(s) over speculation.
 - Never include the base64 payload, data URI, or image bytes in the response.
 - Use an empty actionable_items list when nothing is actionable.
 - detected_domain must be exactly one of the five uppercase values.
@@ -266,20 +266,45 @@ class VisionService:
         user_prompt: str,
         domain_hint: str | None = None,
     ) -> VisionExtractionResult:
-        """Analyze one image in RAM; the raw bytes never leave this call."""
-        mime = self._validated_mime(image_bytes, _normalise_mime(mime_type))
-        if not user_prompt.strip():
-            user_prompt = "Extract the useful context from this image and act on it."
+        """Analyze one image in RAM (backward compatibility)."""
+        return await self.analyze_ephemeral_images(
+            [(image_bytes, mime_type)], user_prompt, domain_hint
+        )
 
-        b64 = base64.b64encode(image_bytes).decode("ascii")
-        data_uri = f"data:{mime};base64,{b64}"
+    async def analyze_ephemeral_images(
+        self,
+        images: list[tuple[bytes, str]],
+        user_prompt: str,
+        domain_hint: str | None = None,
+    ) -> VisionExtractionResult:
+        """Analyze one or more images in RAM; the raw bytes never leave this call."""
+        if not images:
+            raise VisionValidationError("No images provided for analysis.")
+
+        data_uris: list[str] = []
+        total_bytes = 0
+        mimes: list[str] = []
+        for img_bytes, mime_type in images:
+            mime = self._validated_mime(img_bytes, _normalise_mime(mime_type))
+            b64 = base64.b64encode(img_bytes).decode("ascii")
+            data_uris.append(f"data:{mime};base64,{b64}")
+            total_bytes += len(img_bytes)
+            mimes.append(mime)
+
+        if not user_prompt.strip():
+            user_prompt = (
+                "Extract the useful context from these images and act on it."
+                if len(images) > 1
+                else "Extract the useful context from this image and act on it."
+            )
+
         prompt = (
             f"User request:\n{user_prompt.strip()}\n\n"
             f"Domain hint: {(domain_hint or 'auto').strip() or 'auto'}"
         )
         messages = [
             ChatMessage(role="system", content=_SYSTEM_PROMPT),
-            ChatMessage(role="user", content=prompt, images=[data_uri]),
+            ChatMessage(role="user", content=prompt, images=data_uris),
         ]
         provider = self.provider()
         if not provider.enabled:
@@ -288,11 +313,12 @@ class VisionService:
             )
 
         logger.info(
-            "Ephemeral vision started: provider=%s model=%s bytes=%d mime=%s",
+            "Ephemeral vision started: provider=%s model=%s images=%d bytes=%d mimes=%s",
             provider.name,
             provider.model,
-            len(image_bytes),
-            mime,
+            len(images),
+            total_bytes,
+            ",".join(mimes),
         )
         try:
             response = await provider.chat(
@@ -310,12 +336,12 @@ class VisionService:
             logger.warning("Vision provider call failed: %s", type(exc).__name__)
             raise VisionProviderError("Vision analysis failed. Please retry.") from None
         finally:
-            # Drop the only references to the raw image and its encoded payload.
+            # Drop all references to raw images and their encoded payloads.
             messages.clear()
             del messages
-            del data_uri
-            del b64
-            del image_bytes
+            data_uris.clear()
+            del data_uris
+            images = []
 
         parsed.provider = provider.name
         parsed.model = provider.model
@@ -371,32 +397,53 @@ class VisionService:
         )
 
     @staticmethod
-    def persisted_user_message(prompt: str, result: VisionExtractionResult) -> str:
-        clean_prompt = (prompt or "").strip() or "Shared an image for visual context."
+    def persisted_user_message(
+        prompt: str, result: VisionExtractionResult, count: int = 1
+    ) -> str:
+        clean_prompt = (prompt or "").strip() or (
+            "Shared images for visual context."
+            if count > 1
+            else "Shared an image for visual context."
+        )
         summary = " ".join(result.summary.split())[:220]
-        return f"{clean_prompt}\n\n[📷 Visual Context Processed: {summary}]"
+        badge = (
+            f"📷 Visual Context Processed ({count} images): {summary}"
+            if count > 1
+            else f"📷 Visual Context Processed: {summary}"
+        )
+        return f"{clean_prompt}\n\n[{badge}]"
 
     async def process_ephemeral_turn(
         self,
         *,
         db: Session,
         user: User,
-        image_bytes: bytes,
-        mime_type: str,
+        images: list[tuple[bytes, str]] | None = None,
+        image_bytes: bytes | None = None,
+        mime_type: str | None = None,
         prompt: str,
         conversation_id: int | None = None,
         domain_hint: str | None = None,
         agent: Any | None = None,
     ) -> tuple[Any, VisionExtractionResult, Any]:
         """Analyze, persist context-only memory, then run the normal IRIS turn."""
-        result = await self.analyze_ephemeral_image(
-            image_bytes, mime_type, prompt, domain_hint
+        img_list: list[tuple[bytes, str]] = []
+        if images:
+            img_list.extend(images)
+        if image_bytes:
+            img_list.append((image_bytes, mime_type or "image/png"))
+        if not img_list:
+            raise VisionValidationError("No image provided for visual turn.")
+
+        result = await self.analyze_ephemeral_images(
+            img_list, prompt, domain_hint
         )
         # Do not trust a caller-supplied conversation_id for memory ownership;
         # link the memory to the conversation actually resolved by the agent.
         memory = self.store_visual_context(db, user, result)
-        enriched = f"{self.context_block(result)}\n\nUSER REQUEST:\n{prompt.strip()}"
-        persisted = self.persisted_user_message(prompt, result)
+        count_label = f" ({len(img_list)} images)" if len(img_list) > 1 else ""
+        enriched = f"{self.context_block(result)}\n\nUSER REQUEST{count_label}:\n{prompt.strip()}"
+        persisted = self.persisted_user_message(prompt, result, count=len(img_list))
 
         if agent is None:
             from app.agent.agent import default_agent
@@ -415,6 +462,7 @@ class VisionService:
                 "visual_context": result.card(),
                 "vision_memory_id": memory.id,
                 "image_persisted": False,
+                "image_count": len(img_list),
             },
         )
         if memory is not None:

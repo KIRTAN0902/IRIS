@@ -268,3 +268,67 @@ def test_chat_message_accepts_image_without_text(client, db, monkeypatch):
     assert body["visual_context"]["summary"].startswith("Receipt from Blue Bottle")
     assert body["conversation_id"] == conversation_id
 
+
+def test_chat_message_accepts_multiple_images(client, db, monkeypatch):
+    fake = FakeVisionProvider()
+    monkeypatch.setattr(vision_service, "_provider_override", fake)
+    conversation = client.post("/api/chat/conversations", params={"title": "Multi Vision"})
+    assert conversation.status_code == 201
+    conversation_id = conversation.json()["id"]
+
+    response = client.post(
+        f"/api/chat/conversations/{conversation_id}/messages",
+        json={
+            "content": "Analyze both diagrams",
+            "images": [
+                {"image_base64": PNG_B64, "mime_type": "image/png"},
+                {"image_base64": PNG_B64, "mime_type": "image/png"},
+            ],
+        },
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["visual_context"]["summary"].startswith("Receipt from Blue Bottle")
+    assert body["conversation_id"] == conversation_id
+
+    # Verify both images were passed to the multimodal provider
+    assert len(fake.messages) == 2
+    assert len(fake.messages[1].images) == 2
+    for img_uri in fake.messages[1].images:
+        assert img_uri.startswith("data:image/png;base64,")
+
+    # Verify user message recorded the multi-image badge
+    user_msg = (
+        db.query(AIMessage)
+        .filter(AIMessage.conversation_id == conversation_id, AIMessage.role == "USER")
+        .first()
+    )
+    assert user_msg is not None
+    assert "Analyze both diagrams" in user_msg.content
+    assert "[📷 Visual Context Processed (2 images):" in user_msg.content
+
+    # Strict zero-storage assertion
+    database_text = _database_text(db)
+    assert PNG_B64 not in database_text
+    assert PNG_FRAGMENT not in database_text
+
+
+def test_vision_ingest_accepts_multiple_images(client, db, monkeypatch):
+    fake = FakeVisionProvider()
+    monkeypatch.setattr(vision_service, "_provider_override", fake)
+
+    response = client.post(
+        "/api/vision/ingest",
+        json={
+            "images": [
+                {"image_base64": PNG_B64, "mime_type": "image/png"},
+                {"image_base64": PNG_B64, "mime_type": "image/png"},
+                {"image_base64": PNG_B64, "mime_type": "image/png"},
+            ],
+            "prompt": "Compare these three screenshots",
+        },
+    )
+    assert response.status_code == 200, response.text
+    assert len(fake.messages[1].images) == 3
+    assert PNG_FRAGMENT not in _database_text(db)
+

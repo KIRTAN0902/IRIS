@@ -73,6 +73,19 @@ class AgentResponseSchema(BaseModel):
     )
 
 
+class ImageAttachment(BaseModel):
+    """An ephemeral image payload for vision turns."""
+
+    image_base64: str = Field(
+        ...,
+        max_length=20_000_000,
+        description="Ephemeral image as base64 or a data URI (never stored)",
+    )
+    mime_type: str | None = Field(
+        None, max_length=100, description="Image MIME type (image/png, image/jpeg, image/webp)"
+    )
+
+
 class ChatMessageIn(BaseModel):
     """User input payload for a chat message."""
 
@@ -86,16 +99,21 @@ class ChatMessageIn(BaseModel):
     image_base64: str | None = Field(
         None,
         max_length=20_000_000,
-        description="Optional ephemeral image as base64 or a data URI (never stored)",
+        description="Optional single ephemeral image as base64 or a data URI (never stored)",
     )
     mime_type: str | None = Field(
         None, max_length=100, description="Image MIME type (image/png, image/jpeg, image/webp)"
     )
+    images: list[ImageAttachment | str] | None = Field(
+        None,
+        description="Optional list of ephemeral images (data URIs or ImageAttachment objects)",
+    )
 
     @model_validator(mode="after")
     def validate_content_or_image(self) -> Self:
-        if not self.content.strip() and not self.image_base64:
-            raise ValueError("Either content or image_base64 must be provided.")
+        has_image = bool(self.image_base64) or bool(self.images)
+        if not self.content.strip() and not has_image:
+            raise ValueError("Either content or an image attachment must be provided.")
         return self
 
 

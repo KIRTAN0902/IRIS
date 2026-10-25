@@ -36,6 +36,12 @@ export function HomePage() {
   );
 }
 
+interface AttachedImage {
+  id: string;
+  file: File;
+  preview: string;
+}
+
 // --- Conversation ------------------------------------------------------------------
 
 function Conversation({
@@ -50,8 +56,8 @@ function Conversation({
   const sendMsg = useSendMessage();
   const [input, setInput] = useState("");
   const [lastSent, setLastSent] = useState("");
-  const [lastSentImage, setLastSentImage] = useState<string | null>(null);
-  const [image, setImage] = useState<{ file: File; preview: string } | null>(null);
+  const [lastSentImages, setLastSentImages] = useState<string[]>([]);
+  const [images, setImages] = useState<AttachedImage[]>([]);
   const [imageError, setImageError] = useState<string | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
   // The conversation this component just created from a new chat: switching to
@@ -69,9 +75,9 @@ function Conversation({
     if (conversationId !== null && conversationId === createdRef.current) return;
     setInput("");
     setLastSent("");
-    setLastSentImage(null);
-    if (image) URL.revokeObjectURL(image.preview);
-    setImage(null);
+    setLastSentImages([]);
+    images.forEach((img) => URL.revokeObjectURL(img.preview));
+    setImages([]);
     setImageError(null);
     sendMsg.reset();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -79,65 +85,94 @@ function Conversation({
 
   useEffect(() => {
     return () => {
-      if (image) URL.revokeObjectURL(image.preview);
+      images.forEach((img) => URL.revokeObjectURL(img.preview));
     };
-  }, [image]);
+  }, [images]);
 
   useEffect(() => {
     if (messages.length || sendMsg.isPending) endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages.length, sendMsg.isPending]);
 
-  const selectImage = (file: File) => {
+  const addImages = (files: File[]) => {
     const validTypes = ["image/png", "image/jpeg", "image/jpg", "image/webp"];
-    if (!validTypes.includes(file.type)) {
-      setImageError("Please upload a PNG, JPEG, or WebP image.");
-      return;
-    }
     const maxBytes = 10 * 1024 * 1024;
-    if (file.size > maxBytes) {
-      setImageError("Image is larger than 10 MB.");
+    const newImages: AttachedImage[] = [];
+    let err: string | null = null;
+
+    for (const file of files) {
+      if (!validTypes.includes(file.type)) {
+        err = "Please upload PNG, JPEG, or WebP images.";
+        continue;
+      }
+      if (file.size > maxBytes) {
+        err = `${file.name} is larger than 10 MB limit.`;
+        continue;
+      }
+      newImages.push({
+        id: `${file.name}-${file.lastModified}-${Math.random().toString(36).slice(2, 7)}`,
+        file,
+        preview: URL.createObjectURL(file),
+      });
+    }
+
+    if (err && newImages.length === 0) {
+      setImageError(err);
       return;
     }
     setImageError(null);
-    if (image) URL.revokeObjectURL(image.preview);
-    setImage({ file, preview: URL.createObjectURL(file) });
+    setImages((prev) => [...prev, ...newImages]);
   };
 
-  const removeImage = () => {
-    if (image) URL.revokeObjectURL(image.preview);
-    setImage(null);
-    setImageError(null);
+  const removeImage = (id: string) => {
+    setImages((prev) => {
+      const target = prev.find((img) => img.id === id);
+      if (target) URL.revokeObjectURL(target.preview);
+      return prev.filter((img) => img.id !== id);
+    });
   };
 
   /** Send a message (creating the conversation first if needed); resolves with IRIS's reply. */
   const send = async (text?: string, voice = false): Promise<ChatMessageOut | null> => {
     const content = (text ?? input).trim();
-    if ((!content && !image) || sendMsg.isPending) return null;
+    if ((!content && images.length === 0) || sendMsg.isPending) return null;
 
-    const currentImage = image;
-    let imageBase64: string | undefined;
-    let mimeType: string | undefined;
+    const currentImages = [...images];
+    let imagePayloads: Array<{ image_base64: string; mime_type: string }> = [];
 
-    if (currentImage) {
+    if (currentImages.length > 0) {
       try {
-        imageBase64 = await new Promise<string>((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = () => resolve(String(reader.result));
-          reader.onerror = reject;
-          reader.readAsDataURL(currentImage.file);
-        });
-        mimeType = currentImage.file.type;
+        imagePayloads = await Promise.all(
+          currentImages.map(async (img) => {
+            const b64 = await new Promise<string>((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onload = () => resolve(String(reader.result));
+              reader.onerror = reject;
+              reader.readAsDataURL(img.file);
+            });
+            return { image_base64: b64, mime_type: img.file.type };
+          })
+        );
       } catch {
-        setImageError("Failed to read image file.");
+        setImageError("Failed to read image files.");
         return null;
       }
     }
 
-    const effectiveContent = content || (currentImage ? "Analyze this image" : "");
+    const effectiveContent =
+      content ||
+      (currentImages.length > 1
+        ? "Analyze these images"
+        : currentImages.length === 1
+        ? "Analyze this image"
+        : "");
     let id = idRef.current;
     if (!id) {
       try {
-        const title = (content || currentImage?.file.name || "Image inquiry").slice(0, 60);
+        const title = (
+          content ||
+          (currentImages.length > 1 ? `${currentImages.length} images inquiry` : currentImages[0]?.file.name) ||
+          "Image inquiry"
+        ).slice(0, 60);
         id = (await createConv.mutateAsync(title)).id;
         createdRef.current = id;
         idRef.current = id;
@@ -147,17 +182,18 @@ function Conversation({
       }
     }
     setLastSent(effectiveContent);
-    setLastSentImage(currentImage?.preview ?? null);
+    setLastSentImages(currentImages.map((img) => img.preview));
     setInput("");
-    setImage(null);
+    setImages([]);
     setImageError(null);
     try {
       return await sendMsg.mutateAsync({
         conversationId: id,
         content: effectiveContent,
         voice,
-        image_base64: imageBase64,
-        mime_type: mimeType,
+        image_base64: imagePayloads[0]?.image_base64,
+        mime_type: imagePayloads[0]?.mime_type,
+        images: imagePayloads,
       });
     } catch {
       return null;
@@ -178,8 +214,8 @@ function Conversation({
         onSend={() => send()}
         onVoice={voice.start}
         disabled={busy}
-        image={image}
-        onSelectImage={selectImage}
+        images={images}
+        onAddImages={addImages}
         onRemoveImage={removeImage}
         imageError={imageError}
       />
@@ -221,7 +257,7 @@ function Conversation({
         {busy && (
           <>
             {lastSent && !messages.some((m) => m.role === "USER" && m.content === lastSent) && (
-              <UserNote content={lastSent} imagePreview={lastSentImage} />
+              <UserNote content={lastSent} imagePreviews={lastSentImages} />
             )}
             <p className="text-[14px] text-ink-faint animate-pulse">IRIS is thinking…</p>
           </>
@@ -254,8 +290,8 @@ function Composer({
   onVoice,
   disabled,
   autoFocus = true,
-  image,
-  onSelectImage,
+  images,
+  onAddImages,
   onRemoveImage,
   imageError,
 }: {
@@ -265,9 +301,9 @@ function Composer({
   onVoice: () => void;
   disabled: boolean;
   autoFocus?: boolean;
-  image: { file: File; preview: string } | null;
-  onSelectImage: (file: File) => void;
-  onRemoveImage: () => void;
+  images: AttachedImage[];
+  onAddImages: (files: File[]) => void;
+  onRemoveImage: (id: string) => void;
   imageError?: string | null;
 }) {
   const ref = useRef<HTMLTextAreaElement>(null);
@@ -280,21 +316,21 @@ function Composer({
     el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
   }, [value]);
 
-  const ready = (Boolean(value.trim()) || Boolean(image)) && !disabled;
+  const ready = (Boolean(value.trim()) || images.length > 0) && !disabled;
 
   const handlePaste = (e: React.ClipboardEvent) => {
-    const file = Array.from(e.clipboardData.files).find((f) => f.type.startsWith("image/"));
-    if (file) {
+    const files = Array.from(e.clipboardData.files).filter((f) => f.type.startsWith("image/"));
+    if (files.length > 0) {
       e.preventDefault();
-      onSelectImage(file);
+      onAddImages(files);
     }
   };
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
-    const file = Array.from(e.dataTransfer.files).find((f) => f.type.startsWith("image/"));
-    if (file) {
-      onSelectImage(file);
+    const files = Array.from(e.dataTransfer.files).filter((f) => f.type.startsWith("image/"));
+    if (files.length > 0) {
+      onAddImages(files);
     }
   };
 
@@ -313,41 +349,61 @@ function Composer({
       <input
         ref={fileInputRef}
         type="file"
+        multiple
         accept="image/png,image/jpeg,image/webp,image/jpg"
         className="hidden"
         onChange={(e) => {
-          const file = e.target.files?.[0];
-          if (file) onSelectImage(file);
+          const files = Array.from(e.target.files || []);
+          if (files.length > 0) onAddImages(files);
           e.target.value = "";
         }}
       />
 
-      {image && (
-        <div className="mb-2 ml-1 flex items-center gap-2.5 rounded-2xl border border-ops-line bg-ops-raised/60 px-3 py-1.5 w-fit max-w-[95%]">
-          <img
-            src={image.preview}
-            alt="Upload preview"
-            className="h-10 w-10 shrink-0 rounded-lg border border-ops-line object-cover"
-          />
-          <div className="min-w-0 flex-1 pr-1">
-            <p className="truncate text-[12px] text-ink font-medium max-w-[200px] sm:max-w-[280px]">
-              {image.file.name}
-            </p>
-            <p className="text-[10px] text-ink-faint">
-              {(image.file.size / 1024).toFixed(0)} KB · Ephemeral vision
-            </p>
-          </div>
+      {images.length > 0 && (
+        <div className="mb-2 ml-1 flex flex-wrap items-center gap-2 max-w-[95%]">
+          {images.map((img) => (
+            <div
+              key={img.id}
+              className="flex items-center gap-2 rounded-2xl border border-ops-line bg-ops-raised/60 px-2.5 py-1.5"
+            >
+              <img
+                src={img.preview}
+                alt={img.file.name}
+                className="h-9 w-9 shrink-0 rounded-lg border border-ops-line object-cover"
+              />
+              <div className="min-w-0 pr-1">
+                <p className="truncate text-[12px] text-ink font-medium max-w-[130px] sm:max-w-[180px]">
+                  {img.file.name}
+                </p>
+                <p className="text-[10px] text-ink-faint">
+                  {(img.file.size / 1024).toFixed(0)} KB
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onRemoveImage(img.id);
+                }}
+                aria-label={`Remove ${img.file.name}`}
+                title="Remove image"
+                className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-ink-faint hover:bg-ops-raised hover:text-ink transition-colors cursor-pointer"
+              >
+                <X size={13} />
+              </button>
+            </div>
+          ))}
           <button
             type="button"
             onClick={(e) => {
               e.stopPropagation();
-              onRemoveImage();
+              fileInputRef.current?.click();
             }}
-            aria-label="Remove attached image"
-            title="Remove image"
-            className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-ink-faint hover:bg-ops-raised hover:text-ink transition-colors cursor-pointer"
+            title="Add more images"
+            className="flex items-center gap-1.5 rounded-2xl border border-dashed border-ops-line hover:border-ops-line-bright px-3 py-1.5 text-[12px] text-ink-dim hover:text-ink transition-colors cursor-pointer"
           >
-            <X size={13} />
+            <Plus size={14} />
+            <span>Add more</span>
           </button>
         </div>
       )}
@@ -364,8 +420,8 @@ function Composer({
             fileInputRef.current?.click();
           }}
           disabled={disabled}
-          aria-label="Upload image"
-          title="Upload image (+)"
+          aria-label="Upload images"
+          title={images.length > 0 ? "Add more images (+)" : "Upload images (+)"}
           className="mb-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-ink-dim transition-colors hover:bg-ops-raised hover:text-ink disabled:opacity-40 cursor-pointer"
         >
           <Plus size={18} strokeWidth={2.2} />
@@ -382,7 +438,7 @@ function Composer({
               if (ready) onSend();
             }
           }}
-          placeholder={image ? "Ask a question about this image (or press send)…" : "Ask IRIS anything"}
+          placeholder={images.length > 0 ? "Ask a question about these images (or press send)…" : "Ask IRIS anything"}
           rows={1}
           className="min-h-[28px] max-h-52 flex-1 resize-none bg-transparent py-1 px-1 text-[15px] leading-relaxed text-ink placeholder:text-ink-faint focus:outline-none"
         />
@@ -508,14 +564,23 @@ function UserNote({
   content,
   time,
   imagePreview,
+  imagePreviews,
 }: {
   content: string;
   time?: string;
   imagePreview?: string | null;
+  imagePreviews?: string[];
 }) {
+  const previews =
+    imagePreviews && imagePreviews.length > 0
+      ? imagePreviews
+      : imagePreview
+      ? [imagePreview]
+      : [];
   const hasVisionTag = content.includes("[📷 Visual Context Processed:");
   const displayContent = hasVisionTag
-    ? content.split("[📷 Visual Context Processed:")[0].trim() || "Shared an image"
+    ? content.split("[📷 Visual Context Processed:")[0].trim() ||
+      (previews.length > 1 ? "Shared images" : "Shared an image")
     : content;
   const visionSummary = hasVisionTag
     ? content.split("[📷 Visual Context Processed:")[1]?.replace(/\]$/, "").trim()
@@ -525,16 +590,26 @@ function UserNote({
     <div className="flex flex-col items-end max-w-[85%] ml-auto">
       {time && <p className="mb-1 text-[12px] text-ink-faint tnum">{time}</p>}
       <div className="rounded-3xl bg-ops-raised px-4 py-2.5 text-[15px] leading-relaxed text-ink space-y-2">
-        {imagePreview && (
-          <img
-            src={imagePreview}
-            alt="Uploaded preview"
-            className="max-h-48 max-w-full rounded-2xl border border-ops-line object-cover"
-          />
+        {previews.length > 0 && (
+          <div
+            className={cn(
+              "grid gap-2",
+              previews.length === 1 ? "grid-cols-1" : "grid-cols-2 max-w-sm"
+            )}
+          >
+            {previews.map((src, i) => (
+              <img
+                key={i}
+                src={src}
+                alt="Uploaded preview"
+                className="max-h-48 w-full rounded-2xl border border-ops-line object-cover"
+              />
+            ))}
+          </div>
         )}
-        {hasVisionTag && !imagePreview && (
+        {hasVisionTag && previews.length === 0 && (
           <div className="inline-flex items-center gap-1.5 text-[12px] text-ai font-medium">
-            <span>📷 Image attached</span>
+            <span>📷 Visual context attached</span>
           </div>
         )}
         <p className="whitespace-pre-wrap">{displayContent}</p>
