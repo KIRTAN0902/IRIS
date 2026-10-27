@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       server_url:
-        description: 'Vercel / Live Deployment URL (e.g. https://iris-xyz.vercel.app)'
+        description: 'Vercel / Live Deployment URL (e.g. https://irisai.runs-on.dev/)'
         required: false
-        default: 'https://iris-kirtan.vercel.app'
+        default: 'https://irisai.runs-on.dev/'
   push:
     branches:
       - main
@@ -59,7 +59,7 @@ jobs:
       - name: Build Web Assets & Sync Capacitor
         working-directory: frontend
         env:
-          CAPACITOR_SERVER_URL: ${{ inputs.server_url || vars.VERCEL_URL || 'https://iris-kirtan.vercel.app' }}
+          CAPACITOR_SERVER_URL: ${{ inputs.server_url || vars.VERCEL_URL || 'https://irisai.runs-on.dev/' }}
         run: |
           npm run build
           npx cap sync android
@@ -84,5 +84,5 @@ jobs:
         run: |
           echo "### 📱 IRIS Android APK Build Complete!" >> $GITHUB_STEP_SUMMARY
           echo "The APK has been compiled and is ready for download." >> $GITHUB_STEP_SUMMARY
-          echo "- **Target URL**: \`${{ inputs.server_url || vars.VERCEL_URL || 'https://iris-kirtan.vercel.app' }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Target URL**: \`${{ inputs.server_url || vars.VERCEL_URL || 'https://irisai.runs-on.dev/' }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- **Artifact**: [iris-mobile-app](#artifacts)" >> $GITHUB_STEP_SUMMARY

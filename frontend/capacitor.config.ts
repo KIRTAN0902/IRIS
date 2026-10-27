@@ -4,7 +4,7 @@ const rawUrl =
   process.env.CAPACITOR_SERVER_URL ||
   process.env.VERCEL_URL ||
   process.env.VITE_VERCEL_URL ||
-  'https://iris-kirtan.vercel.app';
+  'https://irisai.runs-on.dev/';
 
 // Ensure protocol is present
 const serverUrl = rawUrl.startsWith('http') ? rawUrl : `https://${rawUrl}`;
