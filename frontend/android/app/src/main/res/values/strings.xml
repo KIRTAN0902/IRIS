@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">IRIS</string>
+    <string name="title_activity_main">IRIS</string>
+    <string name="package_name">com.kirtan.iris</string>
+    <string name="custom_url_scheme">com.kirtan.iris</string>
+</resources>
