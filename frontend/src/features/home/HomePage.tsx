@@ -60,6 +60,7 @@ function Conversation({
   const [images, setImages] = useState<AttachedImage[]>([]);
   const [imageError, setImageError] = useState<string | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
+  const objectUrlsRef = useRef<Set<string>>(new Set());
   // The conversation this component just created from a new chat: switching to
   // it must not reset the in-flight reply.
   const createdRef = useRef<number | null>(null);
@@ -71,12 +72,24 @@ function Conversation({
 
   const messages = conv.data?.messages ?? [];
 
+  // Clean up object URLs only when Conversation unmounts
+  useEffect(() => {
+    const urls = objectUrlsRef.current;
+    return () => {
+      urls.forEach((url) => URL.revokeObjectURL(url));
+      urls.clear();
+    };
+  }, []);
+
   useEffect(() => {
     if (conversationId !== null && conversationId === createdRef.current) return;
     setInput("");
     setLastSent("");
     setLastSentImages([]);
-    images.forEach((img) => URL.revokeObjectURL(img.preview));
+    images.forEach((img) => {
+      URL.revokeObjectURL(img.preview);
+      objectUrlsRef.current.delete(img.preview);
+    });
     setImages([]);
     setImageError(null);
     sendMsg.reset();
@@ -84,23 +97,19 @@ function Conversation({
   }, [conversationId]);
 
   useEffect(() => {
-    return () => {
-      images.forEach((img) => URL.revokeObjectURL(img.preview));
-    };
-  }, [images]);
-
-  useEffect(() => {
     if (messages.length || sendMsg.isPending) endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages.length, sendMsg.isPending]);
 
   const addImages = (files: File[]) => {
-    const validTypes = ["image/png", "image/jpeg", "image/jpg", "image/webp"];
+    const validExtensions = /\.(png|jpe?g|webp)$/i;
+    const validMimes = ["image/png", "image/jpeg", "image/jpg", "image/webp"];
     const maxBytes = 10 * 1024 * 1024;
     const newImages: AttachedImage[] = [];
     let err: string | null = null;
 
     for (const file of files) {
-      if (!validTypes.includes(file.type)) {
+      const type = (file.type || "").toLowerCase();
+      if (!validMimes.includes(type) && !validExtensions.test(file.name)) {
         err = "Please upload PNG, JPEG, or WebP images.";
         continue;
       }
@@ -108,10 +117,12 @@ function Conversation({
         err = `${file.name} is larger than 10 MB limit.`;
         continue;
       }
+      const previewUrl = URL.createObjectURL(file);
+      objectUrlsRef.current.add(previewUrl);
       newImages.push({
         id: `${file.name}-${file.lastModified}-${Math.random().toString(36).slice(2, 7)}`,
         file,
-        preview: URL.createObjectURL(file),
+        preview: previewUrl,
       });
     }
 
@@ -126,7 +137,10 @@ function Conversation({
   const removeImage = (id: string) => {
     setImages((prev) => {
       const target = prev.find((img) => img.id === id);
-      if (target) URL.revokeObjectURL(target.preview);
+      if (target) {
+        URL.revokeObjectURL(target.preview);
+        objectUrlsRef.current.delete(target.preview);
+      }
       return prev.filter((img) => img.id !== id);
     });
   };
@@ -191,8 +205,8 @@ function Conversation({
         conversationId: id,
         content: effectiveContent,
         voice,
-        image_base64: imagePayloads[0]?.image_base64,
-        mime_type: imagePayloads[0]?.mime_type,
+        image_base64: imagePayloads.length === 1 ? imagePayloads[0]?.image_base64 : undefined,
+        mime_type: imagePayloads.length === 1 ? imagePayloads[0]?.mime_type : undefined,
         images: imagePayloads,
       });
     } catch {

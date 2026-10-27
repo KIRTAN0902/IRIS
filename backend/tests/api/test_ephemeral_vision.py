@@ -332,3 +332,73 @@ def test_vision_ingest_accepts_multiple_images(client, db, monkeypatch):
     assert len(fake.messages[1].images) == 3
     assert PNG_FRAGMENT not in _database_text(db)
 
+
+def test_chat_message_does_not_duplicate_image_when_both_fields_sent(client, db, monkeypatch):
+    fake = FakeVisionProvider()
+    monkeypatch.setattr(vision_service, "_provider_override", fake)
+    conversation = client.post("/api/chat/conversations", params={"title": "Multi Vision No Dup"})
+    assert conversation.status_code == 201
+    conversation_id = conversation.json()["id"]
+
+    response = client.post(
+        f"/api/chat/conversations/{conversation_id}/messages",
+        json={
+            "content": "Check both images",
+            "image_base64": PNG_B64,
+            "mime_type": "image/png",
+            "images": [
+                {"image_base64": PNG_B64, "mime_type": "image/png"},
+                {"image_base64": PNG_B64, "mime_type": "image/png"},
+            ],
+        },
+    )
+    assert response.status_code == 200, response.text
+    # Exactly 2 images must be processed, NOT 3
+    assert len(fake.messages[1].images) == 2
+
+
+@pytest.mark.asyncio
+async def test_vision_service_serial_processing_fallback_on_rate_limit(monkeypatch):
+    class RateLimitedBatchProvider:
+        name = "gemini"
+        model = "gemini-3.1-flash-lite"
+        enabled = True
+
+        def __init__(self):
+            self.call_count = 0
+
+        async def chat(self, messages, **kwargs):
+            self.call_count += 1
+            # If batch (more than 1 image), simulate rate limit 429
+            user_msg = next(m for m in messages if m.role == "user")
+            if len(user_msg.images) > 1:
+                raise RuntimeError("HTTP 429: Too Many Requests - Rate limit exceeded")
+            return ChatResult(
+                content=json.dumps(
+                    {
+                        "summary": f"Image {self.call_count} processed successfully.",
+                        "extracted_text_or_code": f"TEXT_{self.call_count}",
+                        "detected_domain": "STARTUP",
+                        "actionable_items": [{"kind": "task", "title": f"Action {self.call_count}"}],
+                        "memory_facts": [f"Fact {self.call_count}"],
+                    }
+                )
+            )
+
+    provider = RateLimitedBatchProvider()
+    monkeypatch.setattr(vision_service, "_provider_override", provider)
+
+    result = await vision_service.analyze_ephemeral_images(
+        [(PNG_BYTES, "image/png"), (PNG_BYTES, "image/png")],
+        user_prompt="Analyze these documents",
+    )
+
+    # 1 batch call (failed with 429) + 2 serial calls = 3 total calls
+    assert provider.call_count == 3
+    assert result.detected_domain == "STARTUP"
+    assert "TEXT_2" in result.extracted_text_or_code
+    assert "TEXT_3" in result.extracted_text_or_code
+    assert len(result.actionable_items) == 2
+    assert "Image 1:" in result.summary
+    assert "Image 2:" in result.summary
+

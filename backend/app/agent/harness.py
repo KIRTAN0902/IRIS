@@ -40,6 +40,7 @@ from sqlalchemy.orm import Session
 
 from app.agent.registry import ToolRegistry
 from app.agent.schemas import AgentResponseSchema
+from app.ai.deadline import get_current_deadline, reset_deadline, set_deadline
 from app.ai.provider import (
     AIConfigurationError,
     AIConnectionError,
@@ -181,39 +182,70 @@ class AgentHarness:
         history: list[ChatMessage],
         user_message: str,
     ) -> HarnessResult:
-        state = _RunState()
-        caps = provider.capabilities
+        try:
+            from app.ai.providers.gemini import active_turn_backend
 
-        if caps.native_tools and provider.supports_chat:
-            try:
-                return await self._run_native(
-                    provider, db, user, system_prompt, history, user_message, state
-                )
-            except (AIConnectionError, AIConfigurationError):
-                if state.actions_executed:
-                    return await self._recover(provider, state) or self._salvage(state, "native_tools")
-                raise
-            except Exception as exc:
-                if state.actions_executed:
-                    logger.warning("Native tool loop failed after actions ran: %s", exc)
-                    return await self._recover(provider, state) or self._salvage(state, "native_tools")
-                logger.warning(
-                    "Native tool loop failed (provider=%s model=%s): %s; retrying with structured JSON",
-                    provider.name,
-                    provider.model,
-                    exc,
-                )
-                state = _RunState()
+            active_turn_backend.set(None)
+        except ImportError:
+            pass
+
+        cur_deadline = get_current_deadline()
+        deadline_token = None
+        if cur_deadline is None:
+            timeout_budget = getattr(provider, "_timeout", None) or settings.gemini_timeout_seconds or 45.0
+            deadline_token = set_deadline(timeout_budget)
 
         try:
-            return await self._run_structured(
-                provider, db, user, system_prompt, history, user_message, state
-            )
-        except Exception as exc:
-            if state.actions_executed:
-                logger.warning("Structured loop failed after actions ran: %s", exc)
-                return self._salvage(state, "structured_json")
-            raise
+            state = _RunState()
+            caps = provider.capabilities
+
+            if caps.native_tools and provider.supports_chat:
+                try:
+                    return await self._run_native(
+                        provider, db, user, system_prompt, history, user_message, state
+                    )
+                except AIConfigurationError:
+                    if state.actions_executed:
+                        return await self._recover(provider, state) or self._salvage(state, "native_tools")
+                    raise
+                except AIConnectionError as exc:
+                    if state.actions_executed:
+                        return await self._recover(provider, state) or self._salvage(state, "native_tools")
+                    dl = get_current_deadline()
+                    if dl is not None and not dl.has_budget_for_attempt:
+                        logger.warning("Native tool loop connection error with exhausted deadline: %s", exc)
+                        raise
+                    logger.warning(
+                        "Native tool loop connection error (provider=%s model=%s): %s; falling back to structured JSON",
+                        provider.name,
+                        provider.model,
+                        exc,
+                    )
+                    state = _RunState()
+                except Exception as exc:
+                    if state.actions_executed:
+                        logger.warning("Native tool loop failed after actions ran: %s", exc)
+                        return await self._recover(provider, state) or self._salvage(state, "native_tools")
+                    logger.warning(
+                        "Native tool loop failed (provider=%s model=%s): %s; retrying with structured JSON",
+                        provider.name,
+                        provider.model,
+                        exc,
+                    )
+                    state = _RunState()
+
+            try:
+                return await self._run_structured(
+                    provider, db, user, system_prompt, history, user_message, state
+                )
+            except Exception as exc:
+                if state.actions_executed:
+                    logger.warning("Structured loop failed after actions ran: %s", exc)
+                    return self._salvage(state, "structured_json")
+                raise
+        finally:
+            if deadline_token is not None:
+                reset_deadline(deadline_token)
 
     # --- Strategy 1: native tool calling ----------------------------------------
 

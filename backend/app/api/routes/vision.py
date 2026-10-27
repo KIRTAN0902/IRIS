@@ -99,9 +99,9 @@ async def ingest_image(
 
         # Support both single image (image_base64) and multiple images (images list)
         items = []
-        if isinstance(data.get("images"), list):
+        if isinstance(data.get("images"), list) and data["images"]:
             items.extend(data["images"])
-        if data.get("image_base64") or data.get("image"):
+        elif data.get("image_base64") or data.get("image"):
             items.append({
                 "image_base64": data.get("image_base64") or data.get("image"),
                 "mime_type": data.get("mime_type"),

@@ -20,6 +20,9 @@ from app.ai.provider import AISchemaValidationError
 T = TypeVar("T", bound=BaseModel)
 
 _THINK_RE = re.compile(r"<(think|thinking|thought|reasoning)>([\s\S]*?)</\1>", re.IGNORECASE)
+_UNTERMINATED_THINK_RE = re.compile(
+    r"^\s*<(think|thinking|thought|reasoning)>([\s\S]*)$", re.IGNORECASE
+)
 _FENCE_RE = re.compile(r"```(?:json)?\s*([\s\S]*?)\s*```", re.DOTALL)
 
 
@@ -39,6 +42,10 @@ def split_reasoning(text: str) -> tuple[str, str | None]:
             head, _, tail = re.split(f"({re.escape(closing)})", answer, maxsplit=1, flags=re.IGNORECASE)
             reasoning_parts.append(head)
             answer = tail
+    unterminated = _UNTERMINATED_THINK_RE.match(answer)
+    if unterminated:
+        reasoning_parts.append(unterminated.group(2))
+        answer = ""
     reasoning = "\n".join(p.strip() for p in reasoning_parts if p.strip()) or None
     return answer.strip(), reasoning
 
@@ -49,6 +56,12 @@ def _clean_json_markdown(text: str) -> str:
     match = _FENCE_RE.search(text)
     if match:
         return match.group(1).strip()
+    if text.endswith("```"):
+        text = text[:-3].strip()
+    if text.startswith("```json"):
+        text = text[7:].strip()
+    elif text.startswith("```"):
+        text = text[3:].strip()
     return text
 
 

@@ -8,11 +8,13 @@ from __future__ import annotations
 
 import asyncio
 import json
+from contextvars import ContextVar
 from typing import Any, TypeVar
 
 from pydantic import BaseModel, ValidationError
 
 from app.ai.capabilities import ModelCapabilities, resolve_capabilities
+from app.ai.deadline import get_current_deadline
 from app.ai.provider import (
     AIConfigurationError,
     AIConnectionError,
@@ -24,7 +26,8 @@ from app.ai.provider import (
     ToolDefinition,
 )
 from app.ai.providers.openai_compatible import OpenAICompatibleProvider
-from app.ai.structured import _clean_json_markdown
+from app.ai.structured import _clean_json_markdown, extract_json
+from app.core.config import settings
 from app.core.logging import get_logger
 
 logger = get_logger("iris.ai.providers.gemini")
@@ -32,6 +35,10 @@ logger = get_logger("iris.ai.providers.gemini")
 T = TypeVar("T", bound=BaseModel)
 
 GEMINI_OPENAI_URL = "https://generativelanguage.googleapis.com/v1beta/openai"
+
+active_turn_backend: ContextVar[OpenAICompatibleProvider | None] = ContextVar(
+    "active_turn_backend", default=None
+)
 
 
 class GeminiProvider(AIProvider):
@@ -63,15 +70,27 @@ class GeminiProvider(AIProvider):
             if self._model.startswith("gemma-") and not self._model.startswith("models/")
             else self._model
         )
+        is_live_key = bool(
+            self._api_key and settings.gemini_api_key and self._api_key == settings.gemini_api_key
+        )
+        primary_kwargs = dict(chat_kwargs)
+        if self._fallback_model and (primary_kwargs.get("max_retries") or 0) > 1:
+            primary_kwargs["max_retries"] = 1
+        if is_live_key and "gemma" not in chat_model.lower():
+            primary_kwargs["extra_body"] = {
+                "reasoning_effort": "none",
+                **(primary_kwargs.get("extra_body") or {}),
+            }
+        per_attempt_timeout = min(timeout_seconds, 22.0) if self._fallback_model else timeout_seconds
         self._chat_backend = OpenAICompatibleProvider(
             name="gemini",
             label="Gemini",
             base_url=GEMINI_OPENAI_URL,
             model=chat_model,
             api_key=self._api_key,
-            timeout_seconds=timeout_seconds,
+            timeout_seconds=per_attempt_timeout,
             capabilities=self._caps,
-            **chat_kwargs,
+            **primary_kwargs,
         )
         if self._fallback_model:
             fallback_chat_model = (
@@ -79,18 +98,64 @@ class GeminiProvider(AIProvider):
                 if self._fallback_model.startswith("gemma-") and not self._fallback_model.startswith("models/")
                 else self._fallback_model
             )
+            fb_kwargs = dict(chat_kwargs)
+            if (fb_kwargs.get("max_retries") or 0) > 1:
+                fb_kwargs["max_retries"] = 1
+            if is_live_key and "gemma" not in fallback_chat_model.lower():
+                fb_kwargs["extra_body"] = {
+                    "reasoning_effort": "none",
+                    **(fb_kwargs.get("extra_body") or {}),
+                }
             self._fallback_chat_backend = OpenAICompatibleProvider(
                 name="gemini",
                 label="Gemini",
                 base_url=GEMINI_OPENAI_URL,
                 model=fallback_chat_model,
                 api_key=self._api_key,
-                timeout_seconds=timeout_seconds,
+                timeout_seconds=per_attempt_timeout,
                 capabilities=resolve_capabilities(self._fallback_model),
-                **chat_kwargs,
+                **fb_kwargs,
             )
         else:
             self._fallback_chat_backend = None
+
+        self._secondary_fallbacks: list[OpenAICompatibleProvider] = []
+        if is_live_key:
+            if settings.groq_api_key:
+                self._secondary_fallbacks.append(
+                    OpenAICompatibleProvider(
+                        name="groq",
+                        label="Groq",
+                        base_url=settings.groq_base_url or "https://api.groq.com/openai/v1",
+                        model="qwen/qwen3.8-27b",
+                        api_key=settings.groq_api_key,
+                        timeout_seconds=min(timeout_seconds, 25.0),
+                        capabilities=resolve_capabilities("qwen/qwen3.8-27b"),
+                        max_retries=1,
+                    )
+                )
+            seen_models = {
+                self._model.replace("models/", ""),
+                (self._fallback_model or "").replace("models/", ""),
+            }
+            for cand in ("gemini-3.5-flash", "gemini-3.1-flash-lite"):
+                if cand not in seen_models:
+                    seen_models.add(cand)
+                    cand_model = cand
+                    cand_extra = {"reasoning_effort": "none"}
+                    self._secondary_fallbacks.append(
+                        OpenAICompatibleProvider(
+                            name="gemini",
+                            label="Gemini",
+                            base_url=GEMINI_OPENAI_URL,
+                            model=cand_model,
+                            api_key=self._api_key,
+                            timeout_seconds=timeout_seconds,
+                            capabilities=resolve_capabilities(cand),
+                            max_retries=1,
+                            extra_body=cand_extra,
+                        )
+                    )
 
     @property
     def name(self) -> str:
@@ -126,15 +191,40 @@ class GeminiProvider(AIProvider):
                 "Gemini provider is not enabled (missing API key)",
                 provider=self.name,
             )
+
+        # Check turn-level stickiness: if a secondary backend already executed a tool call
+        # in this turn, keep subsequent steps on that backend to prevent cross-provider signature rejections.
+        sticky_backend = active_turn_backend.get()
+        if sticky_backend is not None:
+            try:
+                return await sticky_backend.chat(
+                    messages,
+                    tools=tools,
+                    response_format=response_format,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                )
+            except AIProviderError as exc:
+                logger.warning(
+                    "Sticky backend %s/%s failed in turn (%s); resetting stickiness and initiating failover",
+                    sticky_backend.name,
+                    sticky_backend.model,
+                    exc,
+                )
+                active_turn_backend.set(None)
+
         try:
-            return await self._chat_backend.chat(
+            res = await self._chat_backend.chat(
                 messages,
                 tools=tools,
                 response_format=response_format,
                 temperature=temperature,
                 max_tokens=max_tokens,
             )
+            active_turn_backend.set(self._chat_backend)
+            return res
         except AIProviderError as exc:
+            last_err: AIProviderError = exc
             if self._fallback_chat_backend:
                 logger.warning(
                     "Gemini primary model %s chat failed (%s); falling back to %s",
@@ -142,14 +232,37 @@ class GeminiProvider(AIProvider):
                     exc,
                     self._fallback_model,
                 )
-                return await self._fallback_chat_backend.chat(
-                    messages,
-                    tools=tools,
-                    response_format=response_format,
-                    temperature=temperature,
-                    max_tokens=max_tokens,
-                )
-            raise
+                try:
+                    res = await self._fallback_chat_backend.chat(
+                        messages,
+                        tools=tools,
+                        response_format=response_format,
+                        temperature=temperature,
+                        max_tokens=max_tokens,
+                    )
+                    active_turn_backend.set(self._fallback_chat_backend)
+                    return res
+                except AIProviderError as fb_exc:
+                    last_err = fb_exc
+            for sec_backend in self._secondary_fallbacks:
+                try:
+                    logger.warning(
+                        "Gemini fallback chain trying secondary model %s/%s",
+                        sec_backend.name,
+                        sec_backend.model,
+                    )
+                    res = await sec_backend.chat(
+                        messages,
+                        tools=tools,
+                        response_format=response_format,
+                        temperature=temperature,
+                        max_tokens=max_tokens,
+                    )
+                    active_turn_backend.set(sec_backend)
+                    return res
+                except AIProviderError as sec_exc:
+                    last_err = sec_exc
+            raise last_err
 
     def _get_client(self):
         if self._client is None:
@@ -241,9 +354,14 @@ class GeminiProvider(AIProvider):
                 model_to_use,
             )
             try:
+                deadline = get_current_deadline()
+                if deadline is not None:
+                    per_call_timeout = max(1.0, deadline.per_attempt_timeout(self._timeout))
+                else:
+                    per_call_timeout = self._timeout
                 raw_text = await asyncio.wait_for(
                     asyncio.to_thread(_call_gemini, model_to_use),
-                    timeout=self._timeout,
+                    timeout=per_call_timeout,
                 )
                 if not raw_text:
                     raise AISchemaValidationError(
@@ -251,8 +369,11 @@ class GeminiProvider(AIProvider):
                         provider=self.name,
                     )
 
-                cleaned_text = _clean_json_markdown(raw_text)
-                parsed_json = json.loads(cleaned_text)
+                try:
+                    parsed_json = extract_json(raw_text)
+                except json.JSONDecodeError:
+                    cleaned_text = _clean_json_markdown(raw_text)
+                    parsed_json = json.loads(cleaned_text)
                 result = schema.model_validate(parsed_json)
 
                 if idx > 0:

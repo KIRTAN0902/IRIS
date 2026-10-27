@@ -45,8 +45,8 @@ class Settings(BaseSettings):
 
     # Provider-neutral model settings. These win over the legacy per-vendor
     # variables below, so switching models is only ever an .env change.
-    ai_model: str | None = "gemma-4-31b-it"
-    ai_fallback_model: str | None = "gemma-4-31b-it"
+    ai_model: str | None = "gemini-3.1-flash-lite"
+    ai_fallback_model: str | None = "gemini-3.5-flash"
     ai_base_url: str | None = None
     ai_api_key: str | None = None
     ai_timeout_seconds: float | None = None
@@ -92,35 +92,35 @@ class Settings(BaseSettings):
 
     # Gemini
     gemini_api_key: str | None = None
-    gemini_model: str = "gemma-4-31b-it"
-    gemini_fallback_model: str | None = "gemma-4-31b-it"
+    gemini_model: str = "gemini-3.1-flash-lite"
+    gemini_fallback_model: str | None = "gemini-3.5-flash"
     gemini_timeout_seconds: float = 45.0
 
     # Groq Cloud (Ultra-fast LPU inference)
     groq_base_url: str = "https://api.groq.com/openai/v1"
     groq_api_key: str | None = None
-    groq_model: str = "google/gemma-4-31b-it"
+    groq_model: str = "qwen/qwen3.8-27b"
     groq_timeout_seconds: float = 30.0
 
     # Multi-Agent Routing & System 1 Decision Router (Jev alternative)
     ai_multi_agent_enabled: bool = True
-    ai_router_model: str = "gemini:gemma-4-31b-it"
-    ai_orchestrator_model: str = "gemini:gemma-4-31b-it"
-    ai_operator_model: str = "gemini:gemma-4-31b-it"
-    ai_planner_model: str = "gemini:gemma-4-31b-it"
-    ai_scribe_model: str = "gemini:gemma-4-31b-it"
-    ai_bubba_model: str = "gemini:gemma-4-31b-it"
-    ai_vision_model: str = "gemini:gemma-4-31b-it"
+    ai_router_model: str = "groq:qwen/qwen3.8-27b"
+    ai_orchestrator_model: str = "gemini:gemini-3.1-flash-lite"
+    ai_operator_model: str = "gemini:gemini-3.1-flash-lite"
+    ai_planner_model: str = "gemini:gemini-3.1-flash-lite"
+    ai_scribe_model: str = "gemini:gemini-3.1-flash-lite"
+    ai_bubba_model: str = "gemini:gemini-3.1-flash-lite"
+    ai_vision_model: str = "gemini:gemini-3.1-flash-lite"
 
-    # --- Ephemeral Vision (Nemotron 3.5 Super VL) ---
-    # nvidia uses NVIDIA NIM's OpenAI-compatible endpoint. If no NVIDIA key is
-    # configured, the service falls back to Gemini without changing any code.
-    vision_provider: str = "nvidia"
-    vision_model_name: str = "nvidia/nemotron-3.5-super-vl-120b-a12b"
+    # --- Ephemeral Vision ---
+    # Default to ultra-fast Gemini Flash with resilient serial fallback on rate limits
+    # and secondary fallback to NVIDIA NIM.
+    vision_provider: str = "gemini"
+    vision_model_name: str = "gemini-3.1-flash-lite"
     vision_max_image_mb: int = 10
-    vision_timeout_seconds: float = 90.0
-    # Used only when vision_provider=nvidia has no API key and falls back to Gemini.
+    vision_timeout_seconds: float = 45.0
     vision_fallback_model: str | None = "gemini-3.5-flash"
+    vision_serial_processing: bool = False
 
     # --- Antigravity (agy) ConPTY Bridge ---
     # Executable or command used to launch the Antigravity CLI inside the PTY.

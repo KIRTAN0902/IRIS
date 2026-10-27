@@ -142,7 +142,7 @@ async def send_message(
                 except VisionValidationError as exc:
                     raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    if payload.image_base64:
+    elif payload.image_base64:
         try:
             b, m = vision_service.decode_base64_image(
                 payload.image_base64, payload.mime_type

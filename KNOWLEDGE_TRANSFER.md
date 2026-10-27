@@ -2,7 +2,7 @@
 
 > **System Designation**: IRIS (*Intelligent Responsive Information System*)  
 > **Repository**: `C:\kirtan\IRIS`  
-> **Version**: 2.5 (Sovereign Multi-Agent, WebRTC Mesh, Gemma 4 31B, Enceladus Voice)  
+> **Version**: 2.6 (Sovereign Multi-Agent, WebRTC Mesh, Gemini 3.1 Flash-Lite, Resilient Ephemeral Vision, Enceladus Voice, Antigravity ConPTY Bridge)  
 > **Target Audience**: Core Engineers, Systems Architects, and Technical Maintainers  
 
 ---
@@ -12,25 +12,30 @@
 2. [Core Principles & Design Philosophy](#2-core-principles--design-philosophy)
 3. [End-to-End System Architecture](#3-end-to-end-system-architecture)
 4. [The Multi-Agent Swarm & Supervisor](#4-the-multi-agent-swarm--supervisor)
-5. [Voice Engine & Situational Awareness](#5-voice-engine--situational-awareness)
-6. [Sovereign Mesh Network & Remote Desktop Mirroring](#6-sovereign-mesh-network--remote-desktop-mirroring)
-7. [Comprehensive Tech Stack Breakdown](#7-comprehensive-tech-stack-breakdown)
-8. [Hosting, Environments & Deployment Topologies](#8-hosting-environments--deployment-topologies)
-9. [Codebase Anatomy & Directory Tree](#9-codebase-anatomy--directory-tree)
-10. [Operational Runbook & Developer Cheatsheet](#10-operational-runbook--developer-cheatsheet)
+5. [Ephemeral Multimodal Vision Pipeline](#5-ephemeral-multimodal-vision-pipeline)
+6. [Voice Engine & Situational Awareness](#6-voice-engine--situational-awareness)
+7. [Sovereign Mesh Network & Remote Desktop Mirroring](#7-sovereign-mesh-network--remote-desktop-mirroring)
+8. [Comprehensive Tech Stack Breakdown](#8-comprehensive-tech-stack-breakdown)
+9. [Hosting, Environments & Deployment Topologies](#9-hosting-environments--deployment-topologies)
+10. [Codebase Anatomy & Directory Tree](#10-codebase-anatomy--directory-tree)
+11. [Operational Runbook & Developer Cheatsheet](#11-operational-runbook--developer-cheatsheet)
 
 ---
 
 ## 1. Executive Summary & What IRIS Is
 
 ### What is IRIS?
-**IRIS** is not a generic to-do list, and it is not a simplistic chatbot wrapper. It is a **Sovereign Personal Operating System (Personal OS) and Executive Command Center** engineered for a single high-output operator (managing a demanding university degree, a paid software engineering internship, and an early-stage startup venture simultaneously).
+**IRIS** is not a generic to-do list, and it is not a simplistic chatbot wrapper. It is a **Sovereign Personal Operating System (Personal OS) and Executive Command Center** engineered for a single high-output operator managing four concurrent life pillars:
+- 🎓 **COLLEGE**: Academic deadlines, course assignments, lab deliverables, exam prep.
+- 💼 **INTERNSHIP**: Paid software engineering deliverables, code reviews, standups.
+- 🚀 **STARTUP (Strategic Priority)**: Customer prospecting, outreach pipeline, investor/customer demos, product shipping.
+- 🧘 **PERSONAL**: Health, weightlifting routines, daily all-week yoga asanas, habit streaks, personal finance & cash flow.
 
-In standard software, productivity tools are fragmented: tasks live in Todoist, calendar in Google Calendar, workout routines in a fitness app, expenses in Splitwise/Notion, emails in Gmail, code in terminals, and notes in Obsidian. 
+In standard workflows, productivity is fragmented: tasks in Todoist, calendar in Google Calendar, workouts in fitness apps, finance in Notion/Splitwise, code in IDEs, and notes in Obsidian. 
 
-**IRIS unifies all four life domains (COLLEGE, INTERNSHIP, STARTUP, PERSONAL)** into a single, cohesive, self-hosted intelligence fabric that answers four existential operational questions in real time from live data:
+**IRIS unifies all four life domains** into a single, cohesive, self-hosted intelligence fabric answering four existential operational questions in real time:
 1. **What matters today?** (High-leverage focus vs trivial busyness)
-2. **What should I do right now?** (Deterministic priority & constraint-aware recommendation)
+2. **What should I do right now?** (Deterministic constraint-aware recommendation)
 3. **Is anything urgent or falling behind?** (Deadlines, pipeline follow-ups, habit consistency)
 4. **Am I making meaningful progress?** (Real outcomes: customers, replies, code shipped, workouts finished — *Progress > Activity*)
 
@@ -46,7 +51,8 @@ flowchart TD
     subgraph IRISCore ["IRIS Intelligence Engine"]
         FastPath["Deterministic Fast-Path Engine<br/>(0ms Latency, 0 API Cost)"]
         Supervisor["IrisSupervisor Orchestrator"]
-        LLM["Google Gemma 4 31B Reasoning Engine"]
+        LLM["Google Gemini 3.1 Flash-Lite Engine<br/>(Multi-Tier Fallback: Groq / Gemma 4 / NVIDIA)"]
+        Vision["Ephemeral Multimodal Vision<br/>(Batch & Resilient Serial Fallback)"]
     end
 
     subgraph Surfaces ["Unified Client Surfaces"]
@@ -67,12 +73,16 @@ flowchart TD
 1. **Progress > Activity**:
    Success is measured by concrete results (prospects contacted, replies, meetings booked, code merged, workouts completed), not hours seated at a desk.
 2. **Deterministic Truth, AI Reasoning**:
-   Deterministic engines handle truth (time constraints, availability, hard deadlines, status queries, completions). Machine learning (Gemma 4 31B) provides reasoning, synthesis, and creative assistance. IRIS never hallucinates facts when deterministic truth is available.
+   Deterministic engines handle truth (time constraints, availability, hard deadlines, status queries, completions). Machine learning provides reasoning, synthesis, and creative assistance. IRIS never hallucinates facts when deterministic truth is available.
 3. **Zero-Latency Fast-Paths (Jev Principle)**:
    Any request with a known deterministic answer (e.g. *"what should I do now?"*, *"gym done"*, *"lock workstation"*, *"what's the time"*) bypasses the LLM completely. It responds in `< 15ms` with zero token consumption and zero rate-limit exposure.
-4. **Cognitive Obsidian UI/UX**:
+4. **Multi-Layer Context Caching**:
+   Against remote PostgreSQL databases (e.g. Supabase), decision context, personal profiles, and situations are cached for 60 seconds per user, eliminating 6.6s of sequential SQL queries on every turn. Write tools automatically invalidate the cache.
+5. **Zero-Image-Storage Guarantee**:
+   Uploaded images exist strictly in RAM for ephemeral visual extraction. Image bytes are never written to disk, databases, or logs. Only extracted context, OCR, and actionable items survive as durable memory.
+6. **Cognitive Obsidian UI/UX**:
    Surfaces are rendered in deep obsidian (`#080A0F`, `#0D1117`, `#151B23`) with high-contrast typography (Chakra Petch display, Barlow body, JetBrains Mono telemetry). Luminous status beacons indicate AI activity without visual clutter.
-5. **Sovereign Ownership & $0 Ongoing Cloud Cost**:
+7. **Sovereign Ownership & $0 Ongoing Cloud Cost**:
    The entire system runs on your local workstation and personal devices, relying on free-tier Supabase PostgreSQL and Google Gemini endpoints. No recurring SaaS subscriptions.
 
 ---
@@ -97,22 +107,23 @@ flowchart TB
         Supervisor["IrisSupervisor Orchestrator"]
         FastPath["Fast-Path Deterministic Interceptor"]
         Router["System 1 Intent Classifier (Gemma 4 31B)"]
-        
-        Operator["Operator Agent<br/>(CLI, Files, Apps, Coding)"]
-        Planner["Planner Agent<br/>(Chronos, Schedule, Tasks)"]
-        Scribe["Scribe Agent<br/>(Notes, Gym, Yoga, Finance, CRM)"]
-        BUBBA["BUBBA Agent<br/>(Gmail, Google Drive)"]
+        Operator["Operator Agent (CLI, Files, Apps, AGY Coding)"]
+        Planner["Planner Agent (Chronos, Schedule, Tasks)"]
+        Scribe["Scribe Agent (Notes, Gym, Yoga, Finance, CRM)"]
+        BUBBA["BUBBA Agent (Gmail, Google Drive)"]
+        Vision["Vision Service (Gemini 3.1 Flash-Lite / Serial Fallback)"]
     end
 
     subgraph Storage ["Persistence & Data Fabric"]
         SQLite["Local SQLite (iris.db)"]
         Supabase["Supabase PostgreSQL 17<br/>(aws-0-ap-southeast-1)"]
+        ContextCache["60s User Context Cache"]
         Memory["Contextual Memory Engine"]
     end
 
     Clients --> Gateway
     Gateway --> FastAPIRouter
-    FastAPIRouter --> Supervisor
+    FastAPIRouter --> Supervisor & Vision
     Supervisor --> FastPath
     Supervisor --> Router
     Router --> Operator & Planner & Scribe & BUBBA
@@ -128,7 +139,7 @@ At the center of IRIS's intelligence is `IrisSupervisor` ([`supervisor.py`](file
 
 ### 1. Deterministic Fast-Path Interceptor
 Before any prompt touches an LLM API, `try_fast_path()` analyzes user intent:
-- **Time & Date**: Instant local timestamp formatting.
+- **Time & Date**: Instant local timestamp formatting (~1.1s turn total).
 - **Top Priority Task** (*"what's my task"*, *"what should I do"*): Calls `deterministic_decision(db, user)` to score all open tasks against deadlines, project weighting, and available schedule blocks.
 - **Task Completion** (*"task done"*, *"completed task"*): Marks top open task complete and returns the next highest-leverage task.
 - **Fitness & Yoga Checkoffs** (*"gym done"*, *"yoga done"*, *"asana done"*): Instantly marks daily workout / yoga routines and habits complete.
@@ -137,7 +148,7 @@ Before any prompt touches an LLM API, `try_fast_path()` analyzes user intent:
 
 ### 2. Two-Tier Intent Routing
 If the request requires complex execution:
-1. **Tier 1 (Deterministic Keyword Match, 0ms)**: Evaluates high-confidence keyword sets.
+1. **Tier 1 (Deterministic Keyword Match, 0ms)**: Instant rule-based classification.
 2. **Tier 2 (System 1 Decision Engine, ~400ms)**: Uses Google Gemma 4 31B (`gemma-4-31b-it`) in a single forward pass with `temperature=0.0` and zero tool schema clutter to categorize into:
    - `[A]` **Operator**
    - `[B]` **Planner**
@@ -149,16 +160,53 @@ If the request requires complex execution:
 
 | Sub-Agent | Primary Responsibilities | Available Tools |
 |---|---|---|
-| **Operator** | Workstation OS actions, terminal commands, directory navigation, file reading/writing/searching, Antigravity CLI/IDE launching, autonomous coding pipelines. | `run_terminal_command`, `read_workspace_file`, `write_workspace_file`, `search_files`, `launch_laptop_app`, `trigger_autonomous_coding` |
+| **Operator** | Workstation OS actions, terminal commands, directory navigation, file reading/writing/searching, Antigravity (AGY) ConPTY autonomous coding dispatch. | `run_terminal_command`, `read_workspace_file`, `write_workspace_file`, `search_files`, `launch_laptop_app`, `trigger_autonomous_coding` |
 | **Planner** | Chronos dynamic availability engine, schedule time-blocking, task hierarchies, subtask breakdown, project milestone tracking, daily review generation. | `create_task`, `update_task`, `complete_task`, `create_timeblock`, `get_daily_schedule`, `plan_day_draft` |
-| **Scribe** | Personal journal / diary entries, Gym lifting splits, daily all-week Yoga routines & asana tracking, habit streaks, personal finance (expenses, cash flow, budgets), startup CRM outreach pipeline. | `log_diary_entry`, `read_diary`, `log_workout`, `check_yoga_asana`, `log_expense`, `get_finances`, `update_lead_status` |
+| **Scribe** | Personal journal entries, Gym lifting splits, daily all-week Yoga routines & asana tracking, habit streaks, personal finance (expenses, cash flow, budgets), startup CRM outreach pipeline. | `log_diary_entry`, `read_diary`, `log_workout`, `check_yoga_asana`, `log_expense`, `get_finances`, `update_lead_status` |
 | **BUBBA** | Google Workspace ecosystem integration: Gmail inbox reading, thread triage, drafting replies, sending emails; Google Drive search and document analysis. | `list_unread_emails`, `search_emails`, `draft_email`, `send_email`, `search_drive_files`, `read_drive_document` |
+
+### 4. Gemini 3.x Thought Signature Preservation
+Gemini 3.x models emit provider-specific `extra_content.google.thought_signature` tokens on tool calls. The harness preserves these signatures on `ToolCallRequest` and echoes them back during multi-turn execution, while safely stripping them during failover to non-Gemini models (Gemma, Groq) to avoid HTTP 400 parameter errors.
 
 ---
 
-## 5. Voice Engine & Situational Awareness
+## 5. Ephemeral Multimodal Vision Pipeline
 
-IRIS features a full-duplex conversational voice module that operates as a direct conversational portal into the same core intelligence engine.
+The vision pipeline ([`vision_service.py`](file:///C:/kirtan/IRIS/backend/app/services/vision_service.py)) provides ephemeral visual comprehension for receipts, invoices, error screens, syllabi, and documents.
+
+```mermaid
+flowchart TD
+    UserUpload["User attaches 1–5 images"] --> ClientReader["FileReader -> RAM Data URIs"]
+    ClientReader --> APIRoute["POST /api/chat/.../messages or /api/vision/ingest"]
+    APIRoute --> VisionService["VisionService.analyze_ephemeral_images()"]
+    
+    VisionService --> BatchTry{"Attempt Batch Mode<br/>(Gemini 3.1 Flash-Lite)"}
+    BatchTry -- "Success (~3.7s)" --> ParseJSON["Parse Structured Output"]
+    BatchTry -- "Fails / 429 Rate Limit / 413 Payload" --> SerialMode["Serial Processing Mode<br/>(Image-by-Image with 0.5s pause)"]
+    
+    SerialMode --> SingleImgCall["Process Image i with 429 Backoff & Fallback"]
+    SingleImgCall --> MergeResults["_merge_results():<br/>Combine OCR, Actions, Facts & Domain"]
+    ParseJSON --> MergeResults
+    
+    MergeResults --> StoreContext["store_visual_context():<br/>Save extracted facts to memory (0 image bytes)"]
+    StoreContext --> AgentEnrich["Enrich Agent Context with [📷 Visual Context]"]
+    AgentEnrich --> AgentTurn["Agent Run Turn -> Final User Response"]
+```
+
+### Key Engineering Features:
+1. **Multi-Image Support**: Accepts single `image_base64` or a list of `images: [ImageAttachment]` up to 10 MB per image.
+2. **Resilient Serial Fallback**:
+   - Tries fast batch analysis first (~3.7s).
+   - If batch mode encounters an **HTTP 429 (rate limit)**, **HTTP 413 (payload too large)**, or timeout, it automatically pivots to serial mode without crashing.
+   - In serial mode, each image is analyzed individually with an exponential backoff buffer, and all OCR text, actions, and facts are merged.
+3. **Provider Failover**: Primary vision runs on `gemini-3.1-flash-lite`, automatically failing over to `nvidia/nemotron-3.5-super-vl-120b-a12b` if the Google endpoint is unavailable.
+4. **Client Object URL Lifetime**: Object URLs in React are tracked via `useRef<Set<string>>` and revoked strictly on component unmount or explicit removal, eliminating premature thumbnail revocation.
+
+---
+
+## 6. Voice Engine & Situational Awareness
+
+IRIS features a full-duplex conversational voice module that operates as a direct portal into the core intelligence engine.
 
 ```mermaid
 sequenceDiagram
@@ -167,14 +215,14 @@ sequenceDiagram
     participant Client as Web / Desktop Voice UI
     participant VoiceRouter as /api/voice/chat
     participant Supervisor as IrisSupervisor Core
-    participant Gemma as Gemma 4 31B / Tools
+    participant Model as Gemini 3.1 Flash-Lite / Tools
     participant GeminiTTS as Gemini Speech Engine (Enceladus)
 
     User->>Client: Speaks audio instruction
     Client->>VoiceRouter: Audio / Text Transcribed (STT)
     VoiceRouter->>Supervisor: Injects Live Context (Tasks, Schedule, Workouts, Startup)
-    Supervisor->>Gemma: Executes reasoning & agent tools
-    Gemma-->>Supervisor: Structured Response & Tool Outputs
+    Supervisor->>Model: Executes reasoning & agent tools
+    Model-->>Supervisor: Structured Response & Tool Outputs
     Supervisor->>GeminiTTS: Synthesizes text with Enceladus voice
     GeminiTTS-->>Client: High-fidelity audio stream (MP3/PCM)
     Client-->>User: Plays audible response with synchronized telemetry
@@ -186,7 +234,7 @@ sequenceDiagram
 
 ---
 
-## 6. Sovereign Mesh Network & Remote Desktop Mirroring
+## 7. Sovereign Mesh Network & Remote Desktop Mirroring
 
 The **Sovereign Mesh** connects your mobile phone (on any 5G network or hotel Wi-Fi) with your Windows laptop workstation at **$0 cloud cost**, without open router ports, dynamic DNS, or third-party paid tunnels (like ngrok).
 
@@ -239,7 +287,7 @@ flowchart LR
 
 ---
 
-## 7. Comprehensive Tech Stack Breakdown
+## 8. Comprehensive Tech Stack Breakdown
 
 ### Frontend (User Interface)
 - **Framework**: React 18.3 Single Page Application (SPA) with TypeScript 5.6.
@@ -258,10 +306,12 @@ flowchart LR
 - **Data Validation**: Pydantic v2.
 
 ### AI & Reasoning Engine
-- **Core Reasoning Model**: Google Gemma 4 31B (`gemma-4-31b-it`) served via Google AI Studio Gemini API (`generativelanguage.googleapis.com/v1beta/openai`).
+- **Active Chat & Multi-Agent Core**: Google Gemini 3.1 Flash-Lite (`gemini-3.1-flash-lite`) with multi-tier failover across Groq (`qwen/qwen3.8-27b`), `gemma-4-26b-a4b-it`, and `gemini-3.5-flash`.
+- **Router Model**: Google Gemma 4 31B (`gemini:gemma-4-31b-it`) for zero-overhead single-token JEV classification.
+- **Ephemeral Vision**: `gemini-3.1-flash-lite` (batch + serial fallback) with fallback to `nvidia/nemotron-3.5-super-vl-120b-a12b`.
 - **Voice STT**: `gemini-3.5-transcribe` / HTML5 Web Speech.
 - **Voice TTS**: `gemini-3.8-flash-tts` / `gemini-3.8-live` with `Enceladus` voice.
-- **Multi-Provider Harness**: `AIProvider` factory supporting seamless hot-swapping between Gemini, NVIDIA NIM, Groq, OpenRouter, and local Ollama without code changes.
+- **Autonomous Coding**: Antigravity (AGY) ConPTY PTY bridge.
 
 ### Native Desktop Packaging
 - **Runtime**: Electron 33.
@@ -271,9 +321,7 @@ flowchart LR
 
 ---
 
-## 8. Hosting, Environments & Deployment Topologies
-
-IRIS is engineered to run in four distinct operational environments:
+## 9. Hosting, Environments & Deployment Topologies
 
 ### Topology A: Native Windows Desktop Workstation (Current Daily Driver)
 - **Backend**: Runs locally as a silent Windows background process via `start-mesh-silent.vbs` on port 8000.
@@ -289,7 +337,7 @@ IRIS is engineered to run in four distinct operational environments:
 
 ### Topology C: Self-Hosted VPS (Coolify / Docker Compose)
 - **Containers**: Two Docker containers (Frontend Nginx + Backend FastAPI) connected over an internal bridge network.
-- **Reverse Proxy**: Coolify / Traefik providing automatic Let's Encrypt SSL on a single domain (e.g. `https://iris.example.com`).
+- **Reverse Proxy**: Coolify / Traefik providing automatic Let's Encrypt SSL on a single domain.
 - **Database**: Persistent SQLite volume mounted at `/app/data/iris.db` with automated Alembic migrations on container startup.
 - **Configuration**: Documented in [`COOLIFY.md`](file:///C:/kirtan/IRIS/COOLIFY.md) and [`docker-compose.yml`](file:///C:/kirtan/IRIS/docker-compose.yml).
 
@@ -300,7 +348,7 @@ IRIS is engineered to run in four distinct operational environments:
 
 ---
 
-## 9. Codebase Anatomy & Directory Tree
+## 10. Codebase Anatomy & Directory Tree
 
 ```text
 C:\kirtan\IRIS\
@@ -313,11 +361,15 @@ C:\kirtan\IRIS\
 │   │   │   ├── tools/          # Discrete agent tools (tasks, mesh, finance, workouts)
 │   │   │   ├── supervisor.py   # IrisSupervisor orchestrator & fast-paths
 │   │   │   └── harness.py      # LLM invocation harness & retries
-│   │   ├── api/routes/         # FastAPI REST endpoints (tasks, schedule, voice, mesh)
+│   │   ├── ai/                 # Multi-provider AI abstractions (Gemini, NVIDIA, Groq)
+│   │   │   ├── capabilities.py # Model feature profiles & token limits
+│   │   │   ├── factory.py      # Dynamic provider instantiator & failover chains
+│   │   │   └── providers/      # Provider implementations
+│   │   ├── api/routes/         # FastAPI REST endpoints (chat, vision, mesh, voice)
 │   │   ├── core/               # Configuration, security, database session setup
 │   │   ├── intelligence/       # Deterministic priority engine & time allocator
 │   │   ├── models/             # SQLAlchemy ORM models (Task, Goal, Workout, Mesh)
-│   │   ├── services/           # Business logic (mesh_relay, screen_stream, memory)
+│   │   ├── services/           # Business logic (vision, mesh_relay, screen, memory)
 │   │   └── main.py             # FastAPI app instantiation & lifespan
 │   ├── alembic/                # Database schema migrations
 │   ├── run_daemon.py           # Workstation daemon runner
@@ -326,7 +378,7 @@ C:\kirtan\IRIS\
 │   ├── src/
 │   │   ├── components/         # Reusable UI primitives (dialogs, buttons, cards)
 │   │   ├── features/           # Domain feature views
-│   │   │   ├── chat/           # Conversational intelligence & voice stream
+│   │   │   ├── ai/             # Ask IRIS overlay console
 │   │   │   ├── gym/            # Gym splits & dedicated all-week Yoga flow
 │   │   │   ├── home/           # Today dashboard & priority recommendations
 │   │   │   ├── mesh/           # Sovereign mesh manager & screen mirroring
@@ -340,8 +392,6 @@ C:\kirtan\IRIS\
 │   ├── main.cjs                # Electron main process (iris:// protocol & tray)
 │   └── package.json            # Desktop Electron dependencies
 ├── scripts/                    # Maintenance & data migration utilities
-│   ├── migrate_sqlite_to_postgres.py
-│   └── seed.py
 ├── COOLIFY.md                  # VPS production deployment instructions
 ├── SUPABASE.md                 # PostgreSQL migration & Supabase guide
 ├── VERCEL.md                   # Serverless deployment guide
@@ -350,7 +400,7 @@ C:\kirtan\IRIS\
 
 ---
 
-## 10. Operational Runbook & Developer Cheatsheet
+## 11. Operational Runbook & Developer Cheatsheet
 
 ### 1. Launching IRIS on the Windows Workstation
 ```powershell
@@ -372,9 +422,9 @@ npm run dev
 
 ### 3. Running Test Suites
 ```powershell
-# Backend Pytest Suite
+# Backend Pytest Suite (384 passed)
 cd C:\kirtan\IRIS\backend
-.\.venv\Scripts\python.exe -m pytest tests/agent/ tests/api/
+.\.venv\Scripts\python.exe -m pytest -q
 
 # Frontend Typecheck & Build
 cd C:\kirtan\IRIS\frontend
@@ -384,7 +434,6 @@ npm run build
 ### 4. Applying Database Migrations
 ```powershell
 cd C:\kirtan\IRIS\backend
-# Applies latest schema to current DATABASE_URL (.env or Supabase)
 alembic upgrade head
 ```
 

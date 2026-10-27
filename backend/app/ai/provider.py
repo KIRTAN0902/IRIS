@@ -90,6 +90,9 @@ class ToolCallRequest:
     arguments: dict[str, Any] = field(default_factory=dict)
     # Set when the model produced arguments that are not a JSON object.
     argument_error: str | None = None
+    # Provider-specific metadata (e.g. Gemini's extra_content.google.thought_signature)
+    # that must be echoed back on subsequent assistant tool_calls turns.
+    extra_content: dict[str, Any] | None = None
 
 
 @dataclass

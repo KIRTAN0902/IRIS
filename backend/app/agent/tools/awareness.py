@@ -31,7 +31,19 @@ class GetSituationTool(Tool):
     read_only = True
 
     async def run(self, db: Session, user: User, **kwargs: Any) -> ToolResult:
-        situation = build_situation(db, user, since=last_user_message_at(db, user.id))
+        import time
+        from app.agent.agent import _CONTEXT_CACHE_TTL_SECONDS, _USER_CONTEXT_CACHE
+
+        situation = None
+        try:
+            if db.get_bind().dialect.name != "sqlite":
+                cached = _USER_CONTEXT_CACHE.get(user.id)
+                if cached and (time.monotonic() - cached[0]) < _CONTEXT_CACHE_TTL_SECONDS:
+                    situation = cached[3]
+        except Exception:
+            situation = None
+        if situation is None:
+            situation = build_situation(db, user, since=last_user_message_at(db, user.id))
         tasks = situation["tasks"]
         return ToolResult(
             tool_name=self.name,
@@ -58,7 +70,19 @@ class GetPersonalProfileTool(Tool):
     read_only = True
 
     async def run(self, db: Session, user: User, **kwargs: Any) -> ToolResult:
-        model = build_personal_model(db, user)
+        import time
+        from app.agent.agent import _CONTEXT_CACHE_TTL_SECONDS, _USER_CONTEXT_CACHE
+
+        model = None
+        try:
+            if db.get_bind().dialect.name != "sqlite":
+                cached = _USER_CONTEXT_CACHE.get(user.id)
+                if cached and (time.monotonic() - cached[0]) < _CONTEXT_CACHE_TTL_SECONDS:
+                    model = cached[2]
+        except Exception:
+            model = None
+        if model is None:
+            model = build_personal_model(db, user)
         return ToolResult(
             tool_name=self.name,
             success=True,

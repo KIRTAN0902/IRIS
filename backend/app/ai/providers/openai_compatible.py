@@ -16,11 +16,13 @@ from __future__ import annotations
 
 import asyncio
 import json
+import random
 from typing import Any
 
 import httpx
 
 from app.ai.capabilities import ModelCapabilities, resolve_capabilities
+from app.ai.deadline import get_current_deadline
 from app.ai.provider import (
     AIConfigurationError,
     AIConnectionError,
@@ -133,11 +135,13 @@ class OpenAICompatibleProvider(AIProvider):
                 pending_system = []
             if m.role == "assistant" and m.tool_calls:
                 msg["content"] = content or ""
+                include_extra = self._name == "gemini" and "gemma" not in self._model.lower()
                 msg["tool_calls"] = [
                     {
                         "id": tc.id,
                         "type": "function",
                         "function": {"name": tc.name, "arguments": json.dumps(tc.arguments)},
+                        **({"extra_content": tc.extra_content} if (include_extra and tc.extra_content) else {}),
                     }
                     for tc in m.tool_calls
                 ]
@@ -216,7 +220,12 @@ class OpenAICompatibleProvider(AIProvider):
         ):
             caps.json_mode = "json_object" if caps.json_mode == "json_schema" else "none"
             change = f"json_mode -> {caps.json_mode}"
-        elif "tools" in body and any(k in text for k in ("tool", "function")):
+        elif (
+            "tools" in body
+            and any(k in text for k in ("tool", "function"))
+            and "thought_signature" not in text
+            and not any(m.get("role") == "tool" for m in body.get("messages", []))
+        ):
             caps.native_tools = False
             change = "native_tools -> False"
         elif "temperature" in body and "temperature" in text:
@@ -247,17 +256,47 @@ class OpenAICompatibleProvider(AIProvider):
             headers["Authorization"] = f"Bearer {self._api_key}"
 
         attempt = 0
+        max_retries = min(self._max_retries, 2)
         while True:
+            deadline = get_current_deadline()
+            if deadline is not None and not deadline.has_budget_for_attempt:
+                raise AIConnectionError(
+                    f"{self._label} request deadline exceeded (remaining {deadline.remaining:.2f}s of {deadline.total_seconds:.1f}s)",
+                    provider=self._name,
+                )
+
+            if deadline is not None:
+                http_timeout = deadline.httpx_timeout(max_read=self._timeout)
+            else:
+                http_timeout = httpx.Timeout(
+                    connect=5.0,
+                    read=self._timeout,
+                    write=10.0,
+                    pool=5.0,
+                )
+
             try:
-                async with httpx.AsyncClient(timeout=self._timeout) as http_client:
+                async with httpx.AsyncClient(timeout=http_timeout) as http_client:
                     response = await http_client.post(endpoint, headers=headers, json=body)
             except httpx.TimeoutException as exc:
                 raise AIConnectionError(
-                    f"{self._label} request timed out after {self._timeout}s",
+                    f"{self._label} request timed out after {http_timeout.read}s",
                     provider=self._name,
                     cause=exc,
                 ) from exc
             except (httpx.ConnectError, httpx.NetworkError) as exc:
+                if attempt < max_retries and (deadline is None or deadline.has_budget_for_attempt):
+                    attempt += 1
+                    delay = _retry_delay(None, attempt)
+                    logger.warning(
+                        "AI connection error, retrying: provider=%s attempt=%d delay=%.2fs error=%s",
+                        self._name,
+                        attempt,
+                        delay,
+                        exc,
+                    )
+                    await asyncio.sleep(delay)
+                    continue
                 raise AIConnectionError(
                     f"Failed to connect to {self._label} at {self._base_url}: {exc}",
                     provider=self._name,
@@ -270,13 +309,21 @@ class OpenAICompatibleProvider(AIProvider):
                     cause=exc,
                 ) from exc
 
-            if response.status_code in _RETRYABLE_STATUS and attempt < self._max_retries:
+            if response.status_code in _RETRYABLE_STATUS and attempt < max_retries:
+                if deadline is not None and not deadline.has_budget_for_attempt:
+                    logger.warning(
+                        "AI request status %d retry skipped: deadline budget exhausted (%.2fs remaining)",
+                        response.status_code,
+                        deadline.remaining,
+                    )
+                    return response
                 delay = _retry_delay(response, attempt)
                 logger.info(
-                    "AI request retrying: provider=%s status=%s delay=%.1fs",
+                    "AI request retrying: provider=%s status=%s delay=%.2fs attempt=%d",
                     self._name,
                     response.status_code,
                     delay,
+                    attempt + 1,
                 )
                 attempt += 1
                 await asyncio.sleep(delay)
@@ -390,12 +437,14 @@ class OpenAICompatibleProvider(AIProvider):
                         arg_error = "Tool arguments must be a JSON object"
                 except json.JSONDecodeError as exc:
                     arg_error = f"Tool arguments were not valid JSON: {exc}"
+            extra_content = tc.get("extra_content")
             tool_calls.append(
                 ToolCallRequest(
                     id=tc.get("id") or f"call_{i}",
                     name=name,
                     arguments=args,
                     argument_error=arg_error,
+                    extra_content=extra_content if isinstance(extra_content, dict) else None,
                 )
             )
 
@@ -414,11 +463,13 @@ class OpenAICompatibleProvider(AIProvider):
         )
 
 
-def _retry_delay(response: httpx.Response, attempt: int) -> float:
-    retry_after = response.headers.get("retry-after")
-    if retry_after:
-        try:
-            return min(float(retry_after), 20.0)
-        except ValueError:
-            pass
-    return min(0.75 * (2**attempt), 8.0)
+def _retry_delay(response: httpx.Response | None, attempt: int) -> float:
+    if response is not None:
+        retry_after = response.headers.get("retry-after")
+        if retry_after:
+            try:
+                return min(float(retry_after), 20.0)
+            except ValueError:
+                pass
+    jitter = random.uniform(0.05, 0.25)
+    return min(0.5 * (2**attempt) + jitter, 8.0)

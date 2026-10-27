@@ -7,6 +7,7 @@ Only the structured text extraction survives, and only as contextual memory.
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import binascii
 import json
@@ -158,6 +159,7 @@ class VisionService:
     def __init__(self, provider: AIProvider | None = None) -> None:
         self._provider_override = provider
         self._provider_instance: AIProvider | None = None
+        self._fallback_instance: AIProvider | None = None
 
     @property
     def max_image_bytes(self) -> int:
@@ -165,54 +167,78 @@ class VisionService:
 
     def reset_provider(self) -> None:
         self._provider_instance = None
+        self._fallback_instance = None
 
-    def _build_provider(self) -> AIProvider:
-        requested = (settings.vision_provider or "nvidia").strip().lower()
+    def _build_provider(self, fallback: bool = False) -> AIProvider:
+        primary_name = (settings.vision_provider or "gemini").strip().lower()
         nvidia_key = settings.nvidia_api_key or os.environ.get("NVIDIA_API_KEY")
-        # Only treat AI_API_KEY as an NVIDIA key when the main agent is also
-        # configured for NVIDIA; otherwise it is likely a Gemini key.
         if not nvidia_key and (settings.ai_provider or "").strip().lower() == "nvidia":
             nvidia_key = settings.ai_api_key
-        if requested == "nvidia" and not nvidia_key:
-            logger.info("Vision: NVIDIA key missing; falling back to Gemini")
-            requested = "gemini"
 
-        if requested == "nvidia":
+        gemini_key = settings.gemini_api_key or os.environ.get("GEMINI_API_KEY")
+        if not gemini_key and (settings.ai_provider or "").strip().lower() == "gemini":
+            gemini_key = settings.ai_api_key
+
+        target = primary_name
+        if fallback:
+            target = "nvidia" if primary_name == "gemini" else "gemini"
+
+        if target == "nvidia" and not nvidia_key and not fallback:
+            logger.info("Vision: NVIDIA key missing; falling back to Gemini as primary")
+            target = "gemini"
+
+        if target == "nvidia":
             from app.ai.providers.nvidia import NvidiaProvider
 
+            model_name = (
+                settings.vision_model_name
+                if (not fallback and primary_name == "nvidia")
+                else (settings.vision_fallback_model or "nvidia/nemotron-3.5-super-vl-120b-a12b")
+            )
+            if "gemini" in model_name.lower():
+                model_name = "nvidia/nemotron-3.5-super-vl-120b-a12b"
             return NvidiaProvider(
                 base_url=settings.nvidia_base_url,
                 api_key=nvidia_key,
-                model=settings.vision_model_name,
+                model=model_name,
                 timeout_seconds=settings.vision_timeout_seconds,
             )
 
-        if requested == "gemini":
+        if target == "gemini":
             from app.ai.providers.gemini import GeminiProvider
 
-            fallback_model = (
-                settings.vision_fallback_model
-                or settings.gemini_model
-                or settings.ai_model
-                or "gemini-3.5-flash"
+            model_name = (
+                settings.vision_model_name
+                if (not fallback and primary_name == "gemini")
+                else (settings.vision_fallback_model or "gemini-3.1-flash-lite")
             )
-            gemini_key = settings.gemini_api_key or os.environ.get("GEMINI_API_KEY")
-            if not gemini_key and (settings.ai_provider or "").strip().lower() == "gemini":
-                gemini_key = settings.ai_api_key
+            if "nemotron" in model_name.lower():
+                model_name = "gemini-3.1-flash-lite"
             return GeminiProvider(
                 api_key=gemini_key,
-                model=fallback_model,
+                model=model_name,
                 timeout_seconds=settings.vision_timeout_seconds,
             )
 
-        return create_ai_provider(requested, model=settings.vision_model_name)
+        return create_ai_provider(target, model=settings.vision_model_name)
 
     def provider(self) -> AIProvider:
         if self._provider_override is not None:
             return self._provider_override
         if self._provider_instance is None:
-            self._provider_instance = self._build_provider()
+            self._provider_instance = self._build_provider(fallback=False)
         return self._provider_instance
+
+    def fallback_provider(self) -> AIProvider | None:
+        if self._provider_override is not None:
+            return None
+        if self._fallback_instance is None:
+            try:
+                self._fallback_instance = self._build_provider(fallback=True)
+            except Exception as exc:
+                logger.debug("Vision fallback provider unavailable: %s", exc)
+                return None
+        return self._fallback_instance
 
     def decode_base64_image(
         self, image_base64: str, mime_type: str | None = None
@@ -276,11 +302,52 @@ class VisionService:
         images: list[tuple[bytes, str]],
         user_prompt: str,
         domain_hint: str | None = None,
+        force_serial: bool | None = None,
     ) -> VisionExtractionResult:
         """Analyze one or more images in RAM; the raw bytes never leave this call."""
         if not images:
             raise VisionValidationError("No images provided for analysis.")
 
+        if len(images) == 1:
+            return await self._analyze_single_image(images[0], user_prompt, domain_hint)
+
+        run_serial = (
+            force_serial
+            if force_serial is not None
+            else bool(settings.vision_serial_processing)
+        )
+        if run_serial:
+            logger.info("Vision: processing %d images serially as configured", len(images))
+            return await self._analyze_ephemeral_images_serially(images, user_prompt, domain_hint)
+
+        # Try batch mode first (fastest)
+        try:
+            return await self._analyze_batch(images, user_prompt, domain_hint)
+        except Exception as exc:
+            is_rate_limit = (
+                "429" in str(exc)
+                or "rate" in str(exc).lower()
+                or "quota" in str(exc).lower()
+                or "too many requests" in str(exc).lower()
+            )
+            is_payload_too_large = "413" in str(exc) or "payload" in str(exc).lower()
+            logger.warning(
+                "Vision batch call encountered %s (rate_limit=%s, payload_too_large=%s); "
+                "automatically falling back to serial image processing with rate-limit backoff",
+                exc,
+                is_rate_limit,
+                is_payload_too_large,
+            )
+            return await self._analyze_ephemeral_images_serially(
+                images, user_prompt, domain_hint, backoff_on_start=is_rate_limit
+            )
+
+    async def _analyze_batch(
+        self,
+        images: list[tuple[bytes, str]],
+        user_prompt: str,
+        domain_hint: str | None = None,
+    ) -> VisionExtractionResult:
         data_uris: list[str] = []
         total_bytes = 0
         mimes: list[str] = []
@@ -291,15 +358,13 @@ class VisionService:
             total_bytes += len(img_bytes)
             mimes.append(mime)
 
-        if not user_prompt.strip():
-            user_prompt = (
-                "Extract the useful context from these images and act on it."
-                if len(images) > 1
-                else "Extract the useful context from this image and act on it."
-            )
-
+        clean_prompt = (
+            user_prompt.strip()
+            if user_prompt and user_prompt.strip()
+            else "Extract the useful context from these images and act on it."
+        )
         prompt = (
-            f"User request:\n{user_prompt.strip()}\n\n"
+            f"User request:\n{clean_prompt}\n\n"
             f"Domain hint: {(domain_hint or 'auto').strip() or 'auto'}"
         )
         messages = [
@@ -308,12 +373,10 @@ class VisionService:
         ]
         provider = self.provider()
         if not provider.enabled:
-            raise VisionProviderError(
-                f"Vision provider '{provider.name}' is not configured."
-            )
+            raise VisionProviderError(f"Vision provider '{provider.name}' is not configured.")
 
         logger.info(
-            "Ephemeral vision started: provider=%s model=%s images=%d bytes=%d mimes=%s",
+            "Ephemeral vision batch started: provider=%s model=%s images=%d bytes=%d mimes=%s",
             provider.name,
             provider.model,
             len(images),
@@ -330,29 +393,181 @@ class VisionService:
             parsed = parse_structured(
                 response.content or "", VisionExtractionResult, provider=provider.name
             )
-        except Exception as exc:
-            if isinstance(exc, VisionError):
-                raise
-            logger.warning("Vision provider call failed: %s", type(exc).__name__)
-            raise VisionProviderError("Vision analysis failed. Please retry.") from None
+            parsed.provider = provider.name
+            parsed.model = provider.model
+            logger.info(
+                "Ephemeral vision batch completed: provider=%s model=%s domain=%s actions=%d",
+                provider.name,
+                provider.model,
+                parsed.detected_domain,
+                len(parsed.actionable_items),
+            )
+            return parsed
         finally:
-            # Drop all references to raw images and their encoded payloads.
             messages.clear()
-            del messages
             data_uris.clear()
-            del data_uris
-            images = []
 
-        parsed.provider = provider.name
-        parsed.model = provider.model
-        logger.info(
-            "Ephemeral vision completed: provider=%s model=%s domain=%s actions=%d",
-            provider.name,
-            provider.model,
-            parsed.detected_domain,
-            len(parsed.actionable_items),
+    async def _analyze_single_image(
+        self,
+        image_tuple: tuple[bytes, str],
+        user_prompt: str,
+        domain_hint: str | None = None,
+        index: int = 1,
+        total: int = 1,
+    ) -> VisionExtractionResult:
+        img_bytes, mime_type = image_tuple
+        mime = self._validated_mime(img_bytes, _normalise_mime(mime_type))
+        b64 = base64.b64encode(img_bytes).decode("ascii")
+        data_uri = f"data:{mime};base64,{b64}"
+
+        clean_prompt = (
+            user_prompt.strip()
+            if user_prompt and user_prompt.strip()
+            else "Extract the useful context from this image and act on it."
         )
-        return parsed
+        prompt = (
+            f"User request:\n{clean_prompt}\n\n"
+            f"Domain hint: {(domain_hint or 'auto').strip() or 'auto'}"
+        )
+        messages = [
+            ChatMessage(role="system", content=_SYSTEM_PROMPT),
+            ChatMessage(role="user", content=prompt, images=[data_uri]),
+        ]
+
+        providers_to_try: list[AIProvider] = [self.provider()]
+        fb = self.fallback_provider()
+        if fb and fb.enabled and fb.name != providers_to_try[0].name:
+            providers_to_try.append(fb)
+
+        last_exc: Exception | None = None
+        for p in providers_to_try:
+            if not p.enabled:
+                continue
+            for attempt in range(2):
+                try:
+                    response = await p.chat(
+                        messages,
+                        response_format={"type": "json_object"},
+                        temperature=0.1,
+                        max_tokens=2048,
+                    )
+                    parsed = parse_structured(
+                        response.content or "", VisionExtractionResult, provider=p.name
+                    )
+                    parsed.provider = p.name
+                    parsed.model = p.model
+                    return parsed
+                except Exception as exc:
+                    last_exc = exc
+                    if "429" in str(exc) or "rate" in str(exc).lower():
+                        logger.warning(
+                            "Vision rate limit hit on provider %s (image %d/%d, attempt %d/2); backing off 1.5s",
+                            p.name,
+                            index,
+                            total,
+                            attempt + 1,
+                        )
+                        await asyncio.sleep(1.5)
+                        continue
+                    logger.warning(
+                        "Vision single call failed on provider %s: %s; trying next provider",
+                        p.name,
+                        exc,
+                    )
+                    break
+
+        if isinstance(last_exc, VisionError):
+            raise last_exc
+        raise VisionProviderError(f"Vision analysis failed for image {index}/{total}: {last_exc}")
+
+    async def _analyze_ephemeral_images_serially(
+        self,
+        images: list[tuple[bytes, str]],
+        user_prompt: str,
+        domain_hint: str | None = None,
+        backoff_on_start: bool = False,
+    ) -> VisionExtractionResult:
+        if backoff_on_start:
+            await asyncio.sleep(1.5)
+
+        results: list[VisionExtractionResult] = []
+        for i, img_tuple in enumerate(images):
+            if i > 0:
+                # Small pause between serial calls to prevent rate limit bursts
+                await asyncio.sleep(0.5)
+
+            single_prompt = (
+                f"Image {i + 1} of {len(images)}:\n{user_prompt.strip()}"
+                if user_prompt and user_prompt.strip()
+                else f"Extract the useful context from image {i + 1} of {len(images)}."
+            )
+            res = await self._analyze_single_image(
+                img_tuple,
+                single_prompt,
+                domain_hint,
+                index=i + 1,
+                total=len(images),
+            )
+            results.append(res)
+
+        return self._merge_results(results, len(images))
+
+    def _merge_results(
+        self, results: list[VisionExtractionResult], count: int
+    ) -> VisionExtractionResult:
+        if not results:
+            raise VisionValidationError("No extraction results to merge.")
+        if len(results) == 1:
+            return results[0]
+
+        summary_lines = [f"Visual analysis across {count} images:"]
+        ocr_blocks: list[str] = []
+        actions: list[dict[str, Any]] = []
+        facts: list[str] = []
+        domain_scores: dict[str, int] = {
+            "COLLEGE": 5,
+            "INTERNSHIP": 4,
+            "STARTUP": 3,
+            "PERSONAL": 2,
+            "OPERATOR": 1,
+        }
+        best_domain = "OPERATOR"
+        best_domain_score = 0
+
+        seen_action_keys: set[str] = set()
+        seen_facts: set[str] = set()
+
+        for i, r in enumerate(results):
+            summary_lines.append(f"• Image {i + 1}: {r.summary}")
+            if r.extracted_text_or_code.strip():
+                ocr_blocks.append(f"[Image {i + 1} Text/OCR]:\n{r.extracted_text_or_code.strip()}")
+
+            score = domain_scores.get(r.detected_domain, 1)
+            if score > best_domain_score:
+                best_domain_score = score
+                best_domain = r.detected_domain
+
+            for action in r.actionable_items:
+                title = str(action.get("title") or action.get("details") or "").strip().lower()
+                if title and title not in seen_action_keys:
+                    seen_action_keys.add(title)
+                    actions.append(action)
+
+            for fact in r.memory_facts:
+                f_clean = str(fact).strip()
+                if f_clean and f_clean.lower() not in seen_facts:
+                    seen_facts.add(f_clean.lower())
+                    facts.append(f_clean)
+
+        return VisionExtractionResult(
+            summary="\n".join(summary_lines),
+            extracted_text_or_code="\n\n".join(ocr_blocks),
+            detected_domain=best_domain,
+            actionable_items=actions,
+            memory_facts=facts,
+            provider=results[0].provider,
+            model=results[0].model,
+        )
 
     def store_visual_context(
         self,

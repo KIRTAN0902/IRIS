@@ -21,7 +21,6 @@ from app.schemas.memory import MEMORY_CATEGORY_GUIDE, MemoryExtractionResponse
 from app.utils.datetime import utcnow
 
 
-
 class MemoryService:
     """Service for managing, retrieving, and extracting long-term user memories."""
 
@@ -48,6 +47,8 @@ class MemoryService:
         query: str,
         limit: int = 8,
         mark_accessed: bool = True,
+        *,
+        commit: bool = True,
     ) -> list[AIMemory]:
         """Search active memories relevant to a query using term-matching and importance weighting."""
         active_memories = (
@@ -65,7 +66,7 @@ class MemoryService:
             # Return top memories by importance
             top = active_memories[:limit]
             if mark_accessed:
-                self._touch_memories(db, top)
+                self._touch_memories(db, top, commit=commit)
             return top
 
         # Extract words from query for keyword scoring
@@ -115,17 +116,18 @@ class MemoryService:
                 top_candidates.append(mem)
 
         if mark_accessed and top_candidates:
-            self._touch_memories(db, top_candidates)
+            self._touch_memories(db, top_candidates, commit=commit)
 
         return top_candidates
 
-    def _touch_memories(self, db: Session, memories: list[AIMemory]) -> None:
+    def _touch_memories(self, db: Session, memories: list[AIMemory], *, commit: bool = True) -> None:
         """Bump access count and last_accessed_at for retrieved memories."""
         now = utcnow()
         for m in memories:
             m.access_count = (m.access_count or 0) + 1
             m.last_accessed_at = now
-        db.commit()
+        if commit:
+            db.commit()
 
     def store_memory(
         self,
@@ -246,7 +248,6 @@ class MemoryService:
     ) -> list[AIMemory]:
         """Extract key context from conversational turns using LLM or rule-based heuristics."""
         from app.ai.factory import get_ai_provider
-
         from app.models.ai_conversation import AIConversation
         from app.services import conversation_memory
 
@@ -256,8 +257,33 @@ class MemoryService:
         new_summary: str | None = None
         new_topics: list[str] = []
 
-        # 1. Attempt LLM structured extraction if provider is enabled
-        if provider.enabled:
+        clean_msg = user_message.strip().lower().rstrip("?.! ")
+        is_trivial_chitchat = len(clean_msg) < 12 or clean_msg in {
+            "hi",
+            "hello",
+            "hey",
+            "hey iris",
+            "hi iris",
+            "hello iris",
+            "how are you",
+            "how are you doing",
+            "how are you doing today",
+            "hey iris how are you doing today",
+            "thanks",
+            "thank you",
+            "ok",
+            "okay",
+            "got it",
+            "cool",
+            "nice",
+            "bye",
+            "good morning",
+            "good evening",
+            "good night",
+        }
+
+        # 1. Attempt LLM structured extraction if provider is enabled and turn is non-trivial
+        if provider.enabled and not is_trivial_chitchat:
             extraction_system = (
                 "You are the IRIS Personal Memory & Context Engine. "
                 "Your role is to continuously extract lasting personal context, facts, "
@@ -335,7 +361,6 @@ class MemoryService:
     def _heuristic_extract(self, text: str) -> list[dict[str, Any]]:
         """Rule-based pattern matcher for extracting key context when LLM is unavailable."""
         results: list[dict[str, Any]] = []
-        lower = text.lower().strip()
 
         # Preference patterns
         pref_patterns = [
@@ -373,7 +398,6 @@ class MemoryService:
                 )
 
         return results
-
 
     def format_memories_for_prompt(self, memories: list[AIMemory]) -> str:
         """Format retrieved memories into a clean markdown block for agent system prompt."""

@@ -147,12 +147,16 @@ class AIHealthTracker:
 
     def record_failure(self, provider_name: str, model_name: str, error: Exception | str) -> None:
         """Record an AI completion failure (timeout, network error, status error)."""
+        err_str = str(error).strip()
+        if "400" in err_str or "422" in err_str or "adapting" in err_str.lower():
+            logger.info("AI parameter rejection noted without latching health degradation: %s", err_str[:120])
+            return
+
         self._provider_name = provider_name
         self._model_name = model_name
         self._last_failure_at = utcnow()
         self._consecutive_failures += 1
 
-        err_str = str(error).strip()
         # Clean up long traceback strings if passed
         if len(err_str) > 200:
             err_str = err_str[:200] + "..."
@@ -194,8 +198,13 @@ class AIHealthTracker:
                 "last_checked_at": (self._last_failure_at or self._last_success_at or utcnow()).isoformat(),
             }
 
-        # If failures occurred and no subsequent success occurred
-        if self._consecutive_failures > 0:
+        now = utcnow()
+        failure_is_stale = (
+            self._last_failure_at is not None
+            and (now - self._last_failure_at).total_seconds() > 60.0
+        )
+
+        if self._consecutive_failures >= 2 and not failure_is_stale:
             return {
                 **harness,
                 **agent_models,
@@ -208,6 +217,21 @@ class AIHealthTracker:
                     f"AI provider '{provider_name}' ({model_name}) is not responding. "
                     "IRIS is operating in deterministic fallback mode."
                 ),
+                "last_error": self._last_error,
+                "consecutive_failures": self._consecutive_failures,
+                "last_checked_at": (self._last_failure_at or utcnow()).isoformat(),
+            }
+
+        if self._consecutive_failures == 1 and not failure_is_stale:
+            return {
+                **harness,
+                **agent_models,
+                "provider": provider_name,
+                "model": model_name,
+                "configured": True,
+                "responding": True,
+                "status": "DEGRADED",
+                "message": f"AI provider '{provider_name}' ({model_name}) experienced a transient failure.",
                 "last_error": self._last_error,
                 "consecutive_failures": self._consecutive_failures,
                 "last_checked_at": (self._last_failure_at or utcnow()).isoformat(),

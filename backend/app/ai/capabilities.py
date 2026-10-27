@@ -92,11 +92,21 @@ MODEL_PROFILES: list[tuple[str, dict[str, Any]]] = [
     # Reasoning models: let them think, then extract JSON (guided JSON decoding
     # from the first token suppresses the reasoning phase).
     (
+        "*gemma-4-31b*",
+        {
+            "reasoning": True,
+            "native_tools": False,
+            "json_mode": "none",
+            "context_window": 262_144,
+            "max_output_tokens": 4_096,
+        },
+    ),
+    (
         "*gemma*",
         {
             "reasoning": True,
             "context_window": 262_144,
-            "max_output_tokens": 8_192,
+            "max_output_tokens": 4_096,
         },
     ),
     (
@@ -204,7 +214,7 @@ MODEL_PROFILES: list[tuple[str, dict[str, Any]]] = [
     ("gpt-4o*", {"json_mode": "json_schema", "context_window": 128_000}),
     ("gpt-4.1*", {"json_mode": "json_schema", "context_window": 1_000_000}),
     ("claude*", {"json_mode": "none", "context_window": 200_000, "max_output_tokens": 8_192}),
-    ("gemini*", {"context_window": 1_000_000, "max_output_tokens": 8_192}),
+    ("gemini*", {"context_window": 1_000_000, "max_output_tokens": 8_192, "fast_body": {"reasoning_effort": "none"}}),
     ("*llama-3*", {"context_window": 131_072}),
     ("*llama-4*", {"context_window": 1_000_000}),
     ("*mistral*", {"context_window": 32_768}),

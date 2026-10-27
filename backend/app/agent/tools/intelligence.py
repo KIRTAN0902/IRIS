@@ -29,7 +29,19 @@ class GetTodayStateTool(Tool):
     parameters_schema = None
 
     async def run(self, db: Session, user: User, **kwargs: Any) -> ToolResult:
-        context = build_decision_context(db, user)
+        import time
+        from app.agent.agent import _CONTEXT_CACHE_TTL_SECONDS, _USER_CONTEXT_CACHE
+
+        context = None
+        try:
+            if db.get_bind().dialect.name != "sqlite":
+                cached = _USER_CONTEXT_CACHE.get(user.id)
+                if cached and (time.monotonic() - cached[0]) < _CONTEXT_CACHE_TTL_SECONDS:
+                    context = cached[1]
+        except Exception:
+            context = None
+        if context is None:
+            context = build_decision_context(db, user)
         cur_win = context.get("current_window", {})
         data = {
             "current_local_time": context.get("current_local_time"),
@@ -94,7 +106,7 @@ class GetDecisionRecommendationParams(BaseModel):
     available_minutes: int | None = Field(
         None, ge=5, le=1440, description="Available minutes to allocate"
     )
-    use_ai: bool = Field(True, description="Whether to use AI reasoning or deterministic rules")
+    use_ai: bool = Field(False, description="Whether to use AI reasoning or deterministic rules")
 
 
 class GetDecisionRecommendationTool(Tool):
@@ -106,11 +118,9 @@ class GetDecisionRecommendationTool(Tool):
 
     async def run(self, db: Session, user: User, **kwargs: Any) -> ToolResult:
         avail = kwargs.get("available_minutes")
-        use_ai = kwargs.get("use_ai", True)
-        if use_ai:
-            rec, _ = await decide_now(db, user, available_minutes=avail)
-        else:
-            rec = deterministic_decision(db, user, available_minutes=avail)
+        # Always use fast deterministic decision inside the agent tool loop to avoid
+        # a redundant nested LLM call (the outer agent is already the LLM reasoning layer).
+        rec = deterministic_decision(db, user, available_minutes=avail)
 
         data = {
             "title": rec.title,

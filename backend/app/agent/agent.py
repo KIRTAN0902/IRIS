@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import time
 from typing import Any
 
 from sqlalchemy.orm import Session
@@ -11,6 +12,7 @@ from app.agent.harness import AgentHarness
 from app.agent.registry import ToolRegistry, default_registry
 from app.agent.schemas import AgentResponseSchema, ChatMessageOut
 from app.agent.supervisor import get_iris_supervisor
+from app.ai.deadline import get_current_deadline, reset_deadline, set_deadline
 from app.ai.factory import get_ai_provider
 from app.ai.provider import ChatMessage, fast_turn
 from app.ai.providers.mock import MockProvider
@@ -34,6 +36,20 @@ from app.services import conversation_memory
 from app.services.memory_service import memory_service
 
 logger = get_logger("iris.agent")
+
+# Short-lived per-user cache for heavy decision/personal/situation snapshots
+# when connected to a remote database (PostgreSQL/Supabase), avoiding ~40
+# redundant cross-region SQL queries on back-to-back chat turns.
+_USER_CONTEXT_CACHE: dict[int, tuple[float, dict[str, Any], dict[str, Any], dict[str, Any]]] = {}
+_CONTEXT_CACHE_TTL_SECONDS = 60.0
+
+
+def invalidate_user_context_cache(user_id: int | None = None) -> None:
+    """Invalidate cached decision/personal/situation context for a user (or all users)."""
+    if user_id is None:
+        _USER_CONTEXT_CACHE.clear()
+    else:
+        _USER_CONTEXT_CACHE.pop(user_id, None)
 
 # Appended to the system prompt when the user is talking, not typing.
 _VOICE_MODE = """
@@ -91,17 +107,35 @@ class IrisAgent:
         # 1. Resolve or create conversation
         conversation = self._resolve_conversation(db, user, conversation_id, stored_user_message)
 
-        # 2. Build focused personal context
-        context = build_decision_context(db, user)
-        context["user_name"] = user.name.split(" ")[0] if user.name else None
-        since = last_user_message_at(db, user.id)
+        is_remote_db = False
+        try:
+            is_remote_db = db.get_bind().dialect.name != "sqlite"
+        except Exception:
+            is_remote_db = False
+
+        context: dict[str, Any] | None = None
+        personal_model: dict[str, Any] | None = None
+        situation: dict[str, Any] | None = None
+
+        def _ensure_context() -> dict[str, Any]:
+            nonlocal context, personal_model, situation
+            if context is not None:
+                return context
+            if is_remote_db:
+                cached = _USER_CONTEXT_CACHE.get(user.id)
+                if cached and (time.monotonic() - cached[0]) < _CONTEXT_CACHE_TTL_SECONDS:
+                    context, personal_model, situation = cached[1], cached[2], cached[3]
+                    return context
+            context = build_decision_context(db, user)
+            context["user_name"] = user.name.split(" ")[0] if user.name else None
+            return context
 
         # Fast deterministic path (e.g. "what's my task?", "task done", "gym done")
         if skip_fast_path:
             fast_resp, fast_actions = None, []
         else:
             fast_resp, fast_actions = self.supervisor.try_fast_path(
-                db, user, context, user_message
+                db, user, {}, user_message
             )
         is_fast_path = bool(fast_resp is not None or getattr(fast_resp, "fast_path", False))
         if fast_resp is not None:
@@ -110,7 +144,10 @@ class IrisAgent:
             source = "DETERMINISTIC"
             harness_meta = {"strategy": "fast_path", "source": "supervisor", "fast_path": True}
             relevant_memories = []
+            if fast_actions:
+                invalidate_user_context_cache(user.id)
         else:
+            since = last_user_message_at(db, user.id)
             # 3. Retrieve relevant long-term memories for this turn
             relevant_memories = memory_service.search_relevant_memories(
                 db=db,
@@ -118,6 +155,7 @@ class IrisAgent:
                 query=user_message,
                 limit=8,
                 mark_accessed=True,
+                commit=False,
             )
 
             # 4. Generate the reply through sub-agents, AI harness, or fall back
@@ -129,91 +167,142 @@ class IrisAgent:
 
             # Voice turns trade the model's thinking phase for a faster answer.
             fast_token = fast_turn.set(voice)
-            if provider.enabled:
-                # Check specialized sub-agent delegation
-                routed_domains = (
-                    await self.supervisor.route_intent_async(user_message)
-                    if (not isinstance(provider, MockProvider) and settings.ai_multi_agent_enabled)
-                    else []
-                )
-                if routed_domains:
-                    try:
-                        reports = []
-                        for dom in routed_domains:
-                            rep = await self.supervisor.dispatch_to_subagent(
-                                domain=dom,
+            dl_token = None
+            if get_current_deadline() is None:
+                turn_timeout = getattr(provider, "_timeout", None) or settings.gemini_timeout_seconds or 45.0
+                dl_token = set_deadline(turn_timeout)
+
+            try:
+                if provider.enabled:
+                    # Check specialized sub-agent delegation (instant deterministic routing)
+                    routed_domains = (
+                        self.supervisor.route_intent(user_message)
+                        if (not isinstance(provider, MockProvider) and settings.ai_multi_agent_enabled)
+                        else []
+                    )
+                    if not routed_domains and not isinstance(provider, MockProvider) and settings.ai_multi_agent_enabled:
+                        try:
+                            routed_domains = await self.supervisor.route_intent_async(user_message)
+                        except Exception as router_exc:
+                            logger.debug("Async intent router skipped: %s", router_exc)
+                            routed_domains = []
+
+                    if routed_domains:
+                        try:
+                            reports = []
+                            for dom in routed_domains:
+                                rep = await self.supervisor.dispatch_to_subagent(
+                                    domain=dom,
+                                    db=db,
+                                    user=user,
+                                    instruction=user_message,
+                                    context=context,
+                                )
+                                reports.append(rep)
+                            if any(r.success for r in reports):
+                                response_schema, actions_executed = self.supervisor.synthesize_reports(
+                                    reports, user_message
+                                )
+                                source = "SUB_AGENT"
+                                harness_meta = {
+                                    "strategy": "multi_agent_delegation",
+                                    "domains": routed_domains,
+                                    "agents": [r.agent_name for r in reports],
+                                }
+                            else:
+                                logger.warning(
+                                    "Sub-agent delegation returned no successful reports; falling back to orchestrator harness"
+                                )
+                                response_schema = None
+                        except Exception as exc:
+                            logger.warning("Sub-agent delegation error: %s; falling back to orchestrator harness", exc)
+                            response_schema = None
+
+                    if response_schema is None:
+                        try:
+                            ctx = _ensure_context()
+                            caps = provider.capabilities
+                            history = self._history_messages(conversation, caps.history_messages)
+                            detail = detail_for_context_window(caps.context_window)
+                            if personal_model is None:
+                                personal_model = build_personal_model(db, user)
+                            profile_ids = {m["id"] for m in personal_model["stated"]}
+                            if situation is None:
+                                situation = build_situation(db, user, ctx, since=since)
+                            if is_remote_db:
+                                _USER_CONTEXT_CACHE[user.id] = (
+                                    time.monotonic(),
+                                    ctx,
+                                    personal_model,
+                                    situation,
+                                )
+                            recent = conversation_memory.recent_conversations(
+                                db, user.id, user.timezone,
+                                exclude_id=conversation.id,
+                                limit={"compact": 3, "standard": 5, "full": 8}[detail],
+                            )
+                            related = conversation_memory.search_conversations(
+                                db, user.id, user.timezone, user_message,
+                                exclude_id=conversation.id,
+                                exclude_ids={r["conversation_id"] for r in recent},
+                                limit=3,
+                            )
+                            result = await self.harness.run(
+                                provider=provider,
                                 db=db,
                                 user=user,
-                                instruction=user_message,
-                                context=context,
+                                system_prompt=self._build_system_prompt(
+                                    ctx,
+                                    # Profile memories are already in the personal model.
+                                    [m for m in relevant_memories if m.id not in profile_ids],
+                                    personal_model=render_personal_model(personal_model, detail),
+                                    situation=render_situation(situation, detail),
+                                    shared=conversation_memory.render_conversations(recent, related),
+                                )
+                                + (_VOICE_MODE if voice else ""),
+                                history=history,
+                                user_message=user_message,
                             )
-                            reports.append(rep)
-                        response_schema, actions_executed = self.supervisor.synthesize_reports(reports, user_message)
-                        source = "SUB_AGENT"
-                        harness_meta = {
-                            "strategy": "multi_agent_delegation",
-                            "domains": routed_domains,
-                            "agents": [r.agent_name for r in reports],
-                        }
-                    except Exception as exc:
-                        logger.warning("Sub-agent delegation error: %s; falling back to orchestrator harness", exc)
-                        response_schema = None
+                            response_schema = result.response
+                            actions_executed = result.actions_executed
+                            source = "AI"
+                            actual_provider = provider.name
+                            actual_model = provider.model
+                            try:
+                                from app.ai.providers.gemini import active_turn_backend
+                                used_backend = active_turn_backend.get()
+                                if used_backend is not None:
+                                    actual_provider = used_backend.name
+                                    actual_model = used_backend.model
+                            except ImportError:
+                                pass
+                            harness_meta = {
+                                "provider": actual_provider,
+                                "model": actual_model,
+                                "strategy": result.strategy,
+                                "steps": result.steps,
+                            }
+                        except Exception as exc:
+                            from app.ai.health import ai_health
 
-                if response_schema is None:
-                    try:
-                        caps = provider.capabilities
-                        history = self._history_messages(conversation, caps.history_messages)
-                        detail = detail_for_context_window(caps.context_window)
-                        personal_model = build_personal_model(db, user)
-                        profile_ids = {m["id"] for m in personal_model["stated"]}
-                        situation = build_situation(db, user, context, since=since)
-                        recent = conversation_memory.recent_conversations(
-                            db, user.id, user.timezone,
-                            exclude_id=conversation.id,
-                            limit={"compact": 3, "standard": 5, "full": 8}[detail],
-                        )
-                        related = conversation_memory.search_conversations(
-                            db, user.id, user.timezone, user_message,
-                            exclude_id=conversation.id,
-                            exclude_ids={r["conversation_id"] for r in recent},
-                            limit=3,
-                        )
-                        result = await self.harness.run(
-                            provider=provider,
-                            db=db,
-                            user=user,
-                            system_prompt=self._build_system_prompt(
-                                context,
-                                # Profile memories are already in the personal model.
-                                [m for m in relevant_memories if m.id not in profile_ids],
-                                personal_model=render_personal_model(personal_model, detail),
-                                situation=render_situation(situation, detail),
-                                shared=conversation_memory.render_conversations(recent, related),
+                            logger.error(
+                                "AI turn execution failed (provider=%s model=%s): %s",
+                                provider.name,
+                                provider.model,
+                                exc,
+                                exc_info=True,
                             )
-                            + (_VOICE_MODE if voice else ""),
-                            history=history,
-                            user_message=user_message,
-                        )
-                        response_schema = result.response
-                        actions_executed = result.actions_executed
-                        source = "AI"
-                        harness_meta = {
-                            "provider": provider.name,
-                            "model": provider.model,
-                            "strategy": result.strategy,
-                            "steps": result.steps,
-                        }
-                    except Exception as exc:
-                        from app.ai.health import ai_health
-
-                        ai_health.record_failure(provider.name, provider.model, exc)
-                        response_schema = None
-
-            fast_turn.reset(fast_token)
+                            ai_health.record_failure(provider.name, provider.model, exc)
+                            response_schema = None
+            finally:
+                fast_turn.reset(fast_token)
+                if dl_token is not None:
+                    reset_deadline(dl_token)
 
         # 5. Deterministic fallback if AI is unavailable or failed
         if response_schema is None:
-            response_schema = self._deterministic_fallback(db, user, context, user_message)
+            ctx = _ensure_context()
+            response_schema = self._deterministic_fallback(db, user, ctx, user_message)
             source = "DETERMINISTIC"
             if not response_schema.missing_information:
                 response_schema.missing_information = "AI provider offline. Local deterministic intelligence engine active."
@@ -238,6 +327,7 @@ class IrisAgent:
         # 6. Post-action recalculation for mixed requests (e.g. "I finished my task. What next?")
         recommended_action = response_schema.recommended_action
         if state_mutated:
+            invalidate_user_context_cache(user.id)
             # Refresh decision context and recommendation
             new_rec = deterministic_decision(db, user)
             if not recommended_action and new_rec:

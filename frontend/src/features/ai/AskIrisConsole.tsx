@@ -62,6 +62,7 @@ export function AskIrisConsole() {
   const [submitting, setSubmitting] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
+  const objectUrlsRef = useRef<Set<string>>(new Set());
   const busy = ask.isPending || vision.isPending || submitting;
 
   useEffect(() => {
@@ -69,17 +70,21 @@ export function AskIrisConsole() {
       setQuestion("");
       setTimeout(() => inputRef.current?.focus(), 30);
     } else {
-      images.forEach((img) => URL.revokeObjectURL(img.preview));
+      objectUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+      objectUrlsRef.current.clear();
       setImages([]);
       setImageError(null);
     }
   }, [open]);
 
+  // Clean up object URLs on component unmount
   useEffect(() => {
+    const urls = objectUrlsRef.current;
     return () => {
-      images.forEach((img) => URL.revokeObjectURL(img.preview));
+      urls.forEach((url) => URL.revokeObjectURL(url));
+      urls.clear();
     };
-  }, [images]);
+  }, []);
 
   // Escape closes from anywhere while the console is open.
   useEffect(() => {
@@ -92,10 +97,13 @@ export function AskIrisConsole() {
   }, [open, setOpen]);
 
   const addImages = (files: File[]) => {
+    const validExtensions = /\.(png|jpe?g|webp)$/i;
+    const validMimes = IMAGE_TYPES;
     let err: string | null = null;
     const newImgs: AttachedImage[] = [];
     for (const file of files) {
-      if (!IMAGE_TYPES.includes(file.type)) {
+      const type = (file.type || "").toLowerCase();
+      if (!validMimes.includes(type) && !validExtensions.test(file.name)) {
         err = "Use PNG, JPEG or WebP images.";
         continue;
       }
@@ -103,10 +111,12 @@ export function AskIrisConsole() {
         err = `${file.name} is larger than 10 MB.`;
         continue;
       }
+      const previewUrl = URL.createObjectURL(file);
+      objectUrlsRef.current.add(previewUrl);
       newImgs.push({
         id: `${file.name}-${file.lastModified}-${Math.random().toString(36).slice(2, 7)}`,
         file,
-        preview: URL.createObjectURL(file),
+        preview: previewUrl,
       });
     }
     if (err && newImgs.length === 0) {
@@ -120,7 +130,10 @@ export function AskIrisConsole() {
   const removeImage = (id: string) => {
     setImages((prev) => {
       const target = prev.find((img) => img.id === id);
-      if (target) URL.revokeObjectURL(target.preview);
+      if (target) {
+        URL.revokeObjectURL(target.preview);
+        objectUrlsRef.current.delete(target.preview);
+      }
       return prev.filter((img) => img.id !== id);
     });
     if (imageInputRef.current) imageInputRef.current.value = "";
@@ -177,8 +190,8 @@ export function AskIrisConsole() {
         .then((imagePayloads) => {
           vision.mutate(
             {
-              image_base64: imagePayloads[0]?.image_base64,
-              mime_type: imagePayloads[0]?.mime_type,
+              image_base64: imagePayloads.length === 1 ? imagePayloads[0]?.image_base64 : undefined,
+              mime_type: imagePayloads.length === 1 ? imagePayloads[0]?.mime_type : undefined,
               images: imagePayloads,
               prompt,
               conversation_id: conversationId,

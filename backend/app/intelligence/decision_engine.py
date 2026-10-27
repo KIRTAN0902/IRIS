@@ -43,14 +43,32 @@ def deterministic_decision(
     task fit, and trade-offs.
     """
     now = utcnow()
-    context = build_decision_context(
-        db,
-        user,
-        available_minutes=available_minutes,
-        window_start=window_start,
-        window_end=window_end,
-        current_energy=current_energy,
-    )
+    context = None
+    if (
+        available_minutes is None
+        and window_start is None
+        and window_end is None
+        and current_energy is None
+    ):
+        try:
+            import time
+            from app.agent.agent import _CONTEXT_CACHE_TTL_SECONDS, _USER_CONTEXT_CACHE
+
+            if db.get_bind().dialect.name != "sqlite":
+                cached = _USER_CONTEXT_CACHE.get(user.id)
+                if cached and (time.monotonic() - cached[0]) < _CONTEXT_CACHE_TTL_SECONDS:
+                    context = cached[1]
+        except Exception:
+            context = None
+    if context is None:
+        context = build_decision_context(
+            db,
+            user,
+            available_minutes=available_minutes,
+            window_start=window_start,
+            window_end=window_end,
+            current_energy=current_energy,
+        )
 
     constraints = context["fixed_constraints"]
     effective_minutes = context["available_minutes"]

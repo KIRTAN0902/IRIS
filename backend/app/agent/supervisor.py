@@ -34,6 +34,7 @@ from app.agent.agents.scribe import get_scribe_agent
 from app.agent.schemas import AgentResponseSchema
 from app.agent.tools.mesh import LockWorkstationTool, RingMyPhoneTool
 from app.agent.tools.tasks import CompleteTaskTool
+from app.ai.deadline import get_current_deadline
 from app.core.config import settings
 from app.core.logging import get_logger
 from app.intelligence.decision_engine import deterministic_decision
@@ -969,12 +970,15 @@ class IrisSupervisor:
 
         # Tier 2: System 1 Decision Engine (Jev Principle: single forward pass, 0 tool schemas)
         router_spec = (settings.ai_router_model or "").strip()
+        if not router_spec and settings.groq_api_key:
+            router_spec = f"groq:{settings.groq_model or 'qwen/qwen3.8-27b'}"
+
         if router_spec.startswith("nvidia:"):
             router_base_url = settings.nvidia_base_url
             router_api_key = settings.nvidia_api_key or os.environ.get("NVIDIA_API_KEY")
             router_model = router_spec.replace("nvidia:", "").strip()
         elif router_spec.startswith("groq:"):
-            router_base_url = settings.groq_base_url
+            router_base_url = settings.groq_base_url or "https://api.groq.com/openai/v1"
             router_api_key = settings.groq_api_key or os.environ.get("GROQ_API_KEY")
             router_model = router_spec.replace("groq:", "").strip()
         elif router_spec.startswith("gemini:") or not router_spec or router_spec.startswith("google/"):
@@ -982,23 +986,23 @@ class IrisSupervisor:
             router_api_key = (
                 settings.gemini_api_key
                 or settings.ai_api_key
-                or settings.nvidia_api_key
-                or settings.groq_api_key
                 or os.environ.get("GEMINI_API_KEY")
             )
             raw_m = router_spec.replace("gemini:", "").strip()
-            router_model = f"models/{raw_m}" if raw_m.startswith("gemma-") and not raw_m.startswith("models/") else (raw_m or "models/gemma-4-31b-it")
+            # If default gemma-4-31b-it on Google Developer endpoint, use gemini-3.1-flash-lite to avoid 47s thinking latency
+            if not raw_m or "gemma-4-31b" in raw_m.lower():
+                router_model = "gemini-3.1-flash-lite"
+            else:
+                router_model = f"models/{raw_m}" if raw_m.startswith("gemma-") and not raw_m.startswith("models/") else raw_m
         else:
             router_base_url = "https://generativelanguage.googleapis.com/v1beta/openai"
             router_api_key = (
                 settings.gemini_api_key
                 or settings.ai_api_key
-                or settings.nvidia_api_key
-                or settings.groq_api_key
                 or os.environ.get("GEMINI_API_KEY")
             )
             raw_m = router_spec.replace("gemini:", "").strip()
-            router_model = f"models/{raw_m}" if raw_m.startswith("gemma-") and not raw_m.startswith("models/") else (raw_m or "models/gemma-4-31b-it")
+            router_model = raw_m or "gemini-3.1-flash-lite"
 
         if not router_api_key:
             return []
@@ -1022,11 +1026,17 @@ class IrisSupervisor:
             "temperature": 0.0,
             "max_tokens": 10,
         }
-        if "nemotron" in router_model.lower() or "nvidia" in router_base_url.lower() or "gemma" in router_model.lower():
-            payload["chat_template_kwargs"] = {"enable_thinking": False}
+        # chat_template_kwargs is supported by vLLM/NVIDIA NIM endpoints to disable thinking,
+        # but Google Gemini (googleapis.com) strictly rejects unknown fields with HTTP 400.
+        if "googleapis.com" not in router_base_url.lower():
+            if any(k in router_model.lower() for k in ("nemotron", "gemma", "qwen")) or "nvidia" in router_base_url.lower():
+                payload["chat_template_kwargs"] = {"enable_thinking": False}
+
+        dl = get_current_deadline()
+        router_timeout = min(dl.per_attempt_timeout(4.0), 4.0) if dl is not None else 4.0
 
         try:
-            async with httpx.AsyncClient(timeout=2.0) as client:
+            async with httpx.AsyncClient(timeout=router_timeout) as client:
                 resp = await client.post(
                     f"{router_base_url}/chat/completions",
                     headers={"Authorization": f"Bearer {router_api_key}", "Content-Type": "application/json"},
