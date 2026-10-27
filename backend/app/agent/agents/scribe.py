@@ -28,7 +28,7 @@ CAPABILITIES:
    - Track exercise and asana progress, sets, breaths, reps, and weights using `check_exercises` and `update_exercise`.
    - Retrieve workout and yoga history using `get_workouts`.
 4. Finances & Budgets:
-   - Log income, expenses, and purchases using `log_transaction`.
+   - Log income, expenses, and purchases using `log_transaction`, or batch log multiple entries with `log_transactions`.
    - Review current month spending, balances, and breakdown using `get_finances` and `get_transactions`.
    - Manage monthly category budgets using `set_budget` and `delete_budget`.
    - Track upcoming bills and payments using `get_bills`, `create_bill`, `pay_bill`.

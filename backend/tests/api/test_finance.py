@@ -132,6 +132,20 @@ async def test_agent_logs_and_pays_through_tools(db, user, today):
     assert "₹250 Food & Dining (UPI" in res.summary
 
     res = await registry.execute(
+        "log_transactions",
+        db,
+        user,
+        {
+            "transactions": [
+                {"amount": 100, "category": "Groceries", "note": "milk"},
+                {"amount": 50, "category": "Food & Dining", "note": "chai"},
+            ]
+        },
+    )
+    assert res.success, res.error
+    assert "Logged 2 transaction(s)" in res.summary
+
+    res = await registry.execute(
         "create_bill", db, user, {"name": "Jio recharge", "amount": 349, "next_due": today.isoformat()}
     )
     assert res.success, res.error
@@ -142,7 +156,7 @@ async def test_agent_logs_and_pays_through_tools(db, user, today):
     res = await registry.execute("set_budget", db, user, {"category": "Food & Dining", "monthly_limit": 300})
     assert res.success
     summary = await registry.execute("get_finances", db, user, {})
-    assert summary.data["expense"] == 599
+    assert summary.data["expense"] == 749
 
     ids = [t["id"] for t in summary.data["recent"]]
     res = await registry.execute("delete_transactions", db, user, {"transaction_ids": [*ids, 99999]})

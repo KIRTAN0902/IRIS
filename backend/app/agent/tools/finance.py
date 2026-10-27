@@ -30,6 +30,15 @@ class _MonthParams(BaseModel):
     month: str | None = Field(None, pattern=r"^\d{4}-\d{2}$", description="YYYY-MM; default this month")
 
 
+class _LogTransactionsParams(BaseModel):
+    transactions: list[TransactionCreate] = Field(
+        ...,
+        min_length=1,
+        max_length=100,
+        description="List of transactions (expenses or income) to record in bulk.",
+    )
+
+
 class _ListTransactionsParams(_MonthParams):
     kind: TransactionKind | None = None
     category: str | None = None
@@ -71,6 +80,16 @@ def _log(db, user, **p):
     tx = fs.create_transaction(db, user, TransactionCreate(**p))
     kind = "income" if tx.kind == TransactionKind.INCOME.value else "expense"
     return TransactionOut.model_validate(tx), f"Logged {kind} #{tx.id}: {_tx_line(tx)}"
+
+
+def _log_bulk(db, user, transactions: list[dict | TransactionCreate]):
+    created = []
+    for item in transactions:
+        if isinstance(item, dict):
+            item = TransactionCreate(**item)
+        tx = fs.create_transaction(db, user, item)
+        created.append(tx)
+    return [TransactionOut.model_validate(t) for t in created], f"Logged {len(created)} transaction(s)"
 
 
 def _get_finances(db, user, month=None):
@@ -184,6 +203,17 @@ def finance_tools() -> list[Tool]:
             ),
             params=TransactionCreate,
             run=_log,
+            read_only=False,
+        ),
+        make_tool(
+            name="log_transactions",
+            description=(
+                "Record multiple transactions (expenses or income) in bulk from a list, statement, or receipts. "
+                "Each transaction needs amount, category, optional kind (EXPENSE/INCOME, default EXPENSE), "
+                "optional account (default UPI), occurred_on (YYYY-MM-DD), and optional note/merchant."
+            ),
+            params=_LogTransactionsParams,
+            run=_log_bulk,
             read_only=False,
         ),
         make_tool(

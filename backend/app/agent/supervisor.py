@@ -931,7 +931,10 @@ class IrisSupervisor:
             "workout", "gym", "exercise", "bench press", "squat", "pushups", "sets", "reps",
             "yoga", "asana", "pranayama", "surya namaskar",
             "habit", "streak", "daily routine",
-            "finance", "expense", "spent", "income", "budget", "bill", "savings goal",
+            "finance", "finances", "expense", "expenses", "spent", "income", "budget", "bill", "bills",
+            "savings goal", "transaction", "transactions", "payment", "payments", "gpay", "google pay",
+            "phonepe", "paytm", "banking", "credit", "debit", "receipt", "receipts", "invoice", "invoices",
+            "rupee", "rupees", "inr",
             "startup status", "outreach status", "log outreach",
         ]
         if any(k in msg for k in scribe_keywords):

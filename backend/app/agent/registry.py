@@ -238,6 +238,11 @@ def create_orchestrator_registry() -> ToolRegistry:
     registry.register(ForgetMemoryTool())
     registry.register(ListMemoriesTool())
 
+    # Finance (high-level logging and summary)
+    for tool in finance_tools():
+        if tool.name in {"log_transaction", "log_transactions", "get_finances"}:
+            registry.register(tool)
+
     return registry
 
 
