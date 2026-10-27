@@ -138,7 +138,7 @@ class GeminiProvider(AIProvider):
                 self._model.replace("models/", ""),
                 (self._fallback_model or "").replace("models/", ""),
             }
-            for cand in ("gemini-3.5-flash", "gemini-3.1-flash-lite"):
+            for cand in ("gemini-3.5-flash-lite", "gemini-3.5-flash", "gemini-3.1-flash-lite"):
                 if cand not in seen_models:
                     seen_models.add(cand)
                     cand_model = cand

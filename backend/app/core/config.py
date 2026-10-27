@@ -46,7 +46,7 @@ class Settings(BaseSettings):
     # Provider-neutral model settings. These win over the legacy per-vendor
     # variables below, so switching models is only ever an .env change.
     ai_model: str | None = "gemini-3.1-flash-lite"
-    ai_fallback_model: str | None = "gemini-3.5-flash"
+    ai_fallback_model: str | None = "gemini-3.5-flash-lite"
     ai_base_url: str | None = None
     ai_api_key: str | None = None
     ai_timeout_seconds: float | None = None
@@ -93,7 +93,7 @@ class Settings(BaseSettings):
     # Gemini
     gemini_api_key: str | None = None
     gemini_model: str = "gemini-3.1-flash-lite"
-    gemini_fallback_model: str | None = "gemini-3.5-flash"
+    gemini_fallback_model: str | None = "gemini-3.5-flash-lite"
     gemini_timeout_seconds: float = 45.0
 
     # Groq Cloud (Ultra-fast LPU inference)
