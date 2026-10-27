@@ -10,6 +10,8 @@ from app.core.database import get_db
 from app.models.enums import TransactionKind
 from app.models.user import User
 from app.schemas.finance import (
+    AutoLogPaymentRequest,
+    AutoLogPaymentResponse,
     BillCreate,
     BillOut,
     BillPay,
@@ -27,6 +29,7 @@ from app.schemas.finance import (
     TransactionUpdate,
 )
 from app.services import finance_service as fs
+from app.services import payment_listener_service as pls
 
 router = APIRouter(prefix="/finance", tags=["finance"])
 
@@ -70,6 +73,16 @@ def list_transactions(
 @router.post("/transactions", response_model=TransactionOut, status_code=status.HTTP_201_CREATED)
 def create_transaction(data: TransactionCreate, user: User = Depends(current_user), db: Session = Depends(get_db)):
     return fs.create_transaction(db, user, data)
+
+
+@router.post("/auto-log", response_model=AutoLogPaymentResponse, status_code=status.HTTP_200_OK)
+def auto_log_payment(
+    data: AutoLogPaymentRequest,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+):
+    """Auto-log payment notifications from Android (GPay, PhonePe, Paytm, SMS)."""
+    return pls.process_auto_payment(db, user, data)
 
 
 @router.patch("/transactions/{tx_id}", response_model=TransactionOut)

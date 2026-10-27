@@ -257,3 +257,23 @@ class FinanceSummary(BaseModel):
 class Categories(BaseModel):
     expense: list[str]
     income: list[str]
+
+
+# --- Payment Notifications (Auto-Log) ----------------------------------------------
+
+
+class AutoLogPaymentRequest(BaseModel):
+    amount: float
+    merchant: str
+    raw_text: str | None = None
+    occurred_on: date | None = None
+    source: str = "gpay"
+    account: PaymentAccount = PaymentAccount.UPI
+    category: str | None = None
+
+
+class AutoLogPaymentResponse(BaseModel):
+    status: str  # "logged" | "duplicate" | "ignored"
+    message: str
+    transaction: TransactionOut | None = None
+

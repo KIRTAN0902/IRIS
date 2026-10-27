@@ -32,6 +32,7 @@ import {
   shiftMonth,
   titleCase,
 } from "@/features/finance/money";
+import { AutoTrackingBanner } from "@/features/finance/AutoTrackingBanner";
 
 /**
  * MONEY: where it goes, what's due, what's being saved. IRIS can do all of this
@@ -115,6 +116,7 @@ export function FinancePage() {
             </button>
           ))}
         </nav>
+        <AutoTrackingBanner />
       </header>
 
       {tab === "overview" && (
