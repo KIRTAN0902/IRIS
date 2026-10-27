@@ -520,17 +520,23 @@ export function MobileTopBar({ askTrigger }: { askTrigger: React.ReactNode }) {
 
   return (
     <>
-      <header className="sticky top-0 z-40 flex h-12 items-center gap-2 bg-ops-ground/90 px-4 backdrop-blur md:hidden">
+      <header
+        className="sticky top-0 z-40 flex items-center gap-2 border-b border-ops-line/40 bg-ops-ground/95 px-4 backdrop-blur md:hidden"
+        style={{
+          paddingTop: "max(env(safe-area-inset-top, 0px), var(--safe-top, 0px))",
+          height: "calc(3.25rem + max(env(safe-area-inset-top, 0px), var(--safe-top, 0px)))",
+        }}
+      >
         <button
           onClick={() => setOpen(true)}
           aria-label="Open conversations"
-          className="-ml-1.5 rounded-md p-1.5 text-ink-faint hover:bg-ops-raised hover:text-ink"
+          className="-ml-1.5 rounded-md p-2 text-ink-faint hover:bg-ops-raised hover:text-ink cursor-pointer"
         >
-          <Menu size={18} strokeWidth={1.75} />
+          <Menu size={19} strokeWidth={1.75} />
         </button>
         <NavLink to="/" className="flex items-center gap-2 text-ink">
-          <IrisMark size={18} />
-          <span className="text-[15px] font-semibold">IRIS</span>
+          <IrisMark size={19} />
+          <span className="text-[15px] font-semibold tracking-wide">IRIS</span>
         </NavLink>
         <div className="ml-auto flex items-center gap-1">
           <NewNoteButton />
@@ -574,7 +580,10 @@ function MobileDrawer({ open, onClose }: { open: boolean; onClose: () => void })
           "absolute inset-y-0 left-0 flex w-[82%] max-w-[300px] flex-col bg-ops-panel transition-transform duration-200",
           open ? "translate-x-0" : "-translate-x-full",
         )}
-        style={{ paddingTop: "env(safe-area-inset-top)", paddingBottom: "env(safe-area-inset-bottom)" }}
+        style={{
+          paddingTop: "max(env(safe-area-inset-top, 0px), var(--safe-top, 0px))",
+          paddingBottom: "max(env(safe-area-inset-bottom, 0px), var(--safe-bottom, 0px))",
+        }}
       >
         <div className="flex items-center gap-2 px-4 pt-4 pb-1">
           <NavLink to="/" className="flex items-center gap-2 text-ink">

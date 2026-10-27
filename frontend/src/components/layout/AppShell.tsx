@@ -20,6 +20,29 @@ export function AppShell() {
   useFocusSessions();
 
   useEffect(() => {
+    // Detect Capacitor native shell or Android PWA / mobile standalone mode
+    const isCapacitor = typeof window !== "undefined" && Boolean((window as unknown as { Capacitor?: unknown }).Capacitor);
+    const isAndroid = typeof navigator !== "undefined" && /android/i.test(navigator.userAgent);
+    const isStandalone = typeof window !== "undefined" && window.matchMedia("(display-mode: standalone)").matches;
+
+    // Check if the browser natively supplies a non-zero CSS safe-area-inset-top
+    let hasNativeTopInset = false;
+    if (typeof document !== "undefined") {
+      const probe = document.createElement("div");
+      probe.style.paddingTop = "env(safe-area-inset-top, 0px)";
+      document.body.appendChild(probe);
+      hasNativeTopInset = parseFloat(window.getComputedStyle(probe).paddingTop) > 0;
+      document.body.removeChild(probe);
+    }
+
+    if (!hasNativeTopInset && (isCapacitor || isAndroid || isStandalone)) {
+      // 38px provides comfortable clearance below mobile status bars and camera punch-holes
+      document.documentElement.style.setProperty("--safe-top", "38px");
+      document.documentElement.style.setProperty("--safe-bottom", "14px");
+    }
+  }, []);
+
+  useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
@@ -45,7 +68,7 @@ export function AppShell() {
             </button>
           }
         />
-        <main className="mx-auto flex w-full min-w-0 max-w-[920px] flex-1 flex-col px-5 pb-24 pt-6 md:px-12 md:pb-10 md:pt-12">
+        <main className="mx-auto flex w-full min-w-0 max-w-[920px] flex-1 flex-col px-4 pb-28 pt-4 md:px-12 md:pb-10 md:pt-12">
           <Outlet key={location.pathname} />
         </main>
       </div>

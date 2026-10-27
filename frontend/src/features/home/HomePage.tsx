@@ -249,7 +249,10 @@ function Conversation({
         <div className="flex-1">
           <TodayDashboard />
         </div>
-        <div className="sticky bottom-14 md:bottom-0 z-20 relative bg-gradient-to-t from-ops-ground from-75% to-transparent pb-4 pt-6">
+        <div
+          className="sticky z-20 relative bg-gradient-to-t from-ops-ground from-75% to-transparent pb-3 pt-5 md:bottom-0"
+          style={{ bottom: "calc(3.5rem + max(env(safe-area-inset-bottom, 0px), var(--safe-bottom, 0px)))" }}
+        >
           {composer}
         </div>
       </div>
@@ -290,7 +293,10 @@ function Conversation({
         <div ref={endRef} />
       </div>
 
-      <div className="sticky bottom-14 md:bottom-0 z-20 relative bg-gradient-to-t from-ops-ground from-75% to-transparent pb-4 pt-6">
+      <div
+        className="sticky z-20 relative bg-gradient-to-t from-ops-ground from-75% to-transparent pb-3 pt-5 md:bottom-0"
+        style={{ bottom: "calc(3.5rem + max(env(safe-area-inset-bottom, 0px), var(--safe-bottom, 0px)))" }}
+      >
         {composer}
       </div>
     </div>

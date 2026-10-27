@@ -32,7 +32,7 @@ export function MobileBottomNav() {
           "fixed inset-x-0 z-40 border-t border-ops-line-bright bg-ops-panel px-4 pt-3 shadow-[0_-12px_32px_rgba(0,0,0,0.6)] transition-transform duration-200 md:hidden",
           moreOpen ? "translate-y-0" : "pointer-events-none translate-y-[120%]",
         )}
-        style={{ bottom: "calc(56px + env(safe-area-inset-bottom))" }}
+        style={{ bottom: "calc(56px + max(env(safe-area-inset-bottom, 0px), var(--safe-bottom, 0px)))" }}
         aria-hidden={!moreOpen}
       >
         <p className="px-1 pb-1 text-[11px] uppercase tracking-[0.18em] text-ink-faint">More</p>
@@ -61,7 +61,7 @@ export function MobileBottomNav() {
       <nav
         aria-label="Primary Mobile Navigation"
         className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-ops-line bg-ops-ground/95 backdrop-blur md:hidden"
-        style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+        style={{ paddingBottom: "max(env(safe-area-inset-bottom, 0px), var(--safe-bottom, 0px))" }}
       >
         {tabs.map((item) => (
           <NavLink key={item.id} to={item.route} end={item.route === "/"} className={({ isActive }) => tabClass(isActive)}>

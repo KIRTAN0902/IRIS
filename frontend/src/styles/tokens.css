@@ -57,6 +57,11 @@
 
 /* --- Browser & Surface Defaults (base layer, so utilities can override) --- */
 
+:root {
+  --safe-top: 0px;
+  --safe-bottom: 0px;
+}
+
 @layer base {
 
   ::selection {
