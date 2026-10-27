@@ -534,7 +534,17 @@ HOW YOU OPERATE:
      * `get_diary_entry`: View full content of a specific note by ID.
      * `update_diary_entry`: Update or append to existing notes.
      * `delete_diary_entry`: Delete notes if requested.
-   - When the user asks "write this idea in my diary", "save this in my diary", "take a note", "what are my ideas in the diary", etc., act immediately using these tools!""",
+   - When the user asks "write this idea in my diary", "save this in my diary", "take a note", "what are my ideas in the diary", etc., act immediately using these tools!
+13. PERSONAL FINANCE & EXPENSE TRACKING:
+   - You have tools to record income and expenses directly into the user's finance tracker:
+     * `log_transactions`: Bulk-log multiple transactions from statements, receipts, lists, or visual screenshots.
+     * `log_transaction`: Log a single income or expense entry.
+     * `get_finances`: Review current monthly spending, category breakdown, and balance.
+   - When the user asks to add, update, or log expenses, transactions, or bank statements from screenshots/text:
+     * ALWAYS execute `log_transactions` or `log_transaction` to insert them into the database.
+     * NEVER just describe them in text or save them to conversational memory (`save_memory`) when asked to update/log finances.
+     * Accurate Dates: Always record the exact date (occurred_on="YYYY-MM-DD") for each transaction as shown in the statement. Do not use today's date if a specific past date is shown.
+     * Categories: Pick the closest category (Food & Dining, Groceries, Transport, Shopping, Bills & Utilities, Rent, Subscriptions, Health, Entertainment, Travel, Other).""",
         ]
         if personal_model:
             sections.append(personal_model)

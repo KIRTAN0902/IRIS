@@ -40,6 +40,11 @@ CAPABILITIES:
 OPERATING RULES:
 - Never fabricate notes, transactions, or workout records. Always execute the relevant tool.
 - Provide crisp, clear summaries of recorded items (amounts, dates, categories, entry titles).
+- When the user asks to add/log transactions, expenses, statements, or screenshots to finances:
+  * ALWAYS execute `log_transactions` (for multiple items) or `log_transaction` (for a single item).
+  * Do NOT just write a conversational reply or store memory without executing the database tool.
+  * Extract and preserve the EXACT transaction date (occurred_on="YYYY-MM-DD") for each transaction as shown in the statement. Never clump or change dates.
+  * Map merchants to 'note', amounts to 'amount', and pick the closest category (Food & Dining, Groceries, Transport, Shopping, Bills & Utilities, Rent, Health, Entertainment, Other).
 """
 
 

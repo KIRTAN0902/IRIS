@@ -39,16 +39,33 @@ Analyze the attached image(s) and return ONLY one JSON object with exactly these
   "extracted_text_or_code": "OCR text, code, equations, stack traces, or table cells across all images",
   "detected_domain": "COLLEGE | INTERNSHIP | STARTUP | PERSONAL | OPERATOR",
   "actionable_items": [
-    {"kind": "task|expense|deadline|code_fix|note", "title": "...", "amount": null,
-     "merchant": null, "category": null, "due_date": null, "details": null}
+    {
+      "kind": "expense|income|task|deadline|code_fix|note",
+      "title": "Merchant, payee, sender, or brief description",
+      "amount": null,
+      "date": "YYYY-MM-DD",
+      "merchant": null,
+      "category": "Food & Dining|Groceries|Transport|Shopping|Bills & Utilities|Health|Entertainment|Other",
+      "due_date": null,
+      "details": null
+    }
   ],
   "memory_facts": ["high-value durable facts worth remembering"]
 }
 Rules:
+- For banking, payment statements, receipts, or transaction history (Google Pay, PhonePe, Paytm, net banking, invoices):
+  * Extract EVERY single transaction row individually without omission.
+  * For each transaction, extract:
+    - exact date in YYYY-MM-DD format (do NOT guess or clump dates; keep each transaction's own day, e.g. 2026-10-07, 2026-10-08).
+    - exact numerical amount (without rupee or currency symbol).
+    - exact merchant/payee/sender name in "merchant" and "title".
+    - kind: "expense" (paid/debit) or "income" (received/credit).
+    - category: Pick the closest (Food & Dining, Groceries, Transport, Shopping, Bills & Utilities, Rent, Subscriptions, Health, Entertainment, Travel, Other).
+  * In extracted_text_or_code, transcribe all transaction rows verbatim (date, time, merchant/payee, amount, reference/status).
 - Prefer verifiable text from the image(s) over speculation.
 - Never include the base64 payload, data URI, or image bytes in the response.
 - Use an empty actionable_items list when nothing is actionable.
-- detected_domain must be exactly one of the five uppercase values.
+- detected_domain must be exactly one of the five uppercase values (use PERSONAL for payments/finance).
 """
 
 
@@ -111,7 +128,7 @@ class VisionExtractionResult(BaseModel):
                 out.append({"kind": "task", "title": item[:500]})
             elif isinstance(item, dict):
                 out.append({str(k): v for k, v in item.items()})
-        return out[:30]
+        return out[:150]
 
     @field_validator("memory_facts", mode="before")
     @classmethod
@@ -388,7 +405,7 @@ class VisionService:
                 messages,
                 response_format={"type": "json_object"},
                 temperature=0.1,
-                max_tokens=2048,
+                max_tokens=4096,
             )
             parsed = parse_structured(
                 response.content or "", VisionExtractionResult, provider=provider.name
@@ -449,7 +466,7 @@ class VisionService:
                         messages,
                         response_format={"type": "json_object"},
                         temperature=0.1,
-                        max_tokens=2048,
+                        max_tokens=4096,
                     )
                     parsed = parse_structured(
                         response.content or "", VisionExtractionResult, provider=p.name
@@ -548,9 +565,12 @@ class VisionService:
                 best_domain = r.detected_domain
 
             for action in r.actionable_items:
-                title = str(action.get("title") or action.get("details") or "").strip().lower()
-                if title and title not in seen_action_keys:
-                    seen_action_keys.add(title)
+                title = str(action.get("title") or action.get("merchant") or action.get("details") or "").strip().lower()
+                amt = str(action.get("amount") or "")
+                dt = str(action.get("date") or action.get("occurred_on") or action.get("due_date") or "")
+                key = f"{dt}:{amt}:{title}" if (amt or dt) else title
+                if key and key not in seen_action_keys:
+                    seen_action_keys.add(key)
                     actions.append(action)
 
             for fact in r.memory_facts:

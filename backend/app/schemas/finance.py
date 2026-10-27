@@ -2,13 +2,39 @@
 
 from __future__ import annotations
 
+import re
 from datetime import date, datetime
+from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.models.enums import BillFrequency, PaymentAccount, SavingsGoalStatus, TransactionKind
 
 Amount = Field(..., gt=0, le=10_000_000_000)
+
+
+def parse_date_flexible(val: Any) -> date | None:
+    if not val or isinstance(val, date):
+        return val
+    s = str(val).strip()
+    for fmt in ("%Y-%m-%d", "%d-%m-%Y", "%d/%m/%Y", "%Y/%m/%d", "%d %b %Y", "%d %B %Y", "%d %b", "%d %B"):
+        try:
+            d = datetime.strptime(s, fmt).date()
+            if fmt in ("%d %b", "%d %B"):
+                d = d.replace(year=datetime.now().year)
+            return d
+        except ValueError:
+            pass
+    m = re.match(r"^(\d{1,2})(?:st|nd|rd|th)?\s+([A-Za-z]+)(?:\s+(\d{4}))?$", s)
+    if m:
+        day = int(m.group(1))
+        mon = m.group(2)[:3].title()
+        yr = int(m.group(3)) if m.group(3) else datetime.now().year
+        try:
+            return datetime.strptime(f"{day} {mon} {yr}", "%d %b %Y").date()
+        except ValueError:
+            pass
+    return None
 
 
 def _clean_category(v: str | None) -> str | None:
@@ -36,6 +62,35 @@ class TransactionCreate(BaseModel):
     note: str | None = Field(None, max_length=255)
 
     _category = field_validator("category")(_clean_category)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _remap_aliases(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            raw_date = data.get("occurred_on") or data.get("date") or data.get("datetime")
+            if raw_date:
+                parsed = parse_date_flexible(raw_date)
+                if parsed:
+                    data["occurred_on"] = parsed
+            for k in ("merchant", "title", "payee", "name", "description"):
+                if k in data and not data.get("note"):
+                    data["note"] = str(data[k])[:255]
+                    break
+            raw_kind = data.get("kind") or data.get("type") or data.get("transaction_type")
+            if raw_kind:
+                val = str(raw_kind).upper()
+                if "INCOME" in val or "CREDIT" in val:
+                    data["kind"] = TransactionKind.INCOME
+                elif "EXPENSE" in val or "DEBIT" in val:
+                    data["kind"] = TransactionKind.EXPENSE
+            raw_account = data.get("account") or data.get("payment_method") or data.get("account_type")
+            if raw_account and isinstance(raw_account, str):
+                ac_upper = raw_account.upper()
+                for ac in PaymentAccount:
+                    if ac.value == ac_upper:
+                        data["account"] = ac
+                        break
+        return data
 
 
 class TransactionUpdate(BaseModel):
