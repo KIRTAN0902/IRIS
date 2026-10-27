@@ -1,8 +1,10 @@
 import { useState } from "react";
-import { AlertTriangle, Check } from "lucide-react";
+import { AlertTriangle, ArrowRight, Check, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/format";
-import type { FinanceSummary } from "@/types/api";
-import { fmtDay, inr, inrShort } from "@/features/finance/money";
+import { Skeleton } from "@/components/ui/Overlay";
+import { useTransactions } from "@/hooks/queries";
+import type { FinanceSummary, TransactionOut } from "@/types/api";
+import { fmtDay, inr, inrShort, titleCase } from "@/features/finance/money";
 
 /**
  * Finance charts. One series each, so identity comes from text labels; color is
@@ -89,34 +91,162 @@ export function DailySpendChart({ daily, today }: { daily: FinanceSummary["daily
 
 // --- Category bars ----------------------------------------------------------------------
 
-export function CategoryBars({ rows }: { rows: FinanceSummary["by_category"] }) {
+function CategoryTransactionsDetail({
+  month,
+  category,
+  onEdit,
+  onViewCategory,
+}: {
+  month: string;
+  category: string;
+  onEdit?: (tx: TransactionOut) => void;
+  onViewCategory?: (category: string) => void;
+}) {
+  const txQuery = useTransactions({ month, category, kind: "EXPENSE" });
+
+  if (txQuery.isLoading) {
+    return (
+      <div className="mt-2.5 ml-5 space-y-2 py-1">
+        <Skeleton className="h-5 w-3/4" />
+        <Skeleton className="h-5 w-1/2" />
+      </div>
+    );
+  }
+
+  if (txQuery.error) {
+    return (
+      <p className="mt-2.5 ml-5 text-[12px] text-critical">
+        Failed to load transactions for {category}.
+      </p>
+    );
+  }
+
+  const items = txQuery.data ?? [];
+
+  if (items.length === 0) {
+    return (
+      <div className="mt-2.5 ml-5 rounded-md border border-ops-line/60 bg-ops-raised/20 px-3 py-2 text-[12px] text-ink-faint">
+        No recorded expenses for {category} in {month}.
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-2.5 ml-5 rounded-lg border border-ops-line bg-ops-void/80 p-2.5">
+      <div className="mb-1.5 flex items-center justify-between text-[11px] text-ink-faint border-b border-ops-line/40 pb-1">
+        <span>
+          {items.length} {items.length === 1 ? "transaction" : "transactions"} · {inr(items.reduce((s, t) => s + t.amount, 0))}
+        </span>
+        {onViewCategory && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onViewCategory(category);
+            }}
+            className="inline-flex items-center gap-1 text-ai hover:underline cursor-pointer"
+          >
+            Filter in Transactions <ArrowRight size={11} />
+          </button>
+        )}
+      </div>
+      <ul className="divide-y divide-ops-line/40">
+        {items.map((tx) => (
+          <li key={tx.id}>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onEdit?.(tx);
+              }}
+              className="flex w-full items-center justify-between py-1.5 px-1.5 text-left rounded hover:bg-ops-raised/50 cursor-pointer transition-colors"
+            >
+              <div className="min-w-0 flex-1 pr-2">
+                <p className="truncate text-[13px] text-ink font-medium">
+                  {tx.note || tx.category}
+                </p>
+                <p className="truncate text-[11px] text-ink-faint">
+                  {fmtDay(tx.occurred_on)} · {tx.account === "UPI" ? "UPI" : titleCase(tx.account)}
+                </p>
+              </div>
+              <span className="tnum shrink-0 text-[13px] font-medium text-ink">
+                −{inr(tx.amount)}
+              </span>
+            </button>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+export function CategoryBars({
+  rows,
+  month,
+  onEdit,
+  onViewCategory,
+}: {
+  rows: FinanceSummary["by_category"];
+  month?: string;
+  onEdit?: (tx: TransactionOut) => void;
+  onViewCategory?: (category: string) => void;
+}) {
+  const [expanded, setExpanded] = useState<string | null>(null);
   const max = Math.max(...rows.map((r) => Math.max(r.amount, r.budget ?? 0)), 1);
+
   return (
     <ul className="space-y-3">
       {rows.map((r) => {
+        const isExpanded = expanded === r.category;
         const over = r.budget != null && r.amount > r.budget;
         return (
-          <li key={r.category}>
-            <div className="mb-1 flex items-baseline justify-between gap-3 text-[14px]">
-              <span className="truncate text-ink">{r.category}</span>
-              <span className="tnum shrink-0 text-ink">
-                {inr(r.amount)}
-                {r.budget != null && <span className="text-ink-faint"> / {inrShort(r.budget)}</span>}
-              </span>
-            </div>
-            <div className="relative h-2">
-              <div
-                className={cn("h-2 rounded-r-[4px]", over ? "bg-critical" : "bg-ink-dim")}
-                style={{ width: `${Math.max(1, (r.amount / max) * 100)}%` }}
-              />
-              {r.budget != null && (
-                <span
-                  className="absolute -top-1 h-4 w-0.5 rounded bg-ink"
-                  style={{ left: `calc(${(r.budget / max) * 100}% - 1px)` }}
-                  title={`Budget ${inr(r.budget)}`}
+          <li key={r.category} className="rounded-lg transition-colors">
+            <button
+              type="button"
+              onClick={() => setExpanded(isExpanded ? null : r.category)}
+              className="w-full text-left -mx-2 px-2 py-1.5 rounded-md hover:bg-ops-raised/40 transition-colors group cursor-pointer"
+              aria-expanded={isExpanded}
+              aria-label={`${r.category}: ${inr(r.amount)}. Click to ${isExpanded ? "collapse" : "view transactions"}`}
+            >
+              <div className="mb-1.5 flex items-baseline justify-between gap-3 text-[14px]">
+                <span className="flex items-center gap-1.5 font-medium text-ink truncate group-hover:text-ai transition-colors">
+                  <ChevronRight
+                    size={14}
+                    className={cn(
+                      "shrink-0 text-ink-faint transition-transform duration-200",
+                      isExpanded && "rotate-90 text-ink"
+                    )}
+                  />
+                  <span className="truncate">{r.category}</span>
+                </span>
+                <span className="tnum shrink-0 text-ink">
+                  {inr(r.amount)}
+                  {r.budget != null && <span className="text-ink-faint"> / {inrShort(r.budget)}</span>}
+                </span>
+              </div>
+              <div className="relative h-2">
+                <div
+                  className={cn("h-2 rounded-r-[4px] transition-all", over ? "bg-critical" : "bg-ink-dim group-hover:bg-ink")}
+                  style={{ width: `${Math.max(1, (r.amount / max) * 100)}%` }}
                 />
-              )}
-            </div>
+                {r.budget != null && (
+                  <span
+                    className="absolute -top-1 h-4 w-0.5 rounded bg-ink"
+                    style={{ left: `calc(${(r.budget / max) * 100}% - 1px)` }}
+                    title={`Budget ${inr(r.budget)}`}
+                  />
+                )}
+              </div>
+            </button>
+
+            {isExpanded && month && (
+              <CategoryTransactionsDetail
+                month={month}
+                category={r.category}
+                onEdit={onEdit}
+                onViewCategory={onViewCategory}
+              />
+            )}
           </li>
         );
       })}

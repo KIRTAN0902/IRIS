@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { ArrowDownRight, ArrowUpRight, ChevronLeft, ChevronRight, Plus, Search } from "lucide-react";
+import { ArrowDownRight, ArrowUpRight, ChevronLeft, ChevronRight, Plus, Search, X } from "lucide-react";
 import { useBills, useFinanceSummary, usePayBill, useSavingsGoals, useTransactions } from "@/hooks/queries";
 import { ErrorState, Skeleton } from "@/components/ui/Overlay";
 import { cn } from "@/lib/format";
@@ -50,11 +50,17 @@ const TABS: { id: Tab; label: string }[] = [
 export function FinancePage() {
   const [params, setParams] = useSearchParams();
   const tab = (TABS.find((t) => t.id === params.get("tab"))?.id ?? "overview") as Tab;
+  const selectedCategory = params.get("category") || undefined;
   const [month, setMonth] = useState(currentMonth());
   const [editing, setEditing] = useState<{ tx: TransactionOut | null; kind?: TransactionKind } | null>(null);
   const isCurrent = month === currentMonth();
 
-  const setTab = (id: Tab) => setParams(id === "overview" ? {} : { tab: id }, { replace: true });
+  const setTab = (id: Tab, category?: string) => {
+    const next: Record<string, string> = {};
+    if (id !== "overview") next.tab = id;
+    if (category) next.category = category;
+    setParams(next, { replace: true });
+  };
   const addTransaction = (kind: TransactionKind = "EXPENSE") => setEditing({ tx: null, kind });
 
   return (
@@ -111,8 +117,23 @@ export function FinancePage() {
         </nav>
       </header>
 
-      {tab === "overview" && <Overview month={month} onEdit={(tx) => setEditing({ tx })} onAdd={addTransaction} onTab={setTab} />}
-      {tab === "transactions" && <Transactions month={month} onEdit={(tx) => setEditing({ tx })} />}
+      {tab === "overview" && (
+        <Overview
+          month={month}
+          onEdit={(tx) => setEditing({ tx })}
+          onAdd={addTransaction}
+          onTab={(t) => setTab(t)}
+          onViewCategory={(cat) => setTab("transactions", cat)}
+        />
+      )}
+      {tab === "transactions" && (
+        <Transactions
+          month={month}
+          onEdit={(tx) => setEditing({ tx })}
+          categoryFilter={selectedCategory}
+          onClearCategory={() => setTab("transactions")}
+        />
+      )}
       {tab === "budgets" && <Budgets month={month} />}
       {tab === "bills" && <Bills />}
       {tab === "savings" && <Savings />}
@@ -173,11 +194,13 @@ function Overview({
   onEdit,
   onAdd,
   onTab,
+  onViewCategory,
 }: {
   month: string;
   onEdit: (tx: TransactionOut) => void;
   onAdd: (kind?: TransactionKind) => void;
   onTab: (t: Tab) => void;
+  onViewCategory?: (cat: string) => void;
 }) {
   const summary = useFinanceSummary(month);
   if (summary.isLoading) return <Loading />;
@@ -215,7 +238,12 @@ function Overview({
 
       {s.by_category.length > 0 && (
         <Section title="Where it went">
-          <CategoryBars rows={s.by_category} />
+          <CategoryBars
+            rows={s.by_category}
+            month={month}
+            onEdit={onEdit}
+            onViewCategory={onViewCategory}
+          />
         </Section>
       )}
 
@@ -316,10 +344,20 @@ function TransactionRow({ tx, onClick, showDate }: { tx: TransactionOut; onClick
   );
 }
 
-function Transactions({ month, onEdit }: { month: string; onEdit: (tx: TransactionOut) => void }) {
+function Transactions({
+  month,
+  onEdit,
+  categoryFilter,
+  onClearCategory,
+}: {
+  month: string;
+  onEdit: (tx: TransactionOut) => void;
+  categoryFilter?: string;
+  onClearCategory?: () => void;
+}) {
   const [kind, setKind] = useState<TransactionKind | undefined>(undefined);
   const [query, setQuery] = useState("");
-  const txs = useTransactions({ month, kind, q: query.trim() || undefined });
+  const txs = useTransactions({ month, kind, category: categoryFilter, q: query.trim() || undefined });
 
   const days = useMemo(() => {
     const groups = new Map<string, TransactionOut[]>();
@@ -352,6 +390,22 @@ function Transactions({ month, onEdit }: { month: string; onEdit: (tx: Transacti
           />
         </label>
       </div>
+
+      {categoryFilter && (
+        <div className="mt-2.5 flex items-center gap-2">
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-ops-line-bright bg-ops-raised px-2.5 py-0.5 text-[12px] text-ink">
+            Category: <span className="font-semibold">{categoryFilter}</span>
+            <button
+              type="button"
+              onClick={onClearCategory}
+              className="ml-0.5 rounded-full p-0.5 hover:bg-ops-void text-ink-faint hover:text-ink cursor-pointer"
+              title="Clear category filter"
+            >
+              <X size={12} />
+            </button>
+          </span>
+        </div>
+      )}
 
       {txs.isLoading ? (
         <div className="mt-6">

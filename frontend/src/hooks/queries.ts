@@ -523,7 +523,7 @@ export const useFinanceSummary = (month?: string) =>
 export const useFinanceCategories = () =>
   useQuery({ queryKey: [...financeKey, "categories"], queryFn: financeApi.categories, staleTime: 5 * 60_000 });
 
-export const useTransactions = (filters: { month?: string; kind?: TransactionKind; q?: string }) =>
+export const useTransactions = (filters: { month?: string; kind?: TransactionKind; category?: string; q?: string }) =>
   useQuery({ queryKey: [...financeKey, "transactions", filters], queryFn: () => financeApi.transactions(filters) });
 
 export const useBills = () => useQuery({ queryKey: [...financeKey, "bills"], queryFn: financeApi.bills });

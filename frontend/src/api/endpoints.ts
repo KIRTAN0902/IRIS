@@ -347,7 +347,7 @@ export const assistantApi = {
 export const financeApi = {
   summary: (month?: string) => api.get<FinanceSummary>("/finance/summary", { month }),
   categories: () => api.get<FinanceCategories>("/finance/categories"),
-  transactions: (filters: { month?: string; kind?: TransactionKind; q?: string } = {}) =>
+  transactions: (filters: { month?: string; kind?: TransactionKind; category?: string; q?: string } = {}) =>
     api.get<TransactionOut[]>("/finance/transactions", filters),
   createTransaction: (body: TransactionIn) => api.post<TransactionOut>("/finance/transactions", body),
   updateTransaction: (id: number, body: TransactionIn) =>
