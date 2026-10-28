@@ -47,12 +47,13 @@ const ICON_PATH = path.join(__dirname, 'assets', 'icon.ico');
 const PNG_ICON_PATH = path.join(__dirname, 'assets', 'icon.png');
 const LOADING_HTML = path.join(__dirname, 'loading.html');
 
-// Locate local distribution directory
+// Locate local distribution directory (prioritize live workspace build)
 const candidateDistDirs = [
+  path.join(REPO_ROOT, 'frontend', 'dist'),
+  path.join(__dirname, '..', '..', '..', 'frontend', 'dist'),
+  path.join(__dirname, '..', 'frontend', 'dist'),
   path.join(__dirname, 'dist-frontend'),
   path.join(__dirname, 'dist'),
-  path.join(REPO_ROOT, 'frontend', 'dist'),
-  path.join(__dirname, '..', 'frontend', 'dist'),
 ];
 const DIST_DIR = candidateDistDirs.find((d) => fs.existsSync(path.join(d, 'index.html'))) || path.join(REPO_ROOT, 'frontend', 'dist');
 log('Using frontend distribution from: ' + DIST_DIR);
