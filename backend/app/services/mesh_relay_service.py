@@ -499,7 +499,7 @@ class LaptopRelayDaemon:
     reach the laptop and execute without requiring open router ports or dynamic tunnels.
     """
 
-    def __init__(self, interval_seconds: float = 1.0) -> None:
+    def __init__(self, interval_seconds: float = 0.4) -> None:
         self.interval = interval_seconds
         self.running = False
         self._task: asyncio.Task[None] | None = None
@@ -729,6 +729,39 @@ class LaptopRelayDaemon:
                     target_device_id=sender,
                     msg_type="COMMAND_RESULT",
                     payload={"req_id": req_id, "command": "WRITE_FILE", "result": res},
+                )
+
+        elif msg_type == "READ_FILE":
+            req_id = payload.get("req_id")
+            fpath = payload.get("file_path", "")
+            max_bytes = payload.get("max_bytes", 500000)
+            res = ms.read_laptop_file(file_path=fpath, max_bytes=max_bytes)
+            logger.info("Laptop read file executed: %s", res.get("file_name"))
+            if req_id and sender and sender != "system":
+                push_relay_message(
+                    db=db,
+                    user_id=1,
+                    sender_device_id=LAPTOP_HOST_DEVICE_ID,
+                    target_device_id=sender,
+                    msg_type="COMMAND_RESULT",
+                    payload={"req_id": req_id, "command": "READ_FILE", "result": res},
+                )
+
+        elif msg_type == "LIST_FILES":
+            req_id = payload.get("req_id")
+            directory = payload.get("directory")
+            recursive = payload.get("recursive", False)
+            max_results = payload.get("max_results", 100)
+            res = ms.list_laptop_files(directory=directory, recursive=recursive, max_results=max_results)
+            logger.info("Laptop list files executed: %d entries", res.get("count", 0))
+            if req_id and sender and sender != "system":
+                push_relay_message(
+                    db=db,
+                    user_id=1,
+                    sender_device_id=LAPTOP_HOST_DEVICE_ID,
+                    target_device_id=sender,
+                    msg_type="COMMAND_RESULT",
+                    payload={"req_id": req_id, "command": "LIST_FILES", "result": res},
                 )
 
         elif msg_type == "SEARCH_FILES":

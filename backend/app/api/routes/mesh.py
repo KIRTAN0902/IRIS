@@ -434,6 +434,129 @@ async def mesh_websocket_endpoint(
                             ms.hub.devices[device_id].battery_level = payload.get("battery_level")
                             ms.hub.devices[device_id].is_charging = payload.get("is_charging")
                             await ms.hub.broadcast_device_states()
+                    elif cmd == "LAUNCH_APP":
+                        if mrs.is_local_windows_host():
+                            res = ms.launch_windows_app(
+                                app_name=payload.get("app", "terminal"),
+                                argument=payload.get("argument"),
+                                directory=payload.get("directory"),
+                                prompt=payload.get("prompt"),
+                                resume=payload.get("resume", False),
+                                conversation_id=payload.get("conversation_id"),
+                            )
+                            await websocket.send_json(
+                                {
+                                    "type": "COMMAND_RESULT",
+                                    "payload": {
+                                        "req_id": payload.get("req_id"),
+                                        "command": cmd,
+                                        "result": res,
+                                    },
+                                }
+                            )
+
+                    elif cmd == "TERMINAL_EXEC":
+                        if mrs.is_local_windows_host():
+                            res = ms.execute_terminal_command(
+                                command=payload.get("command", ""),
+                                cwd=payload.get("working_dir"),
+                                timeout=payload.get("timeout", 30),
+                            )
+                            await websocket.send_json(
+                                {
+                                    "type": "TERMINAL_RESULT",
+                                    "payload": {
+                                        "req_id": payload.get("req_id"),
+                                        "result": res,
+                                    },
+                                }
+                            )
+
+                    elif cmd == "CAPTURE_SCREEN":
+                        if mrs.is_local_windows_host():
+                            res = ms.capture_windows_screen(max_width=payload.get("max_width", 1920))
+                            await websocket.send_json(
+                                {
+                                    "type": "COMMAND_RESULT",
+                                    "payload": {
+                                        "req_id": payload.get("req_id"),
+                                        "command": cmd,
+                                        "result": res,
+                                    },
+                                }
+                            )
+
+                    elif cmd == "READ_FILE":
+                        if mrs.is_local_windows_host():
+                            res = ms.read_laptop_file(
+                                file_path=payload.get("file_path", ""),
+                                max_bytes=payload.get("max_bytes", 500000),
+                            )
+                            await websocket.send_json(
+                                {
+                                    "type": "COMMAND_RESULT",
+                                    "payload": {
+                                        "req_id": payload.get("req_id"),
+                                        "command": cmd,
+                                        "result": res,
+                                    },
+                                }
+                            )
+
+                    elif cmd == "LIST_FILES":
+                        if mrs.is_local_windows_host():
+                            res = ms.list_laptop_files(
+                                directory=payload.get("directory"),
+                                recursive=payload.get("recursive", False),
+                                max_results=payload.get("max_results", 100),
+                            )
+                            await websocket.send_json(
+                                {
+                                    "type": "COMMAND_RESULT",
+                                    "payload": {
+                                        "req_id": payload.get("req_id"),
+                                        "command": cmd,
+                                        "result": res,
+                                    },
+                                }
+                            )
+
+                    elif cmd == "SEARCH_FILES":
+                        if mrs.is_local_windows_host():
+                            res = ms.search_laptop_files(
+                                query=payload.get("query", ""),
+                                directory=payload.get("directory"),
+                                max_results=payload.get("max_results", 30),
+                            )
+                            await websocket.send_json(
+                                {
+                                    "type": "COMMAND_RESULT",
+                                    "payload": {
+                                        "req_id": payload.get("req_id"),
+                                        "command": cmd,
+                                        "result": res,
+                                    },
+                                }
+                            )
+
+                    elif cmd == "WRITE_FILE":
+                        if mrs.is_local_windows_host():
+                            res = ms.write_laptop_file(
+                                file_path=payload.get("file_path", ""),
+                                content=payload.get("content", ""),
+                                mode=payload.get("mode", "overwrite"),
+                            )
+                            await websocket.send_json(
+                                {
+                                    "type": "COMMAND_RESULT",
+                                    "payload": {
+                                        "req_id": payload.get("req_id"),
+                                        "command": cmd,
+                                        "result": res,
+                                    },
+                                }
+                            )
+
                     elif cmd in {"AGY_ATTACH_DIR", "AGY_SEND_INPUT", "AGY_SLASH_CMD", "AGY_GET_STATUS"}:
                         from app.services.agy_bridge import AgyError, agy_manager
 
@@ -502,6 +625,47 @@ async def mesh_websocket_endpoint(
                         sender_device=device_id,
                         payload=payload,
                     )
+                    await ms.hub.broadcast(msg, exclude_sender=True)
+
+                elif msg_type == "LAUNCH_APP":
+                    if mrs.is_local_windows_host() and payload.get("target") != "mobile":
+                        res = ms.launch_windows_app(
+                            app_name=payload.get("app", "terminal"),
+                            argument=payload.get("argument"),
+                            directory=payload.get("directory"),
+                            prompt=payload.get("prompt"),
+                            resume=payload.get("resume", False),
+                            conversation_id=payload.get("conversation_id"),
+                        )
+                        await websocket.send_json({
+                            "type": "COMMAND_RESULT",
+                            "payload": {"req_id": payload.get("req_id"), "command": "LAUNCH_APP", "result": res},
+                        })
+                    msg = ms.MeshMessage(type="LAUNCH_APP", sender_device=device_id, target_device=data.get("target_device"), payload=payload)
+                    await ms.hub.broadcast(msg, exclude_sender=True)
+
+                elif msg_type == "TERMINAL_EXEC":
+                    if mrs.is_local_windows_host():
+                        res = ms.execute_terminal_command(
+                            command=payload.get("command", ""),
+                            cwd=payload.get("working_dir"),
+                            timeout=payload.get("timeout", 30),
+                        )
+                        await websocket.send_json({
+                            "type": "TERMINAL_RESULT",
+                            "payload": {"req_id": payload.get("req_id"), "result": res},
+                        })
+                    msg = ms.MeshMessage(type="TERMINAL_EXEC", sender_device=device_id, target_device=data.get("target_device"), payload=payload)
+                    await ms.hub.broadcast(msg, exclude_sender=True)
+
+                elif msg_type == "CAPTURE_SCREEN":
+                    if mrs.is_local_windows_host():
+                        res = ms.capture_windows_screen(max_width=payload.get("max_width", 1920))
+                        await websocket.send_json({
+                            "type": "COMMAND_RESULT",
+                            "payload": {"req_id": payload.get("req_id"), "command": "CAPTURE_SCREEN", "result": res},
+                        })
+                    msg = ms.MeshMessage(type="CAPTURE_SCREEN", sender_device=device_id, target_device=data.get("target_device"), payload=payload)
                     await ms.hub.broadcast(msg, exclude_sender=True)
 
                 elif msg_type == "PING":

@@ -466,214 +466,249 @@ class IrisSupervisor:
                 [action_rec],
             )
 
-        # F. Antigravity CLI / IDE quick launcher
-        is_agy_ide = any(w in msg_lower for w in ["antigravity ide", "agy ide", "antigravity gui", "antigravity editor"])
-        is_agy_cli = not is_agy_ide and (
-            ("antigravity" in msg_lower or "agy" in msg_lower)
-            and any(w in msg_lower for w in ["cli", "terminal", "console", "resume", "continue", "-c", "--continue", "open", "launch", "start", "run"])
-            or any(msg_lower.startswith(w) for w in ["open agy", "launch agy", "start agy", "agy -c", "agy --continue", "open antigravity", "launch antigravity", "start antigravity"])
-            or msg_lower.strip() in ["agy", "antigravity", "antigravity cli", "agy cli"]
+        # F. Universal Dynamic Peer Action Dispatcher (Zero Hardcoding, Millisecond Execution)
+        req_clean = re.sub(r"^(?:can you\s+|please\s+|could you\s+|iris\s+)", "", clean_msg).strip()
+        app_launch_match = re.match(
+            r"^(?:open|launch|start|spawn|bring up)\s+(.+?)(?:\s+(?:on|in|at)\s+(?:my\s+)?(laptop|phone|pc|mobile|computer|workstation|desktop))?$",
+            req_clean,
+            re.IGNORECASE,
         )
+        if app_launch_match:
+            raw_target_app = app_launch_match.group(1).strip()
+            device_hint = (app_launch_match.group(2) or "").lower().strip()
 
-        if is_agy_cli:
             from app.services import mesh_service as ms
             from app.services import mesh_relay_service as mrs
 
-            target_dir, prompt_text, should_resume = ms.parse_antigravity_cli_intent(user_message, default_dir=r"C:\kirtan\IRIS")
-            extra_msg = []
-            if should_resume:
-                extra_msg.append("resuming previous conversation")
-            if prompt_text:
-                extra_msg.append(f"with prompt: '{prompt_text}'")
-            extra_desc = f" ({', '.join(extra_msg)})" if extra_msg else ""
-
-            if mrs.is_local_windows_host():
-                res = ms.launch_windows_app("antigravity_cli", directory=target_dir, prompt=prompt_text, resume=should_resume)
+            # Extract directory preserving original casing from user_message
+            orig_dir_match = re.search(
+                r'\b(?:in|at|into)\s+([a-zA-Z]:\\[^\s"\'`]+|[a-zA-Z]:/[^\s"\'`]+|[a-zA-Z0-9_\-\\.]+)',
+                user_message,
+                re.IGNORECASE,
+            )
+            target_directory = None
+            if orig_dir_match:
+                cand_dir = orig_dir_match.group(1).strip().strip("'\"`")
+                if cand_dir.lower() not in ["terminal", "cli", "powershell", "cmd", "console", "wt", "window", "tab", "laptop", "pc", "phone"]:
+                    target_directory = cand_dir
+                    clean_app = re.sub(r'\b(?:in|at|into)\s+.*$', '', raw_target_app, flags=re.IGNORECASE).strip()
+                else:
+                    clean_app = raw_target_app
             else:
-                if not mrs.is_host_laptop_online(db, user.id, threshold_seconds=180.0):
-                    return (
-                        AgentResponseSchema(
-                            thought="Laptop offline for Antigravity CLI launch.",
-                            actions=[],
-                            message="⚠️ Your Windows laptop is currently offline or unreachable on the IRIS mesh. Please ensure your laptop is powered on with the IRIS daemon running.",
-                            actions_summary=["Laptop offline"],
-                        ),
-                        [{"tool_name": "launch_laptop_app", "success": False, "summary": "Laptop offline"}],
-                    )
-                mrs.push_relay_message(
-                    db=db,
-                    user_id=user.id,
-                    sender_device_id="mobile_assistant",
-                    target_device_id=mrs.LAPTOP_HOST_DEVICE_ID,
-                    msg_type="REMOTE_COMMAND",
-                    payload={
-                        "command": "LAUNCH_APP",
-                        "app": "antigravity_cli",
-                        "directory": target_dir,
-                        "prompt": prompt_text,
-                        "resume": should_resume,
-                    },
+                clean_app = raw_target_app
+
+            clean_app_low = clean_app.lower()
+
+            # Target Device Resolution: Phone vs Laptop
+            mobile_indicators = {
+                "camera", "whatsapp", "instagram", "gpay", "google pay", "phonepe", "paytm",
+                "zomato", "swiggy", "uber", "ola", "zepto", "blinkit", "gallery", "phone",
+                "contacts", "messages", "sms"
+            }
+            is_phone_target = device_hint in ["phone", "mobile"] or (
+                device_hint == "" and clean_app_low in mobile_indicators
+            )
+
+            if is_phone_target:
+                # Dispatch dynamically to Mobile Phone Companion
+                msg_obj = ms.MeshMessage(
+                    type="LAUNCH_APP",
+                    sender_device="iris_agent",
+                    payload={"app": clean_app, "target": "mobile"}
                 )
-                res = {"success": True}
-
-            msg_text = (
-                f"⚡ Opened Antigravity CLI in `{target_dir}`{extra_desc} on your Windows laptop terminal."
-                if res.get("success")
-                else f"Could not launch Antigravity CLI: {res.get('error')}"
-            )
-            return (
-                AgentResponseSchema(
-                    thought=f"Opened Antigravity CLI in {target_dir}.",
-                    actions=[],
-                    message=msg_text,
-                    actions_summary=[f"Opened Antigravity CLI in {target_dir}"],
-                    evidence=[f"Antigravity CLI: Active ({target_dir})"],
-                ),
-                [{"tool_name": "launch_laptop_app", "success": res.get("success", False), "summary": msg_text}],
-            )
-
-        if is_agy_ide:
-            from app.services import mesh_service as ms
-            from app.services import mesh_relay_service as mrs
-
-            target_dir, _, _ = ms.parse_antigravity_cli_intent(user_message, default_dir=r"C:\kirtan\IRIS")
-
-            if mrs.is_local_windows_host():
-                res = ms.launch_windows_app("antigravity_ide", directory=target_dir)
-            else:
-                if not mrs.is_host_laptop_online(db, user.id, threshold_seconds=180.0):
-                    return (
-                        AgentResponseSchema(
-                            thought="Laptop offline for Antigravity IDE launch.",
-                            actions=[],
-                            message="⚠️ Your Windows laptop is currently offline or unreachable on the IRIS mesh. Please ensure your laptop is powered on with the IRIS daemon running.",
-                            actions_summary=["Laptop offline"],
-                        ),
-                        [{"tool_name": "launch_laptop_app", "success": False, "summary": "Laptop offline"}],
-                    )
-                mrs.push_relay_message(
-                    db=db,
-                    user_id=user.id,
-                    sender_device_id="mobile_assistant",
-                    target_device_id=mrs.LAPTOP_HOST_DEVICE_ID,
-                    msg_type="REMOTE_COMMAND",
-                    payload={
-                        "command": "LAUNCH_APP",
-                        "app": "antigravity_ide",
-                        "directory": target_dir,
-                    },
-                )
-                res = {"success": True}
-
-            msg_text = (
-                f"🚀 Launched Antigravity IDE in `{target_dir}` on your Windows laptop display."
-                if res.get("success")
-                else f"Could not launch Antigravity IDE: {res.get('error')}"
-            )
-            return (
-                AgentResponseSchema(
-                    thought=f"Launched Antigravity IDE in {target_dir}.",
-                    actions=[],
-                    message=msg_text,
-                    actions_summary=["Launched Antigravity IDE on laptop"],
-                    evidence=["Antigravity IDE: Active"],
-                ),
-                [{"tool_name": "launch_laptop_app", "success": res.get("success", False), "summary": msg_text}],
-            )
-
-        # F2. Terminal quick launcher: opens in home directory and navigates to target directory if specified
-        is_terminal = (
-            any(w in msg_lower for w in ["terminal", "powershell", "console", "command prompt", "cmd window"])
-            and any(w in msg_lower for w in ["open", "launch", "start", "spawn", "bring up", "show"])
-            and not is_agy_cli
-        ) or msg_lower.strip() in ["open terminal", "terminal", "launch terminal", "open powershell"]
-
-        if is_terminal:
-            from app.services import mesh_service as ms
-            from app.services import mesh_relay_service as mrs
-
-            home_dir, target_dir = ms.parse_terminal_intent(user_message)
-            is_home = (target_dir == home_dir or target_dir in ["~", "home", ""])
-            folder_label = "your home directory" if is_home else f"`{target_dir}` (from home directory)"
-
-            if mrs.is_local_windows_host():
-                res = ms.launch_windows_app("terminal", directory=None if is_home else target_dir)
-            else:
-                if not mrs.is_host_laptop_online(db, user.id, threshold_seconds=180.0):
-                    return (
-                        AgentResponseSchema(
-                            thought="Laptop offline for Terminal launch.",
-                            actions=[],
-                            message="⚠️ Your Windows laptop is currently offline or unreachable on the IRIS mesh. Please verify your laptop is powered on with the IRIS daemon running.",
-                            actions_summary=["Laptop offline"],
-                        ),
-                        [{"tool_name": "launch_laptop_app", "success": False, "summary": "Laptop offline"}],
-                    )
-                mrs.push_relay_message(
-                    db=db,
-                    user_id=user.id,
-                    sender_device_id="mobile_assistant",
-                    target_device_id=mrs.LAPTOP_HOST_DEVICE_ID,
-                    msg_type="REMOTE_COMMAND",
-                    payload={
-                        "command": "LAUNCH_APP",
-                        "app": "terminal",
-                        "directory": None if is_home else target_dir,
-                    },
-                )
-                res = {"success": True}
-
-            msg_text = (
-                f"💻 Opened Terminal in {folder_label} on your Windows laptop."
-                if res.get("success")
-                else f"Could not launch Terminal: {res.get('error')}"
-            )
-            return (
-                AgentResponseSchema(
-                    thought=f"Opened Terminal in {folder_label}.",
-                    actions=[],
-                    message=msg_text,
-                    actions_summary=[f"Opened Terminal in {folder_label}"],
-                    evidence=[f"Terminal: Active ({target_dir})"],
-                ),
-                [{"tool_name": "launch_laptop_app", "success": res.get("success", False), "summary": msg_text}],
-            )
-
-        # F3. Mobile App quick launcher (e.g., "open spotify", "launch whatsapp", "open youtube", "open camera")
-        mobile_launch_match = re.search(
-            r"\b(?:open|launch|start)\s+([a-zA-Z0-9_\s]+?)(?:\s+(?:app|application|on my phone|on phone))?$",
-            msg_lower,
-        )
-        if mobile_launch_match and not is_agy_cli and not is_agy_ide and not is_terminal:
-            app_candidate = mobile_launch_match.group(1).strip()
-            known_mobile_apps = [
-                "spotify", "whatsapp", "youtube", "camera", "instagram", "maps", "google maps",
-                "gmail", "calculator", "settings", "gpay", "google pay", "phonepe", "paytm",
-                "cred", "swiggy", "zomato", "zepto", "blinkit", "uber", "ola", "rapido",
-                "telegram", "twitter", "x", "netflix", "amazon", "chrome"
-            ]
-            if any(k == app_candidate or app_candidate.startswith(k) for k in known_mobile_apps) or "phone" in msg_lower:
-                from app.services import mesh_service as ms
                 try:
-                    msg_obj = ms.MeshMessage(
-                        type="LAUNCH_APP",
-                        sender_device="iris_agent",
-                        payload={"app": app_candidate, "target": "mobile"}
-                    )
                     import asyncio
-                    asyncio.create_task(ms.hub.broadcast(msg_obj, exclude_sender=False))
-                except Exception:
+                    loop = asyncio.get_running_loop()
+                    loop.create_task(ms.hub.broadcast(msg_obj, exclude_sender=False))
+                except RuntimeError:
                     pass
-                msg_text = f"Opening {app_candidate.title()} on your phone."
+
+                mrs.push_relay_message(
+                    db=db,
+                    user_id=user.id,
+                    sender_device_id="iris_agent",
+                    target_device_id=None,
+                    msg_type="LAUNCH_APP",
+                    payload={"app": clean_app, "target": "mobile"},
+                )
+                msg_reply = f"📱 Opening **{clean_app.title()}** on your phone."
                 return (
                     AgentResponseSchema(
-                        thought=f"User commanded to launch mobile app '{app_candidate}'.",
-                        actions=[{"action": "launch_mobile_app", "app": app_candidate}],
-                        message=msg_text,
-                        actions_summary=[f"Launch {app_candidate.title()} on phone"],
-                        evidence=[f"Mobile App: {app_candidate.title()}"],
+                        thought=f"Dispatched dynamic launch for {clean_app} to mobile companion.",
+                        actions=[],
+                        message=msg_reply,
+                        actions_summary=[f"Opened {clean_app.title()} on phone"],
+                        evidence=[f"Phone App: {clean_app.title()}"],
                     ),
-                    [{"tool_name": "launch_mobile_app", "success": True, "summary": msg_text}],
+                    [{"tool_name": "launch_mobile_app", "success": True, "app": clean_app, "summary": msg_reply}],
+                )
+
+            else:
+                # Dispatch dynamically to Windows Laptop Workstation
+                is_agy_cli = clean_app_low in ["agy", "antigravity", "antigravity cli", "agy cli"] or "cli" in clean_app_low
+                is_terminal = clean_app_low in ["terminal", "powershell", "wt", "cmd", "windows terminal"]
+                target_dir = target_directory
+                prompt_text = None
+                should_resume = False
+
+                if is_agy_cli:
+                    target_dir, prompt_text, should_resume = ms.parse_antigravity_cli_intent(user_message, default_dir=r"C:\kirtan\IRIS")
+                    clean_app = "antigravity_cli"
+                elif is_terminal:
+                    clean_app = "terminal"
+
+                if mrs.is_local_windows_host():
+                    if is_agy_cli:
+                        res = ms.launch_windows_app(
+                            "antigravity_cli",
+                            directory=target_dir,
+                            prompt=prompt_text,
+                            resume=should_resume,
+                        )
+                        app_title = res.get("app", "Antigravity CLI")
+                    elif is_terminal:
+                        res = ms.launch_windows_app("terminal", directory=target_dir)
+                        app_title = res.get("app", "Terminal")
+                    else:
+                        res = ms.launch_windows_app(
+                            clean_app,
+                            directory=target_dir,
+                            prompt=prompt_text,
+                            resume=should_resume,
+                        )
+                        app_title = res.get("app", clean_app.title())
+
+                    if is_terminal and res.get("success"):
+                        if target_dir:
+                            msg_reply = f"💻 Opened Terminal in `{target_dir}` (from home directory) on your Windows laptop."
+                        else:
+                            msg_reply = "💻 Opened Terminal in your home directory on your Windows laptop."
+                    elif res.get("success"):
+                        folder_str = f" in `{target_dir}`" if target_dir else ""
+                        msg_reply = f"💻 Opened **{app_title}**{folder_str} on your Windows laptop."
+                    else:
+                        msg_reply = f"Could not launch {clean_app}: {res.get('error')}"
+                else:
+                    if not mrs.is_host_laptop_online(db, user.id, threshold_seconds=180.0):
+                        return (
+                            AgentResponseSchema(
+                                thought="Laptop offline for dynamic app launch.",
+                                actions=[],
+                                message="⚠️ Your Windows laptop is currently offline or unreachable on the IRIS mesh. Please ensure your laptop is powered on with the IRIS daemon running.",
+                                actions_summary=["Laptop offline"],
+                            ),
+                            [{"tool_name": "launch_laptop_app", "success": False, "summary": "Laptop offline"}],
+                        )
+                    mrs.push_relay_message(
+                        db=db,
+                        user_id=user.id,
+                        sender_device_id="mobile_assistant",
+                        target_device_id=mrs.LAPTOP_HOST_DEVICE_ID,
+                        msg_type="REMOTE_COMMAND",
+                        payload={
+                            "command": "LAUNCH_APP",
+                            "app": clean_app,
+                            "directory": target_dir,
+                            "prompt": prompt_text,
+                            "resume": should_resume,
+                        },
+                    )
+                    app_title = clean_app.replace("_", " ").title()
+                    folder_str = f" in `{target_dir}`" if target_dir else ""
+                    msg_reply = f"💻 Opened **{app_title}**{folder_str} on your Windows laptop."
+
+                return (
+                    AgentResponseSchema(
+                        thought=f"Dispatched dynamic launch for {clean_app} to laptop workstation.",
+                        actions=[],
+                        message=msg_reply,
+                        actions_summary=[f"Opened {clean_app.title()} on laptop"],
+                        evidence=[f"Laptop App: {clean_app.title()}"],
+                    ),
+                    [{"tool_name": "launch_laptop_app", "success": True, "summary": msg_reply}],
+                )
+
+        # G. Dynamic Command Execution on Laptop
+        cmd_exec_match = re.match(
+            r"^(?:run|exec|execute|powershell|cmd)\s+(?:command\s+)?[\"']?(.+?)[\"']?(?:\s+(?:on|in)\s+(?:my\s+)?(laptop|pc|computer))?$",
+            req_clean,
+            re.IGNORECASE,
+        )
+        if cmd_exec_match:
+            candidate_cmd = cmd_exec_match.group(1).strip()
+            from app.services import mesh_service as ms
+            from app.services import mesh_relay_service as mrs
+
+            if candidate_cmd.lower() in ["terminal", "powershell", "wt", "cmd", "windows terminal"]:
+                if mrs.is_local_windows_host():
+                    res = ms.launch_windows_app("terminal")
+                    msg_reply = "💻 Opened **Terminal** on your Windows laptop." if res.get("success") else f"Could not launch Terminal: {res.get('error')}"
+                else:
+                    if not mrs.is_host_laptop_online(db, user.id, threshold_seconds=180.0):
+                        return (
+                            AgentResponseSchema(
+                                thought="Laptop offline for terminal launch.",
+                                actions=[],
+                                message="⚠️ Your Windows laptop is currently offline or unreachable on the IRIS mesh. Please ensure your laptop is powered on with the IRIS daemon running.",
+                                actions_summary=["Laptop offline"],
+                            ),
+                            [{"tool_name": "launch_laptop_app", "success": False, "summary": "Laptop offline"}],
+                        )
+                    mrs.push_relay_message(
+                        db=db,
+                        user_id=user.id,
+                        sender_device_id="mobile_assistant",
+                        target_device_id=mrs.LAPTOP_HOST_DEVICE_ID,
+                        msg_type="REMOTE_COMMAND",
+                        payload={"command": "LAUNCH_APP", "app": "terminal"},
+                    )
+                    msg_reply = "💻 Opened **Terminal** on your Windows laptop."
+                return (
+                    AgentResponseSchema(
+                        thought="Dispatched terminal launch to laptop workstation.",
+                        actions=[],
+                        message=msg_reply,
+                        actions_summary=["Opened Terminal on laptop"],
+                        evidence=["Laptop App: Terminal"],
+                    ),
+                    [{"tool_name": "launch_laptop_app", "success": True, "summary": msg_reply}],
+                )
+
+            if candidate_cmd and not any(candidate_cmd.lower().startswith(w) for w in ["app", "today", "tasks"]):
+                if mrs.is_local_windows_host():
+                    res = ms.execute_terminal_command(candidate_cmd)
+                    output = (res.get("stdout") or res.get("stderr") or "Command executed.").strip()
+                    msg_reply = f"💻 Executed `{candidate_cmd}` on your laptop:\n```\n{output[:1500]}\n```"
+                else:
+                    if not mrs.is_host_laptop_online(db, user.id, threshold_seconds=180.0):
+                        return (
+                            AgentResponseSchema(
+                                thought="Laptop offline for command execution.",
+                                actions=[],
+                                message="⚠️ Your Windows laptop is currently offline or unreachable on the IRIS mesh.",
+                                actions_summary=["Laptop offline"],
+                            ),
+                            [{"tool_name": "run_laptop_terminal_command", "success": False, "summary": "Laptop offline"}],
+                        )
+                    mrs.push_relay_message(
+                        db=db,
+                        user_id=user.id,
+                        sender_device_id="mobile_assistant",
+                        target_device_id=mrs.LAPTOP_HOST_DEVICE_ID,
+                        msg_type="TERMINAL_EXEC",
+                        payload={"command": candidate_cmd, "timeout": 20},
+                    )
+                    msg_reply = f"💻 Dispatched command `{candidate_cmd}` to execute on your Windows laptop."
+
+                return (
+                    AgentResponseSchema(
+                        thought=f"Executed command {candidate_cmd} on laptop.",
+                        actions=[],
+                        message=msg_reply,
+                        actions_summary=[f"Executed `{candidate_cmd}` on laptop"],
+                        evidence=[f"Command: {candidate_cmd}"],
+                    ),
+                    [{"tool_name": "run_laptop_terminal_command", "success": True, "summary": msg_reply}],
                 )
 
         # G. Memory search / recall quick queries

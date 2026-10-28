@@ -12,11 +12,15 @@ export async function launchPhoneApp(appName: string): Promise<{ success: boolea
     if (typeof window === "undefined" || !(window as unknown as { Capacitor?: unknown }).Capacitor) {
       return { success: false, message: "App launching is only available in the IRIS mobile app." };
     }
-    const res = await AppLauncher.launchApp({ appName });
-    if (res.success) {
-      return { success: true, message: `Opened ${res.app || appName} on your phone.` };
+    const cleanName = appName.replace(/[\*\_'"`]/g, "").trim();
+    if (!cleanName) {
+      return { success: false, message: "No app name specified." };
     }
-    return { success: false, message: res.error || `Could not find app ${appName}.` };
+    const res = await AppLauncher.launchApp({ appName: cleanName });
+    if (res.success) {
+      return { success: true, message: `Opened ${res.app || cleanName} on your phone.` };
+    }
+    return { success: false, message: res.error || `Could not find app ${cleanName}.` };
   } catch (err: unknown) {
     const errorMsg = err instanceof Error ? err.message : String(err);
     return { success: false, message: `Failed to launch app: ${errorMsg}` };

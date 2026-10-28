@@ -215,9 +215,10 @@ function Conversation({
       // If reply triggered launch_mobile_app action, invoke native Android launcher
       if (res && res.actions_taken) {
         for (const a of res.actions_taken) {
-          if (a.tool_name === "launch_mobile_app" && a.summary) {
-            const match = a.summary.match(/(?:for\s+'([^']+)'|Opening\s+([^\s]+)|launch\s+([^\s]+))/i);
-            const app = match?.[1] || match?.[2] || match?.[3];
+          if (a.tool_name === "launch_mobile_app") {
+            const raw = ((a as unknown as Record<string, unknown>).app as string) || a.summary || "";
+            const match = raw.match(/(?:for\s+['"]?([^'"]+)['"]?|Opening\s+(?:\*\*)?([^\*\s]+)(?:\*\*)?|launch\s+([^\s]+))/i);
+            const app = ((a as unknown as Record<string, unknown>).app as string) || match?.[1] || match?.[2] || match?.[3];
             if (app) launchPhoneApp(app);
           }
         }

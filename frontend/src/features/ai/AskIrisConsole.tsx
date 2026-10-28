@@ -253,7 +253,7 @@ export function AskIrisConsole() {
           setConversationId(res.conversation_id);
           setThread((t) => [...t, { role: "ASSISTANT", content: res.answer, source: res.source }]);
           if (res.answer) {
-            const match = res.answer.match(/Opening\s+([a-zA-Z0-9_\s]+?)\s+on your phone/i);
+            const match = res.answer.match(/Opening\s+(?:\*\*)?([a-zA-Z0-9_\s]+?)(?:\*\*)?\s+on your phone/i);
             if (match?.[1]) launchPhoneApp(match[1]);
           }
         },

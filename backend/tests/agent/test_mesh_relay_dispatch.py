@@ -25,7 +25,7 @@ def test_terminal_fast_path_cloud_dispatch(db: Session):
 
         resp, actions = supervisor.try_fast_path(db, user, {}, "open terminal")
         assert resp is not None
-        assert "Opened Terminal" in resp.message
+        assert "Opened" in resp.message and "Terminal" in resp.message
         assert actions[0]["success"] is True
 
         mock_push.assert_called_once()
@@ -95,3 +95,57 @@ async def test_mesh_status_tolerates_jitter(db: Session):
         assert result.success is True
         assert result.data["laptop_online"] is True
         assert "ONLINE and ACTIVE" in result.summary
+
+
+def test_dynamic_app_launch_laptop(db: Session):
+    user = get_current_user(db)
+    supervisor = get_iris_supervisor()
+
+    with patch.object(mrs, "is_local_windows_host", return_value=False), \
+         patch.object(mrs, "is_host_laptop_online", return_value=True), \
+         patch.object(mrs, "push_relay_message") as mock_push:
+
+        resp, actions = supervisor.try_fast_path(db, user, {}, "open brave on my laptop")
+        assert resp is not None
+        assert "Brave" in resp.message
+        assert actions[0]["success"] is True
+
+        mock_push.assert_called_once()
+        args, kwargs = mock_push.call_args
+        assert kwargs["payload"]["command"] == "LAUNCH_APP"
+        assert kwargs["payload"]["app"] == "brave"
+
+
+def test_dynamic_app_launch_phone(db: Session):
+    user = get_current_user(db)
+    supervisor = get_iris_supervisor()
+
+    with patch.object(mrs, "push_relay_message") as mock_push:
+        resp, actions = supervisor.try_fast_path(db, user, {}, "launch whatsapp on my phone")
+        assert resp is not None
+        assert "Whatsapp" in resp.message
+        assert actions[0]["success"] is True
+
+        mock_push.assert_called_once()
+        args, kwargs = mock_push.call_args
+        assert kwargs["payload"]["app"] == "whatsapp"
+        assert kwargs["payload"]["target"] == "mobile"
+
+
+def test_dynamic_command_execution(db: Session):
+    user = get_current_user(db)
+    supervisor = get_iris_supervisor()
+
+    with patch.object(mrs, "is_local_windows_host", return_value=False), \
+         patch.object(mrs, "is_host_laptop_online", return_value=True), \
+         patch.object(mrs, "push_relay_message") as mock_push:
+
+        resp, actions = supervisor.try_fast_path(db, user, {}, "run git status on laptop")
+        assert resp is not None
+        assert "git status" in resp.message
+        assert actions[0]["success"] is True
+
+        mock_push.assert_called_once()
+        args, kwargs = mock_push.call_args
+        assert kwargs["msg_type"] == "TERMINAL_EXEC"
+        assert kwargs["payload"]["command"] == "git status"
