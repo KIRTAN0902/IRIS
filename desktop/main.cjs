@@ -58,6 +58,27 @@ const candidateDistDirs = [
 const DIST_DIR = candidateDistDirs.find((d) => fs.existsSync(path.join(d, 'index.html'))) || path.join(REPO_ROOT, 'frontend', 'dist');
 log('Using frontend distribution from: ' + DIST_DIR);
 
+// Live Auto-Reload: Automatically reloads the desktop app the instant a frontend build completes
+if (fs.existsSync(DIST_DIR)) {
+  let reloadTimer = null;
+  try {
+    fs.watch(DIST_DIR, { recursive: true }, (eventType, filename) => {
+      if (filename && (filename.endsWith('.html') || filename.endsWith('.js') || filename.endsWith('.css'))) {
+        clearTimeout(reloadTimer);
+        reloadTimer = setTimeout(() => {
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            log('Detected frontend build update; auto-reloading desktop window...');
+            mainWindow.reload();
+          }
+        }, 600);
+      }
+    });
+    log('Watching ' + DIST_DIR + ' for live auto-updates.');
+  } catch (err) {
+    log('Failed to watch DIST_DIR: ' + err);
+  }
+}
+
 // Ensure single instance
 const gotTheLock = app.requestSingleInstanceLock();
 log('requestSingleInstanceLock: ' + gotTheLock);
