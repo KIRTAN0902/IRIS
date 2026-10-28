@@ -40,7 +40,7 @@ let tray = null;
 let isQuitting = false;
 let hasNotifiedTray = false;
 
-const BACKEND_URL = 'http://localhost:8000/health';
+const BACKEND_URL = 'http://127.0.0.1:8000/health';
 const APP_URL = 'iris://app/index.html';
 
 const ICON_PATH = path.join(__dirname, 'assets', 'icon.ico');
