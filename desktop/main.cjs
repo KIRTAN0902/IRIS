@@ -88,13 +88,15 @@ if (!gotTheLock) {
   process.exit(0);
 }
 
-app.on('second-instance', async () => {
-  if (mainWindow) {
+app.on('second-instance', () => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
     if (mainWindow.isMinimized()) mainWindow.restore();
     if (!mainWindow.isVisible()) mainWindow.show();
     mainWindow.focus();
-    await ensureServices();
+  } else {
+    createWindow();
   }
+  ensureServices().catch(() => {});
 });
 
 function checkUrl(targetUrl, timeoutMs = 4000) {
@@ -179,6 +181,14 @@ function createWindow() {
     mainWindow.focus();
   });
 
+  // Safety fallback: ensure window is displayed within 500ms
+  setTimeout(() => {
+    if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) {
+      mainWindow.show();
+      mainWindow.focus();
+    }
+  }, 500);
+
   mainWindow.on('close', (event) => {
     if (!isQuitting) {
       event.preventDefault();
@@ -210,9 +220,9 @@ function createWindow() {
   loadApp();
 }
 
-async function loadApp() {
-  await ensureServices();
+function loadApp() {
   mainWindow.loadURL(APP_URL);
+  ensureServices().catch(() => {});
 }
 
 function createTray() {

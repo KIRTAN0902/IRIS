@@ -88,6 +88,12 @@ class IrisSupervisor:
         msg = user_message.strip()
         msg_lower = msg.lower()
         clean_msg = msg_lower.rstrip("?.! ").strip()
+        norm_msg = re.sub(
+            r"^(?:hey\s+iris[,:\s]*|iris[,:\s]*|can\s+you\s+(?:please\s+)?|could\s+you\s+(?:please\s+)?|would\s+you\s+(?:please\s+)?|will\s+you\s+(?:please\s+)?|please\s+)+",
+            "",
+            clean_msg,
+            flags=re.IGNORECASE,
+        ).strip()
 
         # A0. Persistent Antigravity terminal fast-paths (0 LLM tokens)
         session_words = msg.split()
@@ -379,14 +385,15 @@ class IrisSupervisor:
             )
 
         # E. Fast Workstation Commands: Lock Workstation & Ring Phone
-        if clean_msg in {"lock workstation", "lock pc", "lock laptop", "lock my workstation", "lock my laptop", "lock my pc"}:
+        lock_triggers = {"lock workstation", "lock pc", "lock laptop", "lock my workstation", "lock my laptop", "lock my pc"}
+        if clean_msg in lock_triggers or norm_msg in lock_triggers:
             from app.services import mesh_service as ms
             from app.services import mesh_relay_service as mrs
 
             if mrs.is_local_windows_host():
                 success = ms.lock_windows_pc()
             else:
-                if not mrs.is_host_laptop_online(db, user.id, threshold_seconds=180.0):
+                if not mrs.is_host_laptop_online(db, user.id, threshold_seconds=300.0):
                     return (
                         AgentResponseSchema(
                             thought="Laptop offline for lock command.",
@@ -423,7 +430,8 @@ class IrisSupervisor:
                 [action_rec],
             )
 
-        if clean_msg in {"ring my phone", "find my phone", "ring phone"}:
+        ring_triggers = {"ring my phone", "find my phone", "ring phone"}
+        if clean_msg in ring_triggers or norm_msg in ring_triggers:
             # Trigger ring alert
             import asyncio
             from app.services import mesh_service as ms
@@ -467,7 +475,7 @@ class IrisSupervisor:
             )
 
         # F. Universal Dynamic Peer Action Dispatcher (Zero Hardcoding, Millisecond Execution)
-        req_clean = re.sub(r"^(?:can you\s+|please\s+|could you\s+|iris\s+)", "", clean_msg).strip()
+        req_clean = norm_msg
         app_launch_match = re.match(
             r"^(?:open|launch|start|spawn|bring up)\s+(.+?)(?:\s+(?:on|in|at)\s+(?:my\s+)?(laptop|phone|pc|mobile|computer|workstation|desktop))?$",
             req_clean,
@@ -497,6 +505,7 @@ class IrisSupervisor:
             else:
                 clean_app = raw_target_app
 
+            clean_app = re.sub(r"\s+(?:for\s+me|please)$", "", clean_app, flags=re.IGNORECASE).strip()
             clean_app_low = clean_app.lower()
 
             # Target Device Resolution: Phone vs Laptop
@@ -589,7 +598,7 @@ class IrisSupervisor:
                     else:
                         msg_reply = f"Could not launch {clean_app}: {res.get('error')}"
                 else:
-                    if not mrs.is_host_laptop_online(db, user.id, threshold_seconds=180.0):
+                    if not mrs.is_host_laptop_online(db, user.id, threshold_seconds=300.0):
                         return (
                             AgentResponseSchema(
                                 thought="Laptop offline for dynamic app launch.",
@@ -644,7 +653,7 @@ class IrisSupervisor:
                     res = ms.launch_windows_app("terminal")
                     msg_reply = "💻 Opened **Terminal** on your Windows laptop." if res.get("success") else f"Could not launch Terminal: {res.get('error')}"
                 else:
-                    if not mrs.is_host_laptop_online(db, user.id, threshold_seconds=180.0):
+                    if not mrs.is_host_laptop_online(db, user.id, threshold_seconds=300.0):
                         return (
                             AgentResponseSchema(
                                 thought="Laptop offline for terminal launch.",
@@ -680,7 +689,7 @@ class IrisSupervisor:
                     output = (res.get("stdout") or res.get("stderr") or "Command executed.").strip()
                     msg_reply = f"💻 Executed `{candidate_cmd}` on your laptop:\n```\n{output[:1500]}\n```"
                 else:
-                    if not mrs.is_host_laptop_online(db, user.id, threshold_seconds=180.0):
+                    if not mrs.is_host_laptop_online(db, user.id, threshold_seconds=300.0):
                         return (
                             AgentResponseSchema(
                                 thought="Laptop offline for command execution.",

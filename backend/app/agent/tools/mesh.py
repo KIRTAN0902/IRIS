@@ -338,12 +338,22 @@ class LaunchMobileAppTool(Tool):
 
         try:
             from app.services import mesh_service as ms
+            from app.services import mesh_relay_service as mrs
+
             msg = ms.MeshMessage(
                 type="LAUNCH_APP",
                 sender_device="iris_agent",
                 payload={"app": app_name, "target": "mobile"},
             )
             count = await ms.hub.broadcast(msg, exclude_sender=False)
+            mrs.push_relay_message(
+                db=db,
+                user_id=user.id,
+                sender_device_id="iris_agent",
+                target_device_id=None,
+                msg_type="LAUNCH_APP",
+                payload={"app": app_name, "target": "mobile"},
+            )
             return ToolResult(
                 tool_name=self.name,
                 success=True,
@@ -351,6 +361,18 @@ class LaunchMobileAppTool(Tool):
                 summary=f"Dispatched launch command for '{app_name}' to phone.",
             )
         except Exception:
+            try:
+                from app.services import mesh_relay_service as mrs
+                mrs.push_relay_message(
+                    db=db,
+                    user_id=user.id,
+                    sender_device_id="iris_agent",
+                    target_device_id=None,
+                    msg_type="LAUNCH_APP",
+                    payload={"app": app_name, "target": "mobile"},
+                )
+            except Exception:
+                pass
             return ToolResult(
                 tool_name=self.name,
                 success=True,

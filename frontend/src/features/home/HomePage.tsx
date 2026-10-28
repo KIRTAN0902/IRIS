@@ -216,10 +216,13 @@ function Conversation({
       if (res && res.actions_taken) {
         for (const a of res.actions_taken) {
           if (a.tool_name === "launch_mobile_app") {
-            const raw = ((a as unknown as Record<string, unknown>).app as string) || a.summary || "";
+            const aRecord = a as unknown as Record<string, unknown>;
+            const dataRecord = (aRecord.data as Record<string, unknown> | undefined) || {};
+            const directApp = (aRecord.app as string) || (dataRecord.app as string) || "";
+            const raw = directApp || a.summary || "";
             const match = raw.match(/(?:for\s+['"]?([^'"]+)['"]?|Opening\s+(?:\*\*)?([^\*\s]+)(?:\*\*)?|launch\s+([^\s]+))/i);
-            const app = ((a as unknown as Record<string, unknown>).app as string) || match?.[1] || match?.[2] || match?.[3];
-            if (app) launchPhoneApp(app);
+            const app = directApp || match?.[1] || match?.[2] || match?.[3];
+            if (app) void launchPhoneApp(app);
           }
         }
       }

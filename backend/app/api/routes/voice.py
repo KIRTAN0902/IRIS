@@ -170,10 +170,115 @@ async def voice_live_websocket(
             f"You are IRIS, an intelligent, sovereign personal AI companion and desktop workstation orchestrator.\n"
             f"You are conversing directly with {user_name}.\n"
             "Speak with a natural, concise, intelligent, and warm tone suitable for real-time speech.\n"
-            "Keep your responses direct, conversational, and grounded in the user's real situation, tasks, and schedule below.\n\n"
+            "Keep your responses direct, conversational, and grounded in the user's real situation, tasks, and schedule below.\n"
+            "When the user asks you to open or launch an application, run a command, check status, or lock the laptop, ALWAYS use your registered tools to execute the action immediately.\n\n"
             f"{pm_text}\n\n"
             f"{situation_text}\n"
         )
+
+        # Real Sovereign IRIS Tools for Gemini Live Audio
+        def launch_laptop_app(app_name: str, directory: str = "") -> str:
+            """Launch or open an application on the user's Windows laptop workstation (e.g. terminal, agy, vscode, chrome, explorer, or any installed Windows app)."""
+            from app.services import mesh_service as ms
+            from app.services import mesh_relay_service as mrs
+
+            with SessionLocal() as db_session:
+                if mrs.is_local_windows_host():
+                    res = ms.launch_windows_app(app_name, directory=directory)
+                    return f"Successfully opened {app_name} on your Windows laptop." if res.get("success") else f"Could not open {app_name}: {res.get('error')}"
+                else:
+                    if not mrs.is_host_laptop_online(db_session, user.id, threshold_seconds=300.0):
+                        return "Your Windows laptop is currently offline or unreachable on the IRIS mesh."
+                    mrs.push_relay_message(
+                        db=db_session,
+                        user_id=user.id,
+                        sender_device_id="voice_live_agent",
+                        target_device_id=mrs.LAPTOP_HOST_DEVICE_ID,
+                        msg_type="REMOTE_COMMAND",
+                        payload={"command": "LAUNCH_APP", "app": app_name, "directory": directory},
+                    )
+                    return f"Dispatched launch command for {app_name} to your Windows laptop."
+
+        def launch_mobile_app(app_name: str) -> str:
+            """Launch or open an application on the user's mobile phone (e.g. whatsapp, camera, spotify, phonepe, gpay, gallery)."""
+            from app.services import mesh_relay_service as mrs
+
+            try:
+                loop = asyncio.get_running_loop()
+                loop.create_task(websocket.send_json({"type": "launch_mobile_app", "app": app_name}))
+            except Exception:
+                pass
+
+            with SessionLocal() as db_session:
+                mrs.push_relay_message(
+                    db=db_session,
+                    user_id=user.id,
+                    sender_device_id="voice_live_agent",
+                    target_device_id=None,
+                    msg_type="LAUNCH_APP",
+                    payload={"app": app_name, "target": "mobile"},
+                )
+            return f"Opened {app_name} on your mobile phone."
+
+        def execute_terminal_command(command: str) -> str:
+            """Run a shell or PowerShell command on the Windows laptop workstation."""
+            from app.services import mesh_service as ms
+            from app.services import mesh_relay_service as mrs
+
+            with SessionLocal() as db_session:
+                if mrs.is_local_windows_host():
+                    res = ms.execute_terminal_command(command)
+                    out = (res.get("stdout") or res.get("stderr") or "Command completed.").strip()
+                    return f"Output: {out[:500]}"
+                else:
+                    if not mrs.is_host_laptop_online(db_session, user.id, threshold_seconds=300.0):
+                        return "Your Windows laptop is currently offline on the IRIS mesh."
+                    mrs.push_relay_message(
+                        db=db_session,
+                        user_id=user.id,
+                        sender_device_id="voice_live_agent",
+                        target_device_id=mrs.LAPTOP_HOST_DEVICE_ID,
+                        msg_type="REMOTE_COMMAND",
+                        payload={"command": "TERMINAL_EXEC", "command_line": command},
+                    )
+                    return f"Dispatched command '{command}' to your Windows laptop."
+
+        def get_laptop_status() -> str:
+            """Check the status, battery level, and connectivity of the Windows laptop."""
+            from app.services import mesh_relay_service as mrs
+            with SessionLocal() as db_session:
+                info = mrs.get_laptop_host_info(db_session, user.id, threshold_seconds=300.0)
+                status = "Online and active on IRIS mesh" if info.get("is_online") else "Offline"
+                bat = f"Battery is at {info.get('battery_level')}%" if info.get('battery_level') is not None else ""
+                charging = " (charging)" if info.get('is_charging') else ""
+                return f"Laptop workstation is {status}. {bat}{charging}."
+
+        def lock_laptop() -> str:
+            """Engage the Sovereign Privacy Shield on the Windows laptop display."""
+            from app.services import mesh_service as ms
+            from app.services import mesh_relay_service as mrs
+            with SessionLocal() as db_session:
+                if mrs.is_local_windows_host():
+                    ms.lock_windows_pc(mode="shield")
+                else:
+                    mrs.push_relay_message(
+                        db=db_session,
+                        user_id=user.id,
+                        sender_device_id="voice_live_agent",
+                        target_device_id=mrs.LAPTOP_HOST_DEVICE_ID,
+                        msg_type="REMOTE_COMMAND",
+                        payload={"command": "LOCK_PC", "mode": "shield"},
+                    )
+                return "Sovereign Privacy Shield engaged: Windows laptop display is locked."
+
+        tools_list = [
+            launch_laptop_app,
+            launch_mobile_app,
+            execute_terminal_command,
+            get_laptop_status,
+            lock_laptop,
+        ]
+
         live_config = types.LiveConnectConfig(
             response_modalities=["AUDIO"],
             speech_config=types.SpeechConfig(
@@ -182,6 +287,7 @@ async def voice_live_websocket(
                 )
             ),
             system_instruction=types.Content(parts=[types.Part.from_text(text=system_instruction)]),
+            tools=tools_list,
         )
 
         model_name = settings.ai_live_model or "gemini-3.8-live"
@@ -232,6 +338,39 @@ async def voice_live_websocket(
 
             async def gemini_to_client():
                 async for response in session.receive():
+                    if response.tool_call and response.tool_call.function_calls:
+                        responses = []
+                        for fc in response.tool_call.function_calls:
+                            logger.info("Gemini Live tool call received: %s with args: %s", fc.name, fc.args)
+                            func_map = {
+                                "launch_laptop_app": launch_laptop_app,
+                                "launch_mobile_app": launch_mobile_app,
+                                "execute_terminal_command": execute_terminal_command,
+                                "get_laptop_status": get_laptop_status,
+                                "lock_laptop": lock_laptop,
+                            }
+                            fn = func_map.get(fc.name)
+                            if fn:
+                                try:
+                                    args = fc.args or {}
+                                    res_val = fn(**args)
+                                except Exception as err:
+                                    logger.exception("Error executing Live tool %s: %s", fc.name, err)
+                                    res_val = f"Error executing {fc.name}: {err}"
+                            else:
+                                res_val = f"Tool {fc.name} is not recognized."
+                            responses.append(
+                                types.FunctionResponse(
+                                    name=fc.name,
+                                    id=fc.id,
+                                    response={"result": res_val},
+                                )
+                            )
+                        try:
+                            await session.send_tool_response(function_responses=responses)
+                        except Exception as e:
+                            logger.exception("Failed to send tool response to Gemini Live: %s", e)
+
                     sc = response.server_content
                     if sc and sc.model_turn:
                         for part in sc.model_turn.parts:

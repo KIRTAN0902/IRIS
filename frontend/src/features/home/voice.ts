@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError } from "@/api/client";
 import { voiceApi, type VoiceStatus } from "@/api/endpoints";
+import { launchPhoneApp } from "@/lib/appLauncher";
 
 /**
  * Hands-free voice conversation: listen → transcribe → ask IRIS → speak → listen.
@@ -576,6 +577,8 @@ export function useVoiceConversation(onUtterance: (text: string) => Promise<stri
                 setPhase("listening");
                 resolve(true);
               }
+            } else if (data.type === "launch_mobile_app" && data.app) {
+              void launchPhoneApp(data.app);
             } else if (data.type === "text") {
               setSaid((prev) => (prev ? prev + " " + data.text : data.text));
             } else if (data.type === "turn_complete") {

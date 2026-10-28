@@ -1,6 +1,6 @@
 import os
 import sys
-import socket
+import urllib.request
 import traceback
 
 log_file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "run_daemon.log")
@@ -9,11 +9,11 @@ def log(msg):
     with open(log_file_path, "a", encoding="utf-8") as f:
         f.write(msg + "\n")
 
-def is_port_in_use(port=8000):
+def is_backend_healthy():
     try:
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.settimeout(0.5)
-            return s.connect_ex(('127.0.0.1', port)) == 0
+        req = urllib.request.Request("http://127.0.0.1:8000/health")
+        with urllib.request.urlopen(req, timeout=1.0) as resp:
+            return resp.status == 200
     except Exception:
         return False
 
@@ -22,8 +22,8 @@ try:
     log(f"sys.executable: {sys.executable}")
     log(f"cwd: {os.getcwd()}")
     
-    if is_port_in_use(8000):
-        log("Port 8000 is already in use by an active IRIS daemon. Exiting cleanly.")
+    if is_backend_healthy():
+        log("Backend is already running and healthy on port 8000. Exiting.")
         sys.exit(0)
     
     # Ensure stdout/stderr/stdin
