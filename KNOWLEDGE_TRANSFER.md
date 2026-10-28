@@ -2,7 +2,7 @@
 
 > **System Designation**: IRIS (*Intelligent Responsive Information System*)  
 > **Repository**: `C:\kirtan\IRIS`  
-> **Version**: 2.6 (Sovereign Multi-Agent, WebRTC Mesh, Gemini 3.1 Flash-Lite, Resilient Ephemeral Vision, Enceladus Voice, Antigravity ConPTY Bridge)  
+> **Version**: 3.0 (Sovereign Cross-Device Mesh, Bidirectional Native Android/Windows Launcher, Gemini Live Sovereign Voice Tools, Clock-Drift Fault-Tolerant Relay)  
 > **Target Audience**: Core Engineers, Systems Architects, and Technical Maintainers  
 
 ---
@@ -49,17 +49,18 @@ flowchart TD
     end
 
     subgraph IRISCore ["IRIS Intelligence Engine"]
-        FastPath["Deterministic Fast-Path Engine<br/>(0ms Latency, 0 API Cost)"]
-        Supervisor["IrisSupervisor Orchestrator"]
+        FastPath["Deterministic Fast-Path Engine<br/>(0ms Latency, 0 API Cost, Spoken Prefix Normalizer)"]
+        Supervisor["IrisSupervisor Orchestrator & Dynamic Peer Dispatcher"]
         LLM["Google Gemini 3.1 Flash-Lite Engine<br/>(Multi-Tier Fallback: Groq / Gemma 4 / NVIDIA)"]
         Vision["Ephemeral Multimodal Vision<br/>(Batch & Resilient Serial Fallback)"]
+        LiveVoice["Gemini Live Sovereign Voice<br/>(gemini-3.8-live + Registered Native Tools)"]
     end
 
     subgraph Surfaces ["Unified Client Surfaces"]
-        Desktop["🖥️ Native Windows Desktop (Electron)"]
-        Mobile["📱 Mobile Companion PWA (/companion)"]
-        Mesh["🌐 Sovereign Mesh & WebRTC Bridge"]
-        Voice["🎙️ Bidirectional Enceladus Voice"]
+        Desktop["🖥️ Native Windows Desktop (Electron + Single-Instance)"]
+        Mobile["📱 Mobile Companion App (Capacitor Android Launcher)"]
+        Mesh["🌐 Sovereign Mesh & WebRTC Screen Mirror"]
+        Voice["🎙️ Bidirectional Audio & Live Tool Calling"]
     end
 
     LifeAreas --> IRISCore
@@ -75,14 +76,16 @@ flowchart TD
 2. **Deterministic Truth, AI Reasoning**:
    Deterministic engines handle truth (time constraints, availability, hard deadlines, status queries, completions). Machine learning provides reasoning, synthesis, and creative assistance. IRIS never hallucinates facts when deterministic truth is available.
 3. **Zero-Latency Fast-Paths (Jev Principle)**:
-   Any request with a known deterministic answer (e.g. *"what should I do now?"*, *"gym done"*, *"lock workstation"*, *"what's the time"*) bypasses the LLM completely. It responds in `< 15ms` with zero token consumption and zero rate-limit exposure.
+   Any request with a known deterministic answer (e.g. *"what should I do now?"*, *"gym done"*, *"lock workstation"*, *"open terminal"*, *"open whatsapp"*) bypasses the LLM completely. It responds in `< 15ms` with zero token consumption and zero rate-limit exposure.
 4. **Multi-Layer Context Caching**:
    Against remote PostgreSQL databases (e.g. Supabase), decision context, personal profiles, and situations are cached for 60 seconds per user, eliminating 6.6s of sequential SQL queries on every turn. Write tools automatically invalidate the cache.
 5. **Zero-Image-Storage Guarantee**:
    Uploaded images exist strictly in RAM for ephemeral visual extraction. Image bytes are never written to disk, databases, or logs. Only extracted context, OCR, and actionable items survive as durable memory.
-6. **Cognitive Obsidian UI/UX**:
+6. **Sovereign Cross-Device Peer Interoperability**:
+   Laptop and mobile phone operate as peer execution nodes across the IRIS Mesh. Commands spoken or typed on phone can spawn apps and shell sessions on laptop, and laptop commands can trigger native Android apps on phone in milliseconds.
+7. **Cognitive Obsidian UI/UX**:
    Surfaces are rendered in deep obsidian (`#080A0F`, `#0D1117`, `#151B23`) with high-contrast typography (Chakra Petch display, Barlow body, JetBrains Mono telemetry). Luminous status beacons indicate AI activity without visual clutter.
-7. **Sovereign Ownership & $0 Ongoing Cloud Cost**:
+8. **Sovereign Ownership & $0 Ongoing Cloud Cost**:
    The entire system runs on your local workstation and personal devices, relying on free-tier Supabase PostgreSQL and Google Gemini endpoints. No recurring SaaS subscriptions.
 
 ---
@@ -92,20 +95,21 @@ flowchart TD
 ```mermaid
 flowchart TB
     subgraph Clients ["Client Layer"]
-        Electron["Native Electron App (iris://app)"]
-        Browser["Desktop / Mobile Browser"]
-        PWA["Mobile PWA (/companion)"]
+        Electron["🖥️ Native Windows Desktop<br/>(Electron 33, iris://app, Single-Instance Lock)"]
+        MobileApp["📱 Android Native Companion<br/>(Capacitor 6 + Native AppLauncher)"]
+        Browser["🌐 Web Browser Dashboard (Vercel Edge)"]
     end
 
     subgraph Gateway ["Transport & Protocol Layer"]
-        CustomProto["Electron Protocol Handler<br/>Transparent /api Proxy"]
+        CustomProto["Electron Transparent /api Proxy"]
         VercelEdge["Vercel Edge Gateway (Production)"]
         FastAPIRouter["FastAPI 0.115 Engine (:8000)"]
+        LiveWS["/api/voice/live WebSocket<br/>(Gemini Live Full-Duplex PCM + Tool Calling)"]
     end
 
     subgraph Intelligence ["Multi-Agent Reasoning Core"]
-        Supervisor["IrisSupervisor Orchestrator"]
-        FastPath["Fast-Path Deterministic Interceptor"]
+        Supervisor["IrisSupervisor Orchestrator & Peer Dispatcher"]
+        FastPath["Fast-Path Deterministic Interceptor<br/>(Spoken Prefix Normalization)"]
         Router["System 1 Intent Classifier (Gemma 4 31B)"]
         Operator["Operator Agent (CLI, Files, Apps, AGY Coding)"]
         Planner["Planner Agent (Chronos, Schedule, Tasks)"]
@@ -114,21 +118,29 @@ flowchart TB
         Vision["Vision Service (Gemini 3.1 Flash-Lite / Serial Fallback)"]
     end
 
+    subgraph MeshRelay ["Sovereign Mesh Fabric"]
+        MeshService["Local Windows Mesh Service<br/>(MSS Screen Capture, Win32 Input, App Launcher)"]
+        RelayService["Mesh Relay Service (Database Queue)<br/>(300s Symmetric Clock-Drift Resiliency)"]
+        NativeCapacitor["Native Android App Launcher<br/>(Capacitor Plugin: launchPhoneApp)"]
+    end
+
     subgraph Storage ["Persistence & Data Fabric"]
-        SQLite["Local SQLite (iris.db)"]
+        SQLite["Local SQLite (iris.db, WAL Mode)"]
         Supabase["Supabase PostgreSQL 17<br/>(aws-0-ap-southeast-1)"]
         ContextCache["60s User Context Cache"]
         Memory["Contextual Memory Engine"]
     end
 
     Clients --> Gateway
-    Gateway --> FastAPIRouter
+    Gateway --> FastAPIRouter & LiveWS
     FastAPIRouter --> Supervisor & Vision
+    LiveWS --> Supervisor & MeshRelay
     Supervisor --> FastPath
     Supervisor --> Router
     Router --> Operator & Planner & Scribe & BUBBA
-    Operator & Planner & Scribe & BUBBA --> Storage
-    FastPath --> Storage
+    Operator & Planner & Scribe & BUBBA --> Storage & MeshRelay
+    FastPath --> Storage & MeshRelay
+    MeshRelay --> MeshService & NativeCapacitor
 ```
 
 ---
@@ -138,12 +150,17 @@ flowchart TB
 At the center of IRIS's intelligence is `IrisSupervisor` ([`supervisor.py`](file:///C:/kirtan/IRIS/backend/app/agent/supervisor.py)), orchestrating domain specialists under an inverted single-front-door paradigm. The user speaks solely with IRIS; IRIS routes and delegates.
 
 ### 1. Deterministic Fast-Path Interceptor
-Before any prompt touches an LLM API, `try_fast_path()` analyzes user intent:
+Before any prompt touches an LLM API, `try_fast_path()` analyzes user intent with conversational speech normalization:
+- **Natural Spoken Normalization (`norm_msg`)**: Strips conversational speech prefixes (`"hey iris"`, `"can you please"`, `"could you please"`, `"would you"`, `"please"`, etc.) before pattern matching.
+- **Universal Dynamic Peer Action Dispatcher (Zero Hardcoding, Millisecond Execution)**:
+  - Dynamically routes app launch commands to the target device (Windows Laptop vs Android Phone).
+  - Target Resolution: Spoken indicators (`"on my laptop"`, `"on my phone"`) or device heuristics (mobile apps: WhatsApp, Camera, Instagram, GPay, Uber, Swiggy; desktop apps: Terminal, AGY CLI, VS Code, Explorer).
+  - Millisecond execution without LLM roundtrips.
 - **Time & Date**: Instant local timestamp formatting (~1.1s turn total).
 - **Top Priority Task** (*"what's my task"*, *"what should I do"*): Calls `deterministic_decision(db, user)` to score all open tasks against deadlines, project weighting, and available schedule blocks.
 - **Task Completion** (*"task done"*, *"completed task"*): Marks top open task complete and returns the next highest-leverage task.
 - **Fitness & Yoga Checkoffs** (*"gym done"*, *"yoga done"*, *"asana done"*): Instantly marks daily workout / yoga routines and habits complete.
-- **Workstation Commands** (*"lock pc"*, *"ring phone"*, *"open terminal"*, *"launch agy"*): Executes native Windows commands instantly.
+- **Workstation Commands** (*"lock pc"*, *"lock laptop"*, *"ring phone"*, *"open terminal"*, *"launch agy"*): Executes native commands instantly across the mesh.
 - **Contextual Memory Search** (*"what do you remember about me"*): Retrieves stored key-value memories directly from the database.
 
 ### 2. Two-Tier Intent Routing
@@ -160,7 +177,7 @@ If the request requires complex execution:
 
 | Sub-Agent | Primary Responsibilities | Available Tools |
 |---|---|---|
-| **Operator** | Workstation OS actions, terminal commands, directory navigation, file reading/writing/searching, Antigravity (AGY) ConPTY autonomous coding dispatch. | `run_terminal_command`, `read_workspace_file`, `write_workspace_file`, `search_files`, `launch_laptop_app`, `trigger_autonomous_coding` |
+| **Operator** | Workstation OS actions, terminal commands, directory navigation, file reading/writing/searching, Antigravity (AGY) ConPTY autonomous coding dispatch, Windows app launching, and mobile app launching. | `run_terminal_command`, `read_workspace_file`, `write_workspace_file`, `search_files`, `launch_laptop_app`, `launch_mobile_app`, `trigger_autonomous_coding` |
 | **Planner** | Chronos dynamic availability engine, schedule time-blocking, task hierarchies, subtask breakdown, project milestone tracking, daily review generation. | `create_task`, `update_task`, `complete_task`, `create_timeblock`, `get_daily_schedule`, `plan_day_draft` |
 | **Scribe** | Personal journal entries, Gym lifting splits, daily all-week Yoga routines & asana tracking, habit streaks, personal finance (expenses, cash flow, budgets), startup CRM outreach pipeline. | `log_diary_entry`, `read_diary`, `log_workout`, `check_yoga_asana`, `log_expense`, `get_finances`, `update_lead_status` |
 | **BUBBA** | Google Workspace ecosystem integration: Gmail inbox reading, thread triage, drafting replies, sending emails; Google Drive search and document analysis. | `list_unread_emails`, `search_emails`, `draft_email`, `send_email`, `search_drive_files`, `read_drive_document` |
@@ -206,31 +223,45 @@ flowchart TD
 
 ## 6. Voice Engine & Situational Awareness
 
-IRIS features a full-duplex conversational voice module that operates as a direct portal into the core intelligence engine.
+IRIS features dual voice operating modes: **Real-Time Gemini Live Bidirectional WebSocket** and **Turn-Based Conversational Voice**, fully integrated with sovereign workstation and mobile peer controls.
 
 ```mermaid
 sequenceDiagram
     autonumber
-    actor User as Operator
-    participant Client as Web / Desktop Voice UI
-    participant VoiceRouter as /api/voice/chat
-    participant Supervisor as IrisSupervisor Core
-    participant Model as Gemini 3.1 Flash-Lite / Tools
-    participant GeminiTTS as Gemini Speech Engine (Enceladus)
+    actor User as Operator (Voice)
+    participant Client as Web / Android / Desktop Client
+    participant LiveWS as /api/voice/live (WebSocket)
+    participant GeminiLive as Gemini 3.8 Live Model
+    participant Mesh as Sovereign Mesh & Device Dispatcher
+    participant Device as Windows Laptop / Android Phone
 
-    User->>Client: Speaks audio instruction
-    Client->>VoiceRouter: Audio / Text Transcribed (STT)
-    VoiceRouter->>Supervisor: Injects Live Context (Tasks, Schedule, Workouts, Startup)
-    Supervisor->>Model: Executes reasoning & agent tools
-    Model-->>Supervisor: Structured Response & Tool Outputs
-    Supervisor->>GeminiTTS: Synthesizes text with Enceladus voice
-    GeminiTTS-->>Client: High-fidelity audio stream (MP3/PCM)
-    Client-->>User: Plays audible response with synchronized telemetry
+    User->>Client: Speaks: "Hey IRIS, open WhatsApp on my phone"
+    Client->>LiveWS: Streams 24kHz 16-bit PCM Audio Chunks
+    LiveWS->>GeminiLive: Real-Time Audio Frame Stream
+    GeminiLive-->>LiveWS: response.tool_call: launch_mobile_app(app_name="whatsapp")
+    LiveWS->>Mesh: Dispatches Native App Launch Event
+    Mesh->>Device: Triggers Native Android Intent (launchPhoneApp)
+    LiveWS-->>GeminiLive: session.send_tool_response(result="Opened WhatsApp on mobile")
+    GeminiLive-->>LiveWS: Audio PCM Response ("Opening WhatsApp on your phone now")
+    LiveWS-->>Client: 24kHz PCM Audio Stream
+    Client-->>User: Plays Enceladus voice confirmation aloud
 ```
 
-- **STT (Speech-to-Text)**: Gemini Transcribe (`gemini-3.5-transcribe`) with fallback to browser Web Speech API.
-- **TTS (Text-to-Speech)**: Google Gemini Voice Engine (`gemini-3.8-live`, `gemini-3.8-flash-tts`) configured with the masculine, calm, authoritative **Enceladus** voice.
-- **Situational Injection**: Whenever voice audio is generated, IRIS injects real-time workstation status, top priority tasks, remaining free time blocks, and current habits into the prompt context so that voice answers match visual dashboard data exactly.
+### 1. Gemini Live Bidirectional WebSocket (`/api/voice/live`)
+- **Model**: `gemini-3.8-live` with `response_modalities=["AUDIO"]` and `Enceladus` voice personality.
+- **Sovereign Tool Calling**: Configured directly in `types.LiveConnectConfig(tools=tools_list)`:
+  - `launch_laptop_app(app_name, directory)`: Launches Windows apps (Terminal, VS Code, Chrome, etc.).
+  - `launch_mobile_app(app_name)`: Broadcasts launch event over WebSocket and pushes mesh relay message to open apps natively on Android.
+  - `execute_terminal_command(command)`: Runs shell/PowerShell commands on the laptop and speaks results.
+  - `get_laptop_status()`: Speaks real-time laptop battery percentage, charging state, and mesh connectivity.
+  - `lock_laptop()`: Engages the Sovereign Privacy Shield on the Windows display.
+- **Real-Time Tool Interception**: `gemini_to_client()` catches `response.tool_call.function_calls`, runs the native action, and sends back `session.send_tool_response(function_responses=...)` so the model audibly confirms execution with zero latency.
+
+### 2. Turn-Based Conversational Voice (`converse()`)
+- **Speech-to-Text (STT)**: Server-side Groq Whisper / Gemini Transcribe (`gemini-3.5-transcribe`) with fallback to Android/browser Web Speech API (`hi-IN` / `en-IN`).
+- **Text-to-Speech (TTS)**: Server-side Gemini Speech Engine (`gemini-3.8-flash-tts`) with fallback to native OS speech synthesis.
+- **Natural Spoken Normalization (`norm_msg`)**: Strips conversational spoken prefixes (`"hey iris"`, `"can you please"`, `"could you please"`, etc.) before intent matching in `IrisSupervisor`, guaranteeing instant deterministic fast-path execution.
+- **Situational Telemetry Injection**: Real-time workstation status, top priority tasks, remaining free time blocks, and current habits are automatically injected into conversational prompts.
 
 ---
 
@@ -279,11 +310,20 @@ flowchart LR
 3. **Mutual Handshake**: Supabase marks the pairing record active. The phone immediately receives the verification and saves `iris_pair_token` to `localStorage`. Both devices are linked indefinitely.
 
 ### Remote Workstation Capabilities Over Mesh
-- **Workstation Security**: Instant remote lock (`LockWorkstation` / Privacy Shield).
+- **Workstation Security**: Instant remote lock (`LockWorkstation` / Sovereign Privacy Shield).
 - **Find My Phone**: Ring phone at 100% volume through web audio even if set on silent.
 - **Universal Clipboard**: Instant two-way copy/paste synchronization.
 - **Autonomous Coding Task Dispatch**: Start background coding tasks via Antigravity CLI from your phone while away from your desk.
 - **WebRTC Remote Desktop Mirroring**: Stream your Windows desktop at 30 FPS to your phone with touch-to-click and mobile keyboard input.
+- **Bidirectional Native App Launching**:
+  - *Phone to Laptop*: Launch Terminal, Antigravity IDE, VS Code, or custom shell commands on your Windows PC.
+  - *Laptop to Phone*: Trigger native Android intents to launch WhatsApp, Camera, Settings, GPay, Uber, etc.
+- **Hardware Telemetry & Battery Monitoring**: Real-time battery level percentage and charging state tracked and spoken by the agent.
+
+### 4. Clock-Drift Resilient Telemetry Engine
+In asymmetric networks (Vercel serverless cloud + Windows laptop + Android 5G), minor NTP system clock skews can cause false-positive offline states.
+- **Symmetric Clock-Drift Window**: Uses `abs(now - last_seen) < 300.0s`, allowing symmetric clock drift up to 5 minutes between serverless functions and client devices.
+- **Active Heartbeat & Relay Sync**: The laptop daemon updates `last_seen` every 3 seconds while actively processing commands, guaranteeing continuous availability reporting.
 
 ---
 
@@ -291,6 +331,7 @@ flowchart LR
 
 ### Frontend (User Interface)
 - **Framework**: React 18.3 Single Page Application (SPA) with TypeScript 5.6.
+- **Mobile Container**: Capacitor 6 (`@capacitor/core`, `@capacitor/android`) with custom native plugins for app launching (`AppLauncher`) and system settings.
 - **Bundler & Tooling**: Vite 6.4 with `@vitejs/plugin-react` and `vite-plugin-pwa`.
 - **Styling**: Tailwind CSS 3.4 with custom "Cognitive Obsidian" palette variables.
 - **State & Server Cache**: TanStack React Query v5 (`@tanstack/react-query`) with automatic query key invalidation and optimistic mutations.
@@ -309,13 +350,16 @@ flowchart LR
 - **Active Chat & Multi-Agent Core**: Google Gemini 3.1 Flash-Lite (`gemini-3.1-flash-lite`) with multi-tier failover across Groq (`qwen/qwen3.8-27b`), `gemma-4-26b-a4b-it`, and `gemini-3.5-flash`.
 - **Router Model**: Google Gemma 4 31B (`gemini:gemma-4-31b-it`) for zero-overhead single-token JEV classification.
 - **Ephemeral Vision**: `gemini-3.1-flash-lite` (batch + serial fallback) with fallback to `nvidia/nemotron-3.5-super-vl-120b-a12b`.
-- **Voice STT**: `gemini-3.5-transcribe` / HTML5 Web Speech.
-- **Voice TTS**: `gemini-3.8-flash-tts` / `gemini-3.8-live` with `Enceladus` voice.
+- **Live Bidirectional Audio Engine**: Google GenAI SDK (`google.genai` Live API, `gemini-3.8-live`) with registered sovereign tools (`launch_laptop_app`, `launch_mobile_app`, `execute_terminal_command`, `get_laptop_status`, `lock_laptop`) and real-time `tool_call` response handling.
+- **Voice STT**: `gemini-3.5-transcribe` / Groq Whisper / HTML5 Web Speech.
+- **Voice TTS**: `gemini-3.8-flash-tts` with `Enceladus` voice.
 - **Autonomous Coding**: Antigravity (AGY) ConPTY PTY bridge.
 
 ### Native Desktop Packaging
 - **Runtime**: Electron 33.
-- **Custom Scheme**: `iris://app/` registered as a secure, privileged standard protocol.
+- **Distribution**: Standalone Windows package in `desktop/dist/IRIS-win32-x64/IRIS.exe`.
+- **Dual-Mode Serving**: Automatically loads production URL for zero-friction OTA updates while seamlessly falling back to local `dist-frontend`.
+- **Single-Instance Lock**: Prevents duplicate processes; automatically restores and focuses existing window when relaunched.
 - **API Proxy**: In-process proxying of `/api/*` requests to the local FastAPI backend daemon on `127.0.0.1:8000`.
 - **System Tray**: Windows system tray integration with background minimization, global hotkeys (`Alt+I`), and an auto-resurrecting backend watchdog.
 
@@ -380,22 +424,30 @@ C:\kirtan\IRIS\
 │   │   ├── features/           # Domain feature views
 │   │   │   ├── ai/             # Ask IRIS overlay console
 │   │   │   ├── gym/            # Gym splits & dedicated all-week Yoga flow
-│   │   │   ├── home/           # Today dashboard & priority recommendations
+│   │   │   ├── home/           # Today dashboard, priority recommendations, and voice live
 │   │   │   ├── mesh/           # Sovereign mesh manager & screen mirroring
 │   │   │   ├── schedule/       # Chronos calendar & time blocks
 │   │   │   └── startup/        # Outreach CRM & experiment pipeline
 │   │   ├── hooks/              # TanStack Query hooks (useWorkouts, useTasks)
+│   │   ├── lib/                # Shared utilities & Capacitor native bridges (appLauncher.ts)
 │   │   └── modules/            # Navigation registry & module metadata
 │   └── package.json            # Frontend dependency manifest
 ├── desktop/                    # Native Electron application
+│   ├── dist/                   # Standalone packaged distribution
+│   │   └── IRIS-win32-x64/     # Prebuilt Windows portable binary
+│   │       └── IRIS.exe        # Standalone executable
 │   ├── dist-frontend/          # Synchronized production frontend bundle
 │   ├── main.cjs                # Electron main process (iris:// protocol & tray)
 │   └── package.json            # Desktop Electron dependencies
-├── scripts/                    # Maintenance & data migration utilities
+├── scripts/                    # Maintenance & automation scripts
+│   ├── install-desktop.ps1     # Automated Electron packager & frontend asset copier
+│   └── migrate_to_supabase.py  # SQLite to Supabase database migration script
+├── reinstall-desktop.bat       # One-click clean reinstall of desktop app
+├── start-iris-app.bat          # Workstation desktop app launcher
+├── start-mesh-silent.vbs       # Silent background backend daemon launcher
 ├── COOLIFY.md                  # VPS production deployment instructions
 ├── SUPABASE.md                 # PostgreSQL migration & Supabase guide
-├── VERCEL.md                   # Serverless deployment guide
-└── start-iris-app.bat          # Workstation desktop app launcher
+└── VERCEL.md                   # Serverless deployment guide
 ```
 
 ---
@@ -443,6 +495,21 @@ Whenever frontend code in `frontend/src` is modified, rebuild and sync into Elec
 cd C:\kirtan\IRIS\frontend
 npm run build
 Copy-Item -Recurse -Force "dist\*" "..\desktop\dist\IRIS-win32-x64\resources\app\dist-frontend\"
+```
+
+### 6. Clean Desktop App Reinstallation
+To wipe stale Electron processes and reinstall the native desktop executable from scratch:
+```bat
+C:\kirtan\IRIS\reinstall-desktop.bat
+```
+
+### 7. Over-the-Air (OTA) Zero-APK Mobile Updates
+Because the Android app is powered by a modern Capacitor WebView pointing to your production web deployment, code updates require zero Android Studio re-compilations:
+```powershell
+# 1. Commit and push to main
+git push origin main
+# 2. Vercel automatically deploys the updated frontend and serverless API
+# 3. Open the IRIS app on your Android phone — the new features appear instantly!
 ```
 
 ---
