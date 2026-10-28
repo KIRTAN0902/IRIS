@@ -22,6 +22,7 @@ import { Button } from "@/components/ui/Button";
 import { Panel } from "@/components/ui/Panel";
 import { api } from "@/api/client";
 import { cn } from "@/lib/format";
+import { launchPhoneApp } from "@/lib/appLauncher";
 
 interface LaptopHostInfo {
   device_id: string;
@@ -235,7 +236,13 @@ export function ContinuityPage({ initialView }: ContinuityPageProps) {
               playChime(1050);
               setStatusMsg("🔓 Phone unlocked remotely by Laptop!");
               setTimeout(() => setStatusMsg(""), 4000);
+            } else if (cmd === "LAUNCH_APP") {
+              const app = (msg.payload?.app as string) || "";
+              if (app) launchPhoneApp(app);
             }
+          } else if (msg.msg_type === "LAUNCH_APP") {
+            const app = (msg.payload?.app as string) || "";
+            if (app) launchPhoneApp(app);
           } else if (msg.msg_type === "CLIPBOARD_SYNC") {
             const text = String(msg.payload?.text || "");
             if (text) {

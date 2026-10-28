@@ -892,6 +892,16 @@
       } else if (msg.type === "REMOTE_COMMAND") {
         if (msg.payload?.command === "RING_PHONE") {
           playSiren();
+        } else if (msg.payload?.command === "LAUNCH_APP") {
+          const appName = msg.payload?.app || "";
+          if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.AppLauncher) {
+            window.Capacitor.Plugins.AppLauncher.launchApp({ appName: appName });
+          }
+        }
+      } else if (msg.type === "LAUNCH_APP") {
+        const appName = msg.payload?.app || "";
+        if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.AppLauncher) {
+          window.Capacitor.Plugins.AppLauncher.launchApp({ appName: appName });
         }
       } else if (msg.type === "FILE_DROP") {
         showToast("File dropped: " + (msg.payload?.filename || "file"));
