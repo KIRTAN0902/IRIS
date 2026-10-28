@@ -381,7 +381,31 @@ class IrisSupervisor:
         # E. Fast Workstation Commands: Lock Workstation & Ring Phone
         if clean_msg in {"lock workstation", "lock pc", "lock laptop", "lock my workstation", "lock my laptop", "lock my pc"}:
             from app.services import mesh_service as ms
-            success = ms.lock_windows_pc()
+            from app.services import mesh_relay_service as mrs
+
+            if mrs.is_local_windows_host():
+                success = ms.lock_windows_pc()
+            else:
+                if not mrs.is_host_laptop_online(db, user.id, threshold_seconds=180.0):
+                    return (
+                        AgentResponseSchema(
+                            thought="Laptop offline for lock command.",
+                            actions=[],
+                            message="⚠️ Your Windows laptop is currently offline or unreachable on the IRIS mesh. Please ensure your laptop is powered on with the IRIS daemon running.",
+                            actions_summary=["Laptop offline"],
+                        ),
+                        [{"tool_name": "lock_workstation", "success": False, "summary": "Laptop offline"}],
+                    )
+                mrs.push_relay_message(
+                    db=db,
+                    user_id=user.id,
+                    sender_device_id="mobile_assistant",
+                    target_device_id=mrs.LAPTOP_HOST_DEVICE_ID,
+                    msg_type="REMOTE_COMMAND",
+                    payload={"command": "LOCK_PC"},
+                )
+                success = True
+
             action_rec = {
                 "tool_name": "lock_workstation",
                 "success": success,
@@ -403,6 +427,8 @@ class IrisSupervisor:
             # Trigger ring alert
             import asyncio
             from app.services import mesh_service as ms
+            from app.services import mesh_relay_service as mrs
+
             msg_obj = ms.MeshMessage(
                 type="REMOTE_COMMAND",
                 sender_device="iris_agent",
@@ -414,6 +440,16 @@ class IrisSupervisor:
                 loop.create_task(ms.hub.broadcast(msg_obj, exclude_sender=False))
             except RuntimeError:
                 pass
+
+            mrs.push_relay_message(
+                db=db,
+                user_id=user.id,
+                sender_device_id="iris_agent",
+                target_device_id=None,
+                msg_type="REMOTE_COMMAND",
+                payload={"command": "RING_PHONE"},
+            )
+
             action_rec = {
                 "tool_name": "ring_my_phone",
                 "success": True,
@@ -441,14 +477,45 @@ class IrisSupervisor:
 
         if is_agy_cli:
             from app.services import mesh_service as ms
+            from app.services import mesh_relay_service as mrs
+
             target_dir, prompt_text, should_resume = ms.parse_antigravity_cli_intent(user_message, default_dir=r"C:\kirtan\IRIS")
-            res = ms.launch_windows_app("antigravity_cli", directory=target_dir, prompt=prompt_text, resume=should_resume)
             extra_msg = []
             if should_resume:
                 extra_msg.append("resuming previous conversation")
             if prompt_text:
                 extra_msg.append(f"with prompt: '{prompt_text}'")
             extra_desc = f" ({', '.join(extra_msg)})" if extra_msg else ""
+
+            if mrs.is_local_windows_host():
+                res = ms.launch_windows_app("antigravity_cli", directory=target_dir, prompt=prompt_text, resume=should_resume)
+            else:
+                if not mrs.is_host_laptop_online(db, user.id, threshold_seconds=180.0):
+                    return (
+                        AgentResponseSchema(
+                            thought="Laptop offline for Antigravity CLI launch.",
+                            actions=[],
+                            message="⚠️ Your Windows laptop is currently offline or unreachable on the IRIS mesh. Please ensure your laptop is powered on with the IRIS daemon running.",
+                            actions_summary=["Laptop offline"],
+                        ),
+                        [{"tool_name": "launch_laptop_app", "success": False, "summary": "Laptop offline"}],
+                    )
+                mrs.push_relay_message(
+                    db=db,
+                    user_id=user.id,
+                    sender_device_id="mobile_assistant",
+                    target_device_id=mrs.LAPTOP_HOST_DEVICE_ID,
+                    msg_type="REMOTE_COMMAND",
+                    payload={
+                        "command": "LAUNCH_APP",
+                        "app": "antigravity_cli",
+                        "directory": target_dir,
+                        "prompt": prompt_text,
+                        "resume": should_resume,
+                    },
+                )
+                res = {"success": True}
+
             msg_text = (
                 f"⚡ Opened Antigravity CLI in `{target_dir}`{extra_desc} on your Windows laptop terminal."
                 if res.get("success")
@@ -467,8 +534,37 @@ class IrisSupervisor:
 
         if is_agy_ide:
             from app.services import mesh_service as ms
+            from app.services import mesh_relay_service as mrs
+
             target_dir, _, _ = ms.parse_antigravity_cli_intent(user_message, default_dir=r"C:\kirtan\IRIS")
-            res = ms.launch_windows_app("antigravity_ide", directory=target_dir)
+
+            if mrs.is_local_windows_host():
+                res = ms.launch_windows_app("antigravity_ide", directory=target_dir)
+            else:
+                if not mrs.is_host_laptop_online(db, user.id, threshold_seconds=180.0):
+                    return (
+                        AgentResponseSchema(
+                            thought="Laptop offline for Antigravity IDE launch.",
+                            actions=[],
+                            message="⚠️ Your Windows laptop is currently offline or unreachable on the IRIS mesh. Please ensure your laptop is powered on with the IRIS daemon running.",
+                            actions_summary=["Laptop offline"],
+                        ),
+                        [{"tool_name": "launch_laptop_app", "success": False, "summary": "Laptop offline"}],
+                    )
+                mrs.push_relay_message(
+                    db=db,
+                    user_id=user.id,
+                    sender_device_id="mobile_assistant",
+                    target_device_id=mrs.LAPTOP_HOST_DEVICE_ID,
+                    msg_type="REMOTE_COMMAND",
+                    payload={
+                        "command": "LAUNCH_APP",
+                        "app": "antigravity_ide",
+                        "directory": target_dir,
+                    },
+                )
+                res = {"success": True}
+
             msg_text = (
                 f"🚀 Launched Antigravity IDE in `{target_dir}` on your Windows laptop display."
                 if res.get("success")
@@ -494,9 +590,39 @@ class IrisSupervisor:
 
         if is_terminal:
             from app.services import mesh_service as ms
+            from app.services import mesh_relay_service as mrs
+
             home_dir, target_dir = ms.parse_terminal_intent(user_message)
-            res = ms.launch_windows_app("terminal", directory=target_dir if target_dir != home_dir else None)
-            folder_label = "your home directory" if target_dir == home_dir else f"`{target_dir}` (from home directory)"
+            is_home = (target_dir == home_dir or target_dir in ["~", "home", ""])
+            folder_label = "your home directory" if is_home else f"`{target_dir}` (from home directory)"
+
+            if mrs.is_local_windows_host():
+                res = ms.launch_windows_app("terminal", directory=None if is_home else target_dir)
+            else:
+                if not mrs.is_host_laptop_online(db, user.id, threshold_seconds=180.0):
+                    return (
+                        AgentResponseSchema(
+                            thought="Laptop offline for Terminal launch.",
+                            actions=[],
+                            message="⚠️ Your Windows laptop is currently offline or unreachable on the IRIS mesh. Please verify your laptop is powered on with the IRIS daemon running.",
+                            actions_summary=["Laptop offline"],
+                        ),
+                        [{"tool_name": "launch_laptop_app", "success": False, "summary": "Laptop offline"}],
+                    )
+                mrs.push_relay_message(
+                    db=db,
+                    user_id=user.id,
+                    sender_device_id="mobile_assistant",
+                    target_device_id=mrs.LAPTOP_HOST_DEVICE_ID,
+                    msg_type="REMOTE_COMMAND",
+                    payload={
+                        "command": "LAUNCH_APP",
+                        "app": "terminal",
+                        "directory": None if is_home else target_dir,
+                    },
+                )
+                res = {"success": True}
+
             msg_text = (
                 f"💻 Opened Terminal in {folder_label} on your Windows laptop."
                 if res.get("success")

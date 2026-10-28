@@ -487,10 +487,11 @@ def parse_terminal_intent(text: str) -> tuple[str, str]:
     returns (home_dir, resolved_target_dir).
     If no directory is mentioned, returns (home_dir, home_dir).
     """
+    import os
     from pathlib import Path
     import re
 
-    home_dir = str(Path.home())
+    home_dir = str(Path.home()) if os.name == "nt" else "~"
     t_clean = text.strip()
 
     dir_match = re.search(
@@ -500,11 +501,17 @@ def parse_terminal_intent(text: str) -> tuple[str, str]:
     )
     if dir_match:
         cand = dir_match.group(1).strip().strip("'\"`")
-        if cand.lower() not in ["terminal", "cli", "powershell", "cmd", "console", "wt", "window", "tab", "laptop"]:
-            if cand.lower() in ["home", "~"]:
+        excluded = [
+            "terminal", "cli", "powershell", "cmd", "console", "wt",
+            "window", "tab", "laptop", "pc", "workstation", "phone", "mobile"
+        ]
+        if cand.lower() not in excluded:
+            if cand.lower() in ["home", "~", "root", "default"]:
                 return home_dir, home_dir
-            resolved = resolve_laptop_path(cand)
-            return home_dir, str(resolved)
+            if os.name == "nt":
+                resolved = resolve_laptop_path(cand)
+                return home_dir, str(resolved)
+            return home_dir, cand
 
     return home_dir, home_dir
 

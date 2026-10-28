@@ -399,27 +399,30 @@ def update_host_heartbeat(db: Session, user_id: int = 1) -> None:
         logger.debug("Host heartbeat update error: %s", exc)
 
 
-def is_recently_active(dt: datetime | None, threshold_seconds: float = 30.0) -> bool:
+def is_recently_active(dt: datetime | None, threshold_seconds: float = 180.0) -> bool:
     """Helper to check if a datetime is within threshold_seconds, handling naive/aware datetimes."""
     if not dt:
         return False
     now = datetime.now(UTC)
     if dt.tzinfo is None:
         now = now.replace(tzinfo=None)
-    return (now - dt).total_seconds() < threshold_seconds
+    diff = (now - dt).total_seconds()
+    if diff < -60.0:
+        return False
+    return diff < threshold_seconds
 
 
-def is_host_laptop_online(db: Session, user_id: int = 1) -> bool:
+def is_host_laptop_online(db: Session, user_id: int = 1, threshold_seconds: float = 180.0) -> bool:
     """Returns True if the host laptop daemon is currently active."""
     if is_local_windows_host():
         return True
     pairing = db.query(MeshPairing).filter(MeshPairing.device_id == LAPTOP_HOST_DEVICE_ID).first()
     if pairing and pairing.last_seen_at:
-        return is_recently_active(pairing.last_seen_at, threshold_seconds=30.0)
+        return is_recently_active(pairing.last_seen_at, threshold_seconds=threshold_seconds)
     return False
 
 
-def get_laptop_host_info(db: Session, user_id: int = 1) -> dict[str, Any]:
+def get_laptop_host_info(db: Session, user_id: int = 1, threshold_seconds: float = 180.0) -> dict[str, Any]:
     """Returns the host laptop's current pairing state, battery, and online status."""
     pairing = db.query(MeshPairing).filter(MeshPairing.device_id == LAPTOP_HOST_DEVICE_ID).first()
     online = False
@@ -437,7 +440,7 @@ def get_laptop_host_info(db: Session, user_id: int = 1) -> dict[str, Any]:
 
     if pairing:
         if not online and pairing.last_seen_at:
-            online = is_recently_active(pairing.last_seen_at, threshold_seconds=30.0)
+            online = is_recently_active(pairing.last_seen_at, threshold_seconds=threshold_seconds)
             last_seen = pairing.last_seen_at.isoformat()
         if battery_level is None:
             battery_level = pairing.battery_level

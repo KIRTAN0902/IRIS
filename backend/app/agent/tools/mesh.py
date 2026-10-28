@@ -33,12 +33,22 @@ class RingMyPhoneTool(Tool):
     read_only = False
 
     async def run(self, db: Session, user: User, **kwargs: Any) -> ToolResult:
+        from app.services import mesh_relay_service as mrs
+
         msg = ms.MeshMessage(
             type="REMOTE_COMMAND",
             sender_device="iris_agent",
             payload={"command": "RING_PHONE"},
         )
         await ms.hub.broadcast(msg, exclude_sender=False)
+        mrs.push_relay_message(
+            db=db,
+            user_id=user.id,
+            sender_device_id="iris_agent",
+            target_device_id=None,
+            msg_type="REMOTE_COMMAND",
+            payload={"command": "RING_PHONE"},
+        )
         phones = [d for d in ms.hub.devices.values() if "phone" in d.device_type]
         count = len(phones)
         summary = f"Triggered ring alert to {count} connected phone(s)." if count else "Triggered ring alert across all mesh listeners."
@@ -52,7 +62,27 @@ class LockWorkstationTool(Tool):
     is_destructive = True
 
     async def run(self, db: Session, user: User, **kwargs: Any) -> ToolResult:
-        success = ms.lock_windows_pc()
+        from app.services import mesh_relay_service as mrs
+
+        if mrs.is_local_windows_host():
+            success = ms.lock_windows_pc()
+        else:
+            if not mrs.is_host_laptop_online(db, user.id, threshold_seconds=180.0):
+                return ToolResult(
+                    tool_name=self.name,
+                    success=False,
+                    error="Laptop workstation is offline",
+                    summary="Windows laptop is currently offline or unreachable on the IRIS mesh.",
+                )
+            mrs.push_relay_message(
+                db=db,
+                user_id=user.id,
+                sender_device_id="iris_agent",
+                target_device_id=mrs.LAPTOP_HOST_DEVICE_ID,
+                msg_type="REMOTE_COMMAND",
+                payload={"command": "LOCK_PC"},
+            )
+            success = True
         summary = "Locked Windows laptop workstation." if success else "Failed to lock workstation."
         return ToolResult(tool_name=self.name, success=success, data={"locked": success}, summary=summary)
 
@@ -85,7 +115,7 @@ class GetDeviceMeshStatusTool(Tool):
         from app.services import mesh_relay_service as mrs
 
         active_devices = [d.model_dump(mode="json") for d in ms.hub.devices.values()]
-        host_info = mrs.get_laptop_host_info(db, user.id)
+        host_info = mrs.get_laptop_host_info(db, user.id, threshold_seconds=180.0)
         is_host_online = host_info.get("is_online", False) or mrs.is_local_windows_host()
 
         # Ensure the Windows host laptop is explicitly listed as active and online
@@ -209,8 +239,11 @@ class LaunchLaptopAppTool(Tool):
         # Default terminal to user's home directory if not explicitly specified
         if any(k in app_name.lower() for k in ["terminal", "powershell", "cmd", "console", "wt"]) and app_name != "antigravity_cli":
             if not directory and (not arg or arg.strip().lower() in ["home", "~", "default", ""]):
-                from pathlib import Path
-                directory = str(Path.home())
+                if mrs.is_local_windows_host():
+                    from pathlib import Path
+                    directory = str(Path.home())
+                else:
+                    directory = None
 
         if mrs.is_local_windows_host():
             res = ms.launch_windows_app(
@@ -222,6 +255,13 @@ class LaunchLaptopAppTool(Tool):
                 conversation_id=conversation_id,
             )
         else:
+            if not mrs.is_host_laptop_online(db, user.id, threshold_seconds=180.0):
+                return ToolResult(
+                    tool_name=self.name,
+                    success=False,
+                    error="Laptop workstation is offline",
+                    summary="Your Windows laptop is currently offline or unreachable on the IRIS mesh. Please ensure the laptop is turned on and the IRIS background daemon is running.",
+                )
             req_id = secrets.token_hex(6)
             mrs.push_relay_message(
                 db=db,
