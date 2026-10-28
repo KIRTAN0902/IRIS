@@ -399,7 +399,7 @@ def update_host_heartbeat(db: Session, user_id: int = 1) -> None:
         logger.debug("Host heartbeat update error: %s", exc)
 
 
-def is_recently_active(dt: datetime | None, threshold_seconds: float = 180.0) -> bool:
+def is_recently_active(dt: datetime | None, threshold_seconds: float = 300.0) -> bool:
     """Helper to check if a datetime is within threshold_seconds, handling naive/aware datetimes."""
     if not dt:
         return False
@@ -407,7 +407,7 @@ def is_recently_active(dt: datetime | None, threshold_seconds: float = 180.0) ->
     if dt.tzinfo is None:
         now = now.replace(tzinfo=None)
     diff = (now - dt).total_seconds()
-    if diff < -60.0:
+    if diff < -threshold_seconds:
         return False
     return diff < threshold_seconds
 

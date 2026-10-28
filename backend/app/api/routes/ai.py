@@ -297,8 +297,23 @@ async def ask_iris(
         source = "AI"
     elif "terminal" in q_lower and any(w in q_lower for w in ["open", "launch", "start", "wt"]):
         from app.services import mesh_service as ms
-        res = ms.launch_windows_app("terminal", argument=r"C:\kirtan\IRIS")
-        answer_text = "💻 Opened Windows Terminal on your laptop display."
+        from app.services import mesh_relay_service as mrs
+        if mrs.is_local_windows_host():
+            res = ms.launch_windows_app("terminal", argument=r"C:\kirtan\IRIS")
+            answer_text = "💻 Opened Windows Terminal on your laptop display."
+        else:
+            if not mrs.is_host_laptop_online(db, user.id, threshold_seconds=300.0):
+                answer_text = "⚠️ Your Windows laptop is currently offline or unreachable on the IRIS mesh. Please ensure your laptop is powered on with the IRIS daemon running."
+            else:
+                mrs.push_relay_message(
+                    db=db,
+                    user_id=user.id,
+                    sender_device_id="mobile_assistant",
+                    target_device_id=mrs.LAPTOP_HOST_DEVICE_ID,
+                    msg_type="REMOTE_COMMAND",
+                    payload={"command": "LAUNCH_APP", "app": "terminal"},
+                )
+                answer_text = "💻 Opened Windows Terminal on your laptop display."
         source = "AI"
     elif "terminal" in q_lower and any(w in q_lower for w in ["access", "can you", "available", "support"]):
         answer_text = "Yes, I have full terminal and CLI access to your Windows laptop! You can ask me to run any command (e.g. `run command git status`, `run dir`, `run npm test`) or launch Windows Terminal on your screen."
