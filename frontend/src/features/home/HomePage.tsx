@@ -17,6 +17,7 @@ import type { ChatMessageOut, TaskOut } from "@/types/api";
 import { useVoiceConversation, type VoicePhase } from "@/features/home/voice";
 import { IrisSphere } from "@/features/home/IrisSphere";
 import { TodayDashboard } from "@/features/home/TodayDashboard";
+import { launchPhoneApp } from "@/lib/appLauncher";
 
 /**
  * HOME: a new chat by default, showing only "IRIS" and the composer (like
@@ -201,7 +202,7 @@ function Conversation({
     setImages([]);
     setImageError(null);
     try {
-      return await sendMsg.mutateAsync({
+      const res = await sendMsg.mutateAsync({
         conversationId: id,
         content: effectiveContent,
         voice,
@@ -209,6 +210,19 @@ function Conversation({
         mime_type: imagePayloads.length === 1 ? imagePayloads[0]?.mime_type : undefined,
         images: imagePayloads,
       });
+
+      // If reply triggered launch_mobile_app action, invoke native Android launcher
+      if (res && res.actions_taken) {
+        for (const a of res.actions_taken) {
+          if (a.tool_name === "launch_mobile_app" && a.summary) {
+            const match = a.summary.match(/(?:for\s+'([^']+)'|Opening\s+([^\s]+)|launch\s+([^\s]+))/i);
+            const app = match?.[1] || match?.[2] || match?.[3];
+            if (app) launchPhoneApp(app);
+          }
+        }
+      }
+
+      return res;
     } catch {
       return null;
     }

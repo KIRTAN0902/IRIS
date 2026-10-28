@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/Button";
 import { Lamp } from "@/components/ui/Panel";
 import { cn } from "@/lib/format";
 import type { VisualContext } from "@/types/api";
+import { launchPhoneApp } from "@/lib/appLauncher";
 
 const SUGGESTIONS = [
   "What should I do tonight?",
@@ -234,6 +235,10 @@ export function AskIrisConsole() {
         onSuccess: (res) => {
           setConversationId(res.conversation_id);
           setThread((t) => [...t, { role: "ASSISTANT", content: res.answer, source: res.source }]);
+          if (res.answer) {
+            const match = res.answer.match(/Opening\s+([a-zA-Z0-9_\s]+?)\s+on your phone/i);
+            if (match?.[1]) launchPhoneApp(match[1]);
+          }
         },
         onError: (err) => {
           setThread((t) => [...t, { role: "ASSISTANT", content: `IRIS couldn't answer: ${err.message}` }]);

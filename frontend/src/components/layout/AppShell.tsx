@@ -49,8 +49,24 @@ export function AppShell() {
         setAskOpen(true);
       }
     };
+    const onAutoVoice = () => {
+      const voiceButton = document.querySelector<HTMLButtonElement>('button[aria-label="Talk to IRIS"]');
+      if (voiceButton) {
+        voiceButton.click();
+      } else {
+        setAskOpen(true);
+      }
+    };
+    if (typeof window !== "undefined" && (window as unknown as { __IRIS_AUTO_VOICE__?: boolean }).__IRIS_AUTO_VOICE__) {
+      (window as unknown as { __IRIS_AUTO_VOICE__?: boolean }).__IRIS_AUTO_VOICE__ = false;
+      setTimeout(onAutoVoice, 400);
+    }
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    window.addEventListener("iris-auto-voice", onAutoVoice);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("iris-auto-voice", onAutoVoice);
+    };
   }, [setAskOpen]);
 
   return (

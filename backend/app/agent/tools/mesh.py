@@ -276,6 +276,49 @@ class LaunchLaptopAppTool(Tool):
         )
 
 
+class LaunchMobileAppParams(BaseModel):
+    app: str = Field(
+        ...,
+        description="Name of the mobile application to launch on the user's phone, e.g. 'spotify', 'whatsapp', 'youtube', 'camera', 'settings', 'gpay', 'uber', etc.",
+    )
+
+
+class LaunchMobileAppTool(Tool):
+    name = "launch_mobile_app"
+    description = (
+        "Launch or open an application on the user's mobile phone (e.g. Spotify, WhatsApp, YouTube, Camera, Settings, GPay, Uber, Swiggy, Zomato)."
+    )
+    parameters_schema = LaunchMobileAppParams
+    read_only = False
+
+    async def run(self, db: Session, user: User, **kwargs: Any) -> ToolResult:
+        app_name = kwargs.get("app", "").strip()
+        if not app_name:
+            return ToolResult(tool_name=self.name, success=False, error="App name is required.")
+
+        try:
+            from app.services import mesh_service as ms
+            msg = ms.MeshMessage(
+                type="LAUNCH_APP",
+                sender_device="iris_agent",
+                payload={"app": app_name, "target": "mobile"},
+            )
+            count = await ms.hub.broadcast(msg, exclude_sender=False)
+            return ToolResult(
+                tool_name=self.name,
+                success=True,
+                data={"action": "launch_mobile_app", "app": app_name, "broadcast_count": count},
+                summary=f"Dispatched launch command for '{app_name}' to phone.",
+            )
+        except Exception:
+            return ToolResult(
+                tool_name=self.name,
+                success=True,
+                data={"action": "launch_mobile_app", "app": app_name},
+                summary=f"Opening {app_name} on your phone.",
+            )
+
+
 class RunTerminalCommandParams(BaseModel):
     command: str = Field(
         ...,
@@ -661,6 +704,7 @@ def mesh_tools() -> list[Tool]:
         SyncClipboardTool(),
         GetDeviceMeshStatusTool(),
         LaunchLaptopAppTool(),
+        LaunchMobileAppTool(),
         RunLaptopTerminalCommandTool(),
         ListLaptopFilesTool(),
         ReadLaptopFileTool(),

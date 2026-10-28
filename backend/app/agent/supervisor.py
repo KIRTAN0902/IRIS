@@ -513,6 +513,43 @@ class IrisSupervisor:
                 [{"tool_name": "launch_laptop_app", "success": res.get("success", False), "summary": msg_text}],
             )
 
+        # F3. Mobile App quick launcher (e.g., "open spotify", "launch whatsapp", "open youtube", "open camera")
+        mobile_launch_match = re.search(
+            r"\b(?:open|launch|start)\s+([a-zA-Z0-9_\s]+?)(?:\s+(?:app|application|on my phone|on phone))?$",
+            msg_lower,
+        )
+        if mobile_launch_match and not is_agy_cli and not is_agy_ide and not is_terminal:
+            app_candidate = mobile_launch_match.group(1).strip()
+            known_mobile_apps = [
+                "spotify", "whatsapp", "youtube", "camera", "instagram", "maps", "google maps",
+                "gmail", "calculator", "settings", "gpay", "google pay", "phonepe", "paytm",
+                "cred", "swiggy", "zomato", "zepto", "blinkit", "uber", "ola", "rapido",
+                "telegram", "twitter", "x", "netflix", "amazon", "chrome"
+            ]
+            if any(k == app_candidate or app_candidate.startswith(k) for k in known_mobile_apps) or "phone" in msg_lower:
+                from app.services import mesh_service as ms
+                try:
+                    msg_obj = ms.MeshMessage(
+                        type="LAUNCH_APP",
+                        sender_device="iris_agent",
+                        payload={"app": app_candidate, "target": "mobile"}
+                    )
+                    import asyncio
+                    asyncio.create_task(ms.hub.broadcast(msg_obj, exclude_sender=False))
+                except Exception:
+                    pass
+                msg_text = f"Opening {app_candidate.title()} on your phone."
+                return (
+                    AgentResponseSchema(
+                        thought=f"User commanded to launch mobile app '{app_candidate}'.",
+                        actions=[{"action": "launch_mobile_app", "app": app_candidate}],
+                        message=msg_text,
+                        actions_summary=[f"Launch {app_candidate.title()} on phone"],
+                        evidence=[f"Mobile App: {app_candidate.title()}"],
+                    ),
+                    [{"tool_name": "launch_mobile_app", "success": True, "summary": msg_text}],
+                )
+
         # G. Memory search / recall quick queries
         mem_queries = [
             "what do you remember",
