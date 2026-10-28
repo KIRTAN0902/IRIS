@@ -273,3 +273,33 @@ async def test_gemini_tts_is_live_model_detection():
     tts = voice.GeminiTextToSpeech("gemini-3.8-live, gemini-3.8-flash-tts", "Kore", "fake-key")
     assert tts._is_live_model("gemini-3.8-live") is True
     assert tts._is_live_model("gemini-3.8-flash-tts") is False
+
+
+@pytest.mark.asyncio
+async def test_groq_stt_transcribes_via_openai_endpoint(monkeypatch):
+    captured: list = []
+    payload = {"text": "Meeting scheduled for 4 PM."}
+    monkeypatch.setattr(voice, "_post", _fake_post(payload, captured))
+    groq = voice.GroqSpeechToText("gsk_fake", "whisper-large-v3-turbo")
+    text = await groq.transcribe(b"riffaudio", "audio/wav")
+    assert text == "Meeting scheduled for 4 PM."
+    assert captured[0][0] == "https://api.groq.com/openai/v1/audio/transcriptions"
+
+
+@pytest.mark.asyncio
+async def test_resilient_stt_falls_back_when_primary_fails():
+    failing_primary = FakeSTT(error=voice.VoiceError("Groq 429 rate limit", rate_limited=True))
+    healthy_fallback = FakeSTT("Fallback transcription succeeded.")
+    resilient = voice.ResilientSpeechToText(primary=failing_primary, fallback=healthy_fallback)
+    result = await resilient.transcribe(b"audio", "audio/webm")
+    assert result == "Fallback transcription succeeded."
+
+
+def test_factory_uses_groq_when_key_and_provider_configured(monkeypatch):
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "groq_api_key", "gsk_test")
+    monkeypatch.setattr(settings, "ai_stt_provider", "groq")
+    stt = voice.get_speech_to_text()
+    assert isinstance(stt, voice.ResilientSpeechToText)
+    assert isinstance(stt.primary, voice.GroqSpeechToText)

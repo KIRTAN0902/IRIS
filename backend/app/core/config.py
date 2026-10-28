@@ -68,16 +68,15 @@ class Settings(BaseSettings):
     ai_extra_headers: str | None = None
 
     # --- Voice & Live Conversational Audio ---
-    # gemini | openai_compatible (any /audio/transcriptions + /audio/speech API,
-    # e.g. Groq or OpenAI) | none. Gemini reuses GEMINI_API_KEY.
-    ai_stt_provider: str = "gemini"
-    ai_stt_model: str = "gemini-3.5-transcribe"
+    # groq (ultra-fast Whisper LPU) | gemini | openai_compatible | none.
+    ai_stt_provider: str = "groq"
+    ai_stt_model: str = "whisper-large-v3-turbo"
     ai_tts_provider: str = "gemini"
     # Comma-separated: later models are tried when an earlier one is rate-limited.
-    ai_tts_model: str = "gemini-3.8-live,gemini-3.8-flash-tts"
-    ai_tts_voice: str = "Enceladus"
+    ai_tts_model: str = "gemini-3.8-live,gemini-3.8-flash-tts,gemini-3.1-flash-tts-preview"
+    ai_tts_voice: str = "Puck"
     ai_live_model: str = "gemini-3.8-live"
-    ai_live_enabled: bool = False
+    ai_live_enabled: bool = True
     # For openai_compatible voice providers (or to override the Gemini key).
     ai_voice_base_url: str | None = None
     ai_voice_api_key: str | None = None

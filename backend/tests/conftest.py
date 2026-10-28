@@ -20,6 +20,7 @@ os.environ["AI_PROVIDER"] = "gemini"
 os.environ["GEMINI_API_KEY"] = ""
 os.environ["NVIDIA_BASE_URL"] = ""
 os.environ["NVIDIA_API_KEY"] = ""
+os.environ["GROQ_API_KEY"] = ""
 # Provider-neutral settings must not leak in from a developer's .env.
 for _var in ("AI_MODEL", "AI_BASE_URL", "AI_API_KEY", "AI_CAPABILITIES", "AI_EXTRA_BODY", "AI_EXTRA_HEADERS"):
     os.environ[_var] = ""

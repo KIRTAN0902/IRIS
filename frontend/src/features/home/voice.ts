@@ -42,7 +42,8 @@ const canRecord = () => typeof MediaRecorder !== "undefined" && !!navigator.medi
 function getVoiceLiveWsUrl(): string {
   const base = import.meta.env.VITE_API_URL?.replace(/\/+$/, "");
   if (base && base.startsWith("http")) {
-    return `${base.replace(/^http/, "ws")}/voice/live`;
+    const wsBase = base.replace(/^http/, "ws");
+    return wsBase.endsWith("/api") ? `${wsBase}/voice/live` : `${wsBase}/api/voice/live`;
   }
   if (
     typeof window !== "undefined" &&
@@ -54,7 +55,8 @@ function getVoiceLiveWsUrl(): string {
     return "ws://127.0.0.1:8000/api/voice/live";
   }
   const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
-  return `${proto}//${window.location.host}${base || "/api"}/voice/live`;
+  const apiPath = base ? (base.endsWith("/api") ? base : `${base}/api`) : "/api";
+  return `${proto}//${window.location.host}${apiPath}/voice/live`;
 }
 
 function floatTo16BitPCM(float32Array: Float32Array): Int16Array {

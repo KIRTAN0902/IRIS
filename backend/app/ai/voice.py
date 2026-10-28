@@ -118,6 +118,41 @@ class OpenAICompatibleSpeechToText(SpeechToText):
         return (response.json().get("text") or "").strip()
 
 
+class GroqSpeechToText(OpenAICompatibleSpeechToText):
+    provider = "groq"
+
+    def __init__(self, api_key: str, model: str = "whisper-large-v3-turbo") -> None:
+        super().__init__(
+            model=model,
+            base_url="https://api.groq.com/openai/v1",
+            api_key=api_key,
+        )
+
+
+class ResilientSpeechToText(SpeechToText):
+    provider = "resilient_fast"
+
+    def __init__(self, primary: SpeechToText, fallback: SpeechToText | None = None) -> None:
+        self.primary = primary
+        self.fallback = fallback
+        self.provider = primary.provider
+        self.model = primary.model
+
+    async def transcribe(self, audio: bytes, mime_type: str) -> str:
+        try:
+            return await self.primary.transcribe(audio, mime_type)
+        except Exception as exc:
+            if self.fallback:
+                logger.warning(
+                    "Primary STT (%s) failed: %s; falling back to %s",
+                    self.primary.provider,
+                    exc,
+                    self.fallback.provider,
+                )
+                return await self.fallback.transcribe(audio, mime_type)
+            raise
+
+
 # --- Text-to-speech ---------------------------------------------------------------
 
 
@@ -332,15 +367,41 @@ def _gemini_key() -> str | None:
 
 
 def get_speech_to_text() -> SpeechToText | None:
-    """The configured speech-to-text provider, or None when disabled/unconfigured."""
+    """The configured speech-to-text provider, or None when disabled/unconfigured.
+
+    Prefers ultra-fast Groq Whisper LPU (~80-120ms) when configured, with automatic
+    resilient fallback to Gemini transcribe.
+    """
     name = (settings.ai_stt_provider or "none").lower()
-    if name == "gemini" and _gemini_key():
-        return GeminiSpeechToText(settings.ai_stt_model, _gemini_key())
+    gemini_stt = GeminiSpeechToText("gemini-3.5-transcribe", _gemini_key()) if _gemini_key() else None
+
+    if name == "groq" and settings.groq_api_key:
+        groq_model = (
+            settings.ai_stt_model
+            if settings.ai_stt_model and "whisper" in settings.ai_stt_model.lower()
+            else "whisper-large-v3-turbo"
+        )
+        return ResilientSpeechToText(
+            primary=GroqSpeechToText(api_key=settings.groq_api_key, model=groq_model),
+            fallback=gemini_stt,
+        )
+
+    if name == "gemini" and gemini_stt:
+        return gemini_stt
+
     if name == "openai_compatible" and settings.ai_voice_base_url:
         return OpenAICompatibleSpeechToText(
             settings.ai_stt_model, settings.ai_voice_base_url, settings.ai_voice_api_key
         )
-    return None
+
+    # Auto fallback if groq key is available
+    if settings.groq_api_key and name in {"auto", "default", ""}:
+        return ResilientSpeechToText(
+            primary=GroqSpeechToText(api_key=settings.groq_api_key, model="whisper-large-v3-turbo"),
+            fallback=gemini_stt,
+        )
+
+    return gemini_stt
 
 
 def get_text_to_speech() -> TextToSpeech | None:
