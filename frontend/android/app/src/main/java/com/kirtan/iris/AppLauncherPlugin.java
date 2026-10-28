@@ -102,6 +102,22 @@ public class AppLauncherPlugin extends Plugin {
             }
         }
 
+        if (query.equals("app_settings") || query.equals("app settings") || query.equals("permissions") || query.equals("app permissions")) {
+            try {
+                Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+                intent.setData(Uri.parse("package:" + context.getPackageName()));
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                context.startActivity(intent);
+                JSObject ret = new JSObject();
+                ret.put("success", true);
+                ret.put("app", "App Details Settings");
+                call.resolve(ret);
+                return;
+            } catch (Exception e) {
+                Log.w(TAG, "Application details settings intent failed", e);
+            }
+        }
+
         // 2. Check known aliases
         String targetPackage = COMMON_PACKAGES.get(query);
 
@@ -160,6 +176,46 @@ public class AppLauncherPlugin extends Plugin {
         JSObject ret = new JSObject();
         ret.put("apps", appList);
         call.resolve(ret);
+    }
+
+    @PluginMethod
+    public void openAppSettings(PluginCall call) {
+        Context context = getContext();
+        try {
+            Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+            intent.setData(Uri.parse("package:" + context.getPackageName()));
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            context.startActivity(intent);
+            JSObject ret = new JSObject();
+            ret.put("success", true);
+            call.resolve(ret);
+        } catch (Exception e) {
+            call.reject("Could not open app settings: " + e.getMessage());
+        }
+    }
+
+    @PluginMethod
+    public void openAssistantSettings(PluginCall call) {
+        Context context = getContext();
+        try {
+            Intent intent = new Intent(Settings.ACTION_VOICE_INPUT_SETTINGS);
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            context.startActivity(intent);
+            JSObject ret = new JSObject();
+            ret.put("success", true);
+            call.resolve(ret);
+        } catch (Exception e) {
+            try {
+                Intent fallback = new Intent(Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS);
+                fallback.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                context.startActivity(fallback);
+                JSObject ret = new JSObject();
+                ret.put("success", true);
+                call.resolve(ret);
+            } catch (Exception e2) {
+                call.reject("Could not open assistant settings: " + e2.getMessage());
+            }
+        }
     }
 
     private boolean isPackageInstalled(PackageManager pm, String packageName) {

@@ -27,6 +27,7 @@ import { Panel, Lamp } from "@/components/ui/Panel";
 import { api } from "@/api/client";
 import { cn } from "@/lib/format";
 import type { AIStatusOut } from "@/types/api";
+import { PermissionsPanel } from "@/features/settings/PermissionsPanel";
 
 interface PairedDevice {
   id: number;
@@ -53,7 +54,7 @@ interface PairingInvite {
 
 export function SettingsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const currentTab = (searchParams.get("tab") as "mesh" | "ai" | "general") || "mesh";
+  const currentTab = (searchParams.get("tab") as "mesh" | "permissions" | "ai" | "general") || "mesh";
 
   // --- Mesh Settings State ---
   const [pairedDevices, setPairedDevices] = useState<PairedDevice[]>([]);
@@ -110,7 +111,7 @@ export function SettingsPage() {
     loadAiStatus();
   }, []);
 
-  const setTab = (tab: "mesh" | "ai" | "general") => {
+  const setTab = (tab: "mesh" | "permissions" | "ai" | "general") => {
     setSearchParams({ tab });
   };
 
@@ -243,7 +244,21 @@ export function SettingsPage() {
           )}
         >
           <Radio size={16} className={currentTab === "mesh" ? "text-ai" : ""} />
-          <span>Mesh & Continuity</span>
+          <span>Mesh</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setTab("permissions")}
+          className={cn(
+            "flex-1 flex items-center justify-center gap-2 rounded-lg py-2 font-medium transition-colors cursor-pointer",
+            currentTab === "permissions"
+              ? "bg-ops-panel text-ink shadow-sm border border-ops-line-bright font-semibold"
+              : "text-ink-dim hover:text-ink hover:bg-ops-panel/40"
+          )}
+        >
+          <ShieldCheck size={16} className={currentTab === "permissions" ? "text-ai" : ""} />
+          <span>Permissions</span>
         </button>
 
         <button
@@ -467,6 +482,9 @@ export function SettingsPage() {
           </Panel>
         </div>
       )}
+
+      {/* --- Tab: Permissions & Device Access --- */}
+      {currentTab === "permissions" && <PermissionsPanel />}
 
       {/* --- Tab 2: AI & Models Settings --- */}
       {currentTab === "ai" && (
