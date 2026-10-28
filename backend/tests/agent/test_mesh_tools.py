@@ -33,11 +33,14 @@ def test_mesh_tools_registered():
     assert default_registry.get("lock_workstation") is not None
     assert default_registry.get("sync_clipboard") is not None
     assert default_registry.get("get_device_mesh_status") is not None
+    assert default_registry.get("launch_mobile_app") is not None
+    assert default_registry.get("capture_laptop_screen") is not None
 
     assert default_registry.is_mutating("ring_my_phone")
     assert default_registry.is_mutating("lock_workstation")
     assert default_registry.is_mutating("sync_clipboard")
     assert not default_registry.is_mutating("get_device_mesh_status")
+    assert not default_registry.is_mutating("capture_laptop_screen")
 
 
 @pytest.mark.asyncio
@@ -173,4 +176,57 @@ async def test_run_laptop_terminal_command_tool(db: Session):
             assert result.success
             assert "On branch main" in result.summary
             assert result.data["returncode"] == 0
+
+
+@pytest.mark.asyncio
+async def test_launch_mobile_app_tool(db: Session):
+    from app.agent.tools.mesh import LaunchMobileAppTool
+
+    user = get_current_user(db)
+    tool = LaunchMobileAppTool()
+
+    with patch.object(ms.hub, "broadcast", new_callable=AsyncMock) as mock_broadcast:
+        result = await tool.execute(db, user, app="spotify")
+        assert result.success
+        assert result.data["action"] == "launch_mobile_app"
+        assert result.data["app"] == "spotify"
+        mock_broadcast.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_capture_laptop_screen_tool(db: Session):
+    import base64
+    from app.agent.tools.mesh import CaptureLaptopScreenTool
+    from app.services.vision_service import VisionExtractionResult
+
+    user = get_current_user(db)
+    tool = CaptureLaptopScreenTool()
+
+    fake_b64 = base64.b64encode(b"\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x01\x00`\x00`\x00\x00\xff\xdb").decode("utf-8")
+    fake_screen = {
+        "success": True,
+        "image_base64": fake_b64,
+        "mime_type": "image/jpeg",
+        "width": 1920,
+        "height": 1080,
+    }
+    fake_vision = VisionExtractionResult(
+        summary="Laptop desktop with VS Code and Terminal open.",
+        extracted_text_or_code="npm run dev\nready on port 3000",
+        detected_domain="OPERATOR",
+        actionable_items=[],
+        memory_facts=[],
+    )
+
+    with (
+        patch("app.services.mesh_relay_service.is_local_windows_host", return_value=True),
+        patch("app.services.mesh_service.capture_windows_screen", return_value=fake_screen),
+        patch("app.services.vision_service.vision_service.analyze_ephemeral_images", new_callable=AsyncMock, return_value=fake_vision),
+        patch("app.services.vision_service.vision_service.store_visual_context"),
+    ):
+        result = await tool.execute(db, user, query="what is open?")
+        assert result.success
+        assert "VS Code and Terminal" in result.summary
+        assert result.data["detected_domain"] == "OPERATOR"
+
 

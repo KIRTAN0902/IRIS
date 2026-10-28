@@ -26,7 +26,10 @@ from app.agent.tools.email import (
     email_tools,
 )
 from app.agent.tools.mesh import (
+    CaptureLaptopScreenTool,
     GetDeviceMeshStatusTool,
+    LaunchLaptopAppTool,
+    LaunchMobileAppTool,
     LockWorkstationTool,
     RingMyPhoneTool,
     SyncClipboardTool,
@@ -134,10 +137,10 @@ __all__ = [
     "LockWorkstationTool",
     "SyncClipboardTool",
     "GetDeviceMeshStatusTool",
+    "LaunchLaptopAppTool",
+    "LaunchMobileAppTool",
+    "CaptureLaptopScreenTool",
     # Diary
     "diary_tools",
-    # Drive
     "drive_tools",
 ]
-
-

@@ -5,7 +5,7 @@ import {
   type ClipboardEvent,
   type DragEvent,
 } from "react";
-import { AlertTriangle, ArrowUpRight, CornerDownLeft, Plus, X } from "lucide-react";
+import { AlertTriangle, ArrowUpRight, CornerDownLeft, Monitor, Plus, X } from "lucide-react";
 import { useAIStatus, useAskIRIS, useIngestVision, useTodayState } from "@/hooks/queries";
 import { useUiStore } from "@/stores";
 import { Button } from "@/components/ui/Button";
@@ -13,6 +13,7 @@ import { Lamp } from "@/components/ui/Panel";
 import { cn } from "@/lib/format";
 import type { VisualContext } from "@/types/api";
 import { launchPhoneApp } from "@/lib/appLauncher";
+import { captureCurrentScreen } from "@/lib/screenCapture";
 
 const SUGGESTIONS = [
   "What should I do tonight?",
@@ -61,10 +62,26 @@ export function AskIrisConsole() {
   const [images, setImages] = useState<AttachedImage[]>([]);
   const [imageError, setImageError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [capturingScreen, setCapturingScreen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const objectUrlsRef = useRef<Set<string>>(new Set());
   const busy = ask.isPending || vision.isPending || submitting;
+
+  const handleCaptureScreen = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      setCapturingScreen(true);
+      const res = await captureCurrentScreen();
+      if (res) {
+        addImages([res.file]);
+      }
+    } catch (err: any) {
+      setImageError(err?.message || "Failed to capture screen.");
+    } finally {
+      setCapturingScreen(false);
+    }
+  };
 
   useEffect(() => {
     if (open) {
@@ -303,6 +320,19 @@ export function AskIrisConsole() {
                 className="text-ink-faint hover:text-ai cursor-pointer"
               >
                 <Plus size={16} strokeWidth={2.2} />
+              </button>
+              <button
+                type="button"
+                onClick={handleCaptureScreen}
+                disabled={busy || capturingScreen}
+                aria-label="Perceive screen"
+                title="See screen (Screen perception)"
+                className={cn(
+                  "text-ink-faint hover:text-ai cursor-pointer transition-colors",
+                  capturingScreen && "animate-pulse text-ai"
+                )}
+              >
+                <Monitor size={15} strokeWidth={2} />
               </button>
               <kbd className="border border-ops-line px-1.5 text-[10px] text-ink-faint select-none">
                 esc

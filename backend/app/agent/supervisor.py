@@ -946,6 +946,9 @@ class IrisSupervisor:
             "vscode", "vs code", "explorer", "antigravity", "agy",
             "start autonomous coding", "coding task", "run tests", "pytest", "npm run",
             "lock workstation", "lock laptop", "lock pc", "ring phone", "sync clipboard",
+            "laptop screen", "computer screen", "screen capture", "screenshot of laptop",
+            "see my screen", "look at my laptop", "check my laptop", "what's on my laptop",
+            "what is on my laptop", "capture laptop screen",
         ]
         if any(k in msg for k in operator_keywords):
             matched.append("operator")

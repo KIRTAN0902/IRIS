@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useSearchParams } from "react-router-dom";
-import { ArrowUp, Mic, Play, Plus, X } from "lucide-react";
+import { ArrowUp, Mic, Monitor, Play, Plus, X } from "lucide-react";
 import {
   useCompleteTask,
   useConversation,
@@ -18,6 +18,7 @@ import { useVoiceConversation, type VoicePhase } from "@/features/home/voice";
 import { IrisSphere } from "@/features/home/IrisSphere";
 import { TodayDashboard } from "@/features/home/TodayDashboard";
 import { launchPhoneApp } from "@/lib/appLauncher";
+import { captureCurrentScreen } from "@/lib/screenCapture";
 
 /**
  * HOME: a new chat by default, showing only "IRIS" and the composer (like
@@ -342,6 +343,22 @@ function Composer({
 }) {
   const ref = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [capturingScreen, setCapturingScreen] = useState(false);
+
+  const handleCaptureScreen = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      setCapturingScreen(true);
+      const res = await captureCurrentScreen();
+      if (res) {
+        onAddImages([res.file]);
+      }
+    } catch (err: any) {
+      console.warn("Screen perception failed:", err);
+    } finally {
+      setCapturingScreen(false);
+    }
+  };
 
   useEffect(() => {
     const el = ref.current;
@@ -459,6 +476,20 @@ function Composer({
           className="mb-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-ink-dim transition-colors hover:bg-ops-raised hover:text-ink disabled:opacity-40 cursor-pointer"
         >
           <Plus size={18} strokeWidth={2.2} />
+        </button>
+
+        <button
+          type="button"
+          onClick={handleCaptureScreen}
+          disabled={disabled || capturingScreen}
+          aria-label="Capture screen"
+          title="See screen (Screen perception)"
+          className={cn(
+            "mb-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-ink-dim transition-colors hover:bg-ops-raised hover:text-ink disabled:opacity-40 cursor-pointer",
+            capturingScreen && "animate-pulse text-ai"
+          )}
+        >
+          <Monitor size={17} strokeWidth={2} />
         </button>
 
         <textarea

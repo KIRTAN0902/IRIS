@@ -696,6 +696,102 @@ class OpenLaptopFileTool(Tool):
         return ToolResult(tool_name=self.name, success=res.get("success", False), data=res, summary=res.get("message", f"Opened {fpath} in {app}."))
 
 
+class CaptureLaptopScreenParams(BaseModel):
+    query: str | None = Field(
+        default=None,
+        description="Optional question or instruction about what to inspect on the laptop screen (e.g. 'what is on my screen', 'did the build finish', 'read the error message', 'what app is open').",
+    )
+
+
+class CaptureLaptopScreenTool(Tool):
+    name = "capture_laptop_screen"
+    description = (
+        "Captures a live screenshot of the Windows laptop desktop and analyzes it using computer vision. "
+        "Allows you to see what is currently open on the laptop screen (code, browser tabs, terminal, build errors, etc.) "
+        "even when commanding IRIS remotely from a mobile phone or away from the desk."
+    )
+    parameters_schema = CaptureLaptopScreenParams
+    read_only = True
+
+    async def run(self, db: Session, user: User, **kwargs: Any) -> ToolResult:
+        import base64
+        import secrets
+        from app.services import mesh_relay_service as mrs
+        from app.services.vision_service import vision_service
+
+        query = kwargs.get("query") or "Describe what is currently displayed on the laptop screen in detail, including open applications, windows, code, terminals, or messages."
+
+        if mrs.is_local_windows_host():
+            res = ms.capture_windows_screen()
+        else:
+            req_id = secrets.token_hex(6)
+            mrs.push_relay_message(
+                db=db,
+                user_id=user.id,
+                sender_device_id="iris_voice_agent",
+                target_device_id=mrs.LAPTOP_HOST_DEVICE_ID,
+                msg_type="REMOTE_COMMAND",
+                payload={"command": "CAPTURE_SCREEN", "max_width": 1920, "req_id": req_id},
+            )
+            res = await mrs.wait_for_relay_response(
+                db=db,
+                user_id=user.id,
+                req_id=req_id,
+                timeout_seconds=20.0,
+            )
+            if res is None:
+                return ToolResult(
+                    tool_name=self.name,
+                    success=False,
+                    error="Laptop workstation did not respond to screen capture request. Ensure the IRIS background daemon is running on your Windows laptop.",
+                    summary="Could not capture laptop screen: laptop did not respond.",
+                )
+
+        if not res.get("success"):
+            err_msg = res.get("error", "Unknown screen capture error")
+            return ToolResult(
+                tool_name=self.name,
+                success=False,
+                error=err_msg,
+                summary=f"Screen capture failed: {err_msg}",
+            )
+
+        b64 = res.get("image_base64", "")
+        mime = res.get("mime_type", "image/jpeg")
+        try:
+            raw_bytes = base64.b64decode(b64)
+            vision_result = await vision_service.analyze_ephemeral_images(
+                images=[(raw_bytes, mime)],
+                user_prompt=query,
+            )
+            vision_service.store_visual_context(db, user, vision_result)
+
+            summary = vision_result.summary
+            if vision_result.extracted_text_or_code:
+                first_lines = "\n".join(vision_result.extracted_text_or_code.splitlines()[:5])
+                summary += f"\n\nExtracted content:\n{first_lines}"
+
+            return ToolResult(
+                tool_name=self.name,
+                success=True,
+                data={
+                    "summary": vision_result.summary,
+                    "extracted_text_or_code": vision_result.extracted_text_or_code,
+                    "detected_domain": vision_result.detected_domain,
+                    "actionable_items": vision_result.actionable_items,
+                    "screen_dimensions": f"{res.get('width')}x{res.get('height')}",
+                },
+                summary=summary,
+            )
+        except Exception as exc:
+            return ToolResult(
+                tool_name=self.name,
+                success=False,
+                error=str(exc),
+                summary=f"Captured laptop screen but vision analysis failed: {exc}",
+            )
+
+
 def mesh_tools() -> list[Tool]:
     """Factory returning all IRIS Mesh continuity tools."""
     return [
@@ -705,6 +801,7 @@ def mesh_tools() -> list[Tool]:
         GetDeviceMeshStatusTool(),
         LaunchLaptopAppTool(),
         LaunchMobileAppTool(),
+        CaptureLaptopScreenTool(),
         RunLaptopTerminalCommandTool(),
         ListLaptopFilesTool(),
         ReadLaptopFileTool(),

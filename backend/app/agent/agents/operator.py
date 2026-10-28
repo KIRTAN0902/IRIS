@@ -25,6 +25,8 @@ CAPABILITIES:
      * Antigravity IDE: `launch_laptop_app(app="antigravity_ide", directory="...")`
      * Windows Terminal: `launch_laptop_app(app="terminal", directory="...")`
      * VS Code: `launch_laptop_app(app="vscode", directory="...")`
+   - Launch phone apps using `launch_mobile_app(app="...")` (e.g. spotify, whatsapp, youtube, settings, gpay).
+   - Capture and perceive the laptop screen using `capture_laptop_screen(query="...")` to see open windows, check if builds finished, read errors, or inspect apps.
 4. Persistent Antigravity Sessions (preferred for code work):
    - Attach to a project using `agy_attach_directory` (aliases: iris, notebook, marketory, nexus).
    - Send implementation instructions with `agy_execute_prompt`; the session keeps its context.

@@ -621,6 +621,20 @@ class LaptopRelayDaemon:
                         msg_type="COMMAND_RESULT",
                         payload={"req_id": req_id, "command": cmd, "result": res},
                     )
+            elif cmd == "CAPTURE_SCREEN":
+                max_w = payload.get("max_width", 1920)
+                res = ms.capture_windows_screen(max_width=max_w)
+                logger.info("Remote CAPTURE_SCREEN executed: success=%s", res.get("success"))
+                req_id = payload.get("req_id")
+                if req_id and sender and sender != "system":
+                    push_relay_message(
+                        db=db,
+                        user_id=1,
+                        sender_device_id=LAPTOP_HOST_DEVICE_ID,
+                        target_device_id=sender,
+                        msg_type="COMMAND_RESULT",
+                        payload={"req_id": req_id, "command": cmd, "result": res},
+                    )
             elif cmd in {"AGY_ATTACH_DIR", "AGY_SEND_INPUT", "AGY_SLASH_CMD", "AGY_GET_STATUS"}:
                 from app.services.agy_bridge import AgyError, agy_manager
 

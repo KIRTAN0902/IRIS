@@ -1050,3 +1050,58 @@ def search_laptop_files(query: str, directory: str | None = None, max_results: i
     }
 
 
+def capture_windows_screen(max_width: int = 1920) -> dict[str, Any]:
+    """Captures the current primary Windows desktop screen, resizes if needed, and returns base64 JPEG."""
+    import sys
+
+    if sys.platform != "win32":
+        return {
+            "success": False,
+            "error": f"Screen capture is only supported on Windows host, current platform: {sys.platform}",
+        }
+
+    try:
+        import base64
+        import ctypes
+        import io
+        from PIL import Image, ImageGrab
+
+        # Ensure thread is attached to the interactive desktop station
+        try:
+            user32 = ctypes.windll.user32
+            hwinsta = user32.OpenWindowStationW("WinSta0", False, 0x037F)
+            if hwinsta:
+                user32.SetProcessWindowStation(hwinsta)
+            hdesk = user32.OpenDesktopW("default", 0, False, 0x01FF)
+            if hdesk:
+                user32.SetThreadDesktop(hdesk)
+        except Exception as attach_err:
+            logger.debug("Desktop station attach notice: %s", attach_err)
+
+        img = ImageGrab.grab()
+        orig_w, orig_h = img.size
+        if orig_w > max_width:
+            ratio = max_width / orig_w
+            new_h = max(1, int(orig_h * ratio))
+            img = img.resize((max_width, new_h), Image.Resampling.LANCZOS)
+
+        buf = io.BytesIO()
+        img.convert("RGB").save(buf, format="JPEG", quality=85)
+        raw = buf.getvalue()
+        b64 = base64.b64encode(raw).decode("utf-8")
+        logger.info("Captured Windows desktop screen: (%dx%d) -> (%dx%d), %d bytes", orig_w, orig_h, img.width, img.height, len(raw))
+        return {
+            "success": True,
+            "image_base64": b64,
+            "mime_type": "image/jpeg",
+            "width": img.width,
+            "height": img.height,
+            "original_width": orig_w,
+            "original_height": orig_h,
+            "bytes_count": len(raw),
+        }
+    except Exception as exc:
+        logger.error("Failed to capture Windows desktop screen: %s", exc)
+        return {"success": False, "error": str(exc)}
+
+
