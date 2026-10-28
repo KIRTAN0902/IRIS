@@ -263,6 +263,7 @@ export function ContinuityPage({ initialView }: ContinuityPageProps) {
   useEffect(() => {
     reportLocalTelemetry();
     loadMeshState();
+    handleGeneratePairCode();
 
     const telemetryInterval = setInterval(reportLocalTelemetry, 10000);
     const meshInterval = setInterval(loadMeshState, 3000);
@@ -427,11 +428,33 @@ export function ContinuityPage({ initialView }: ContinuityPageProps) {
   const handleGeneratePairCode = async () => {
     setIsGeneratingCode(true);
     try {
-      const res = await api.post<{ pairing_code: string }>("/mesh/pair/code", {
+      const res = await api.post<{ pairing_code: string; token?: string }>("/mesh/pair/code", {
+        device_id: myDeviceId,
         device_name: "Mobile Phone",
         device_type: "phone_mobile",
       });
       setPairingCode(res.pairing_code);
+
+      if (res.token) {
+        const pollToken = res.token;
+        const interval = setInterval(async () => {
+          try {
+            const statusRes = await api.get<{ status: string; pairing_token?: string }>(
+              `/mesh/pair/status?token=${encodeURIComponent(pollToken)}&device_id=${encodeURIComponent(myDeviceId)}`
+            );
+            if (statusRes.status === "paired") {
+              clearInterval(interval);
+              if (statusRes.pairing_token) {
+                localStorage.setItem("iris_pair_token", statusRes.pairing_token);
+              }
+              setStatusMsg("✨ Connected to laptop permanently!");
+              loadMeshState();
+            }
+          } catch {
+            // ignore
+          }
+        }, 1500);
+      }
     } catch {
       setStatusMsg("Failed to generate code.");
     } finally {
@@ -714,6 +737,41 @@ export function ContinuityPage({ initialView }: ContinuityPageProps) {
               <span className="text-[11px] text-ink-faint hidden sm:inline">
                 {laptopHost?.last_seen_at ? "Active now" : "Background Daemon"}
               </span>
+            </div>
+
+            {/* Phone Pairing PIN Card (Shown on mobile for easy one-time pairing) */}
+            <div className="mt-5 rounded-2xl border border-ai/30 bg-ai/5 p-4 text-center">
+              <div className="flex items-center justify-center gap-2 text-ink font-semibold text-[13px]">
+                <Smartphone size={16} className="text-ai" />
+                <span>Phone Pairing PIN</span>
+              </div>
+              <p className="text-[12px] text-ink-dim mt-1 max-w-sm mx-auto">
+                Enter this 6-digit PIN on your Laptop at <span className="text-ink font-medium">Settings &rarr; Mesh</span>:
+              </p>
+
+              {pairingCode ? (
+                <div className="mt-2.5 space-y-2">
+                  <div className="font-mono text-[36px] font-black tracking-[0.25em] text-ink py-1">
+                    {pairingCode}
+                  </div>
+                  <div className="flex items-center justify-center gap-1.5 text-[11px] text-go font-medium animate-pulse">
+                    <div className="h-2 w-2 rounded-full bg-go" />
+                    <span>Waiting for laptop to enter PIN...</span>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleGeneratePairCode}
+                    className="mt-1 text-[11px]"
+                  >
+                    🔄 Refresh PIN
+                  </Button>
+                </div>
+              ) : (
+                <div className="py-4 text-[12px] text-ink-dim animate-pulse">
+                  Generating 6-digit PIN...
+                </div>
+              )}
             </div>
 
             {/* Laptop Battery Section */}

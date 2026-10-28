@@ -65,6 +65,7 @@ export function SettingsPage() {
   const [pairingMode, setPairingMode] = useState<"enter_pin" | "show_pin">(() => {
     if (typeof window === "undefined") return "enter_pin";
     const isMobile =
+      Boolean((window as unknown as { Capacitor?: unknown }).Capacitor) ||
       /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
       (window.innerWidth < 768 && ("ontouchstart" in window || navigator.maxTouchPoints > 0));
     return isMobile ? "show_pin" : "enter_pin";
@@ -109,6 +110,7 @@ export function SettingsPage() {
   useEffect(() => {
     loadMeshData();
     loadAiStatus();
+    handleGeneratePhoneCode();
   }, []);
 
   const setTab = (tab: "mesh" | "permissions" | "ai" | "general") => {
