@@ -176,6 +176,197 @@ class IrisSupervisor:
                 [],
             )
 
+        # B0. Direct "What are my today's tasks?" / "Today's tasks"
+        today_tasks_triggers = {
+            "what are my today's tasks",
+            "what are my todays tasks",
+            "what are my tasks for today",
+            "what are my tasks today",
+            "what are today's tasks",
+            "what are todays tasks",
+            "what are the tasks for today",
+            "what are the tasks today",
+            "today's tasks",
+            "todays tasks",
+            "today tasks",
+            "my today's tasks",
+            "my todays tasks",
+            "my tasks today",
+            "my tasks for today",
+            "show today's tasks",
+            "show todays tasks",
+            "show my today's tasks",
+            "show my todays tasks",
+            "show my tasks for today",
+            "show tasks for today",
+            "show tasks today",
+            "list today's tasks",
+            "list todays tasks",
+            "list my tasks for today",
+            "list tasks for today",
+            "list today tasks",
+            "get today's tasks",
+            "get todays tasks",
+            "view today's tasks",
+            "view todays tasks",
+            "today's task list",
+            "today task list",
+        }
+        is_today_tasks = (
+            clean_msg in today_tasks_triggers
+            or norm_msg in today_tasks_triggers
+            or (("today" in norm_msg or "today's" in norm_msg) and any(w in norm_msg for w in ["tasks", "task list", "my tasks"]))
+        )
+        if is_today_tasks:
+            tz_str = user.timezone or "UTC"
+            now_local = to_local(utcnow(), tz_str)
+            from app.utils.datetime import localize_date_boundaries
+            today_start_utc, today_end_utc = localize_date_boundaries(now_local.date(), tz_str)
+
+            open_tasks = (
+                db.query(Task)
+                .filter(Task.user_id == user.id, Task.status.in_([TaskStatus.TODO.value, TaskStatus.IN_PROGRESS.value]))
+                .order_by(Task.deadline.asc().nullslast(), Task.priority.desc())
+                .all()
+            )
+
+            completed_today = (
+                db.query(Task)
+                .filter(
+                    Task.user_id == user.id,
+                    Task.status == TaskStatus.COMPLETED.value,
+                    Task.completed_at >= today_start_utc,
+                    Task.completed_at <= today_end_utc,
+                )
+                .order_by(Task.completed_at.desc())
+                .all()
+            )
+
+            today_date_str = now_local.strftime("%A, %d %B")
+            if not open_tasks and not completed_today:
+                return (
+                    AgentResponseSchema(
+                        thought="Queried today's tasks: none found.",
+                        actions=[],
+                        message=f"📋 You have no open tasks scheduled or due for today ({today_date_str}). Would you like to create one?",
+                        actions_summary=["Checked today's tasks"],
+                        evidence=["0 open tasks in database"],
+                    ),
+                    [{"tool_name": "get_today_tasks", "success": True, "summary": "No tasks found for today"}],
+                )
+
+            lines = [f"📋 **Your Tasks for Today ({today_date_str}):**\n"]
+            priority_emojis = {
+                "CRITICAL": "🔴",
+                "HIGH": "🟡",
+                "MEDIUM": "⚪",
+                "LOW": "🟢",
+            }
+
+            if open_tasks:
+                for t in open_tasks:
+                    emoji = priority_emojis.get(t.priority, "⚪")
+                    dur = f" ({t.estimated_duration}m)" if t.estimated_duration else ""
+                    due = ""
+                    if t.deadline:
+                        d_loc = to_local(t.deadline, tz_str)
+                        if t.deadline < today_start_utc:
+                            due = " — ⚠️ *Overdue*"
+                        elif t.deadline <= today_end_utc:
+                            due = f" — Due {d_loc.strftime('%H:%M')}"
+                        else:
+                            due = f" — Due {d_loc.strftime('%a %d %b')}"
+                    status_badge = " *(In Progress)*" if t.status == TaskStatus.IN_PROGRESS.value else ""
+                    lines.append(f"• {emoji} **[{t.priority}]** {t.title}{dur}{due}{status_badge}")
+            else:
+                lines.append("• *No pending open tasks remaining!*")
+
+            if completed_today:
+                lines.append(f"\n✅ **Completed Today ({len(completed_today)}):**")
+                for c in completed_today:
+                    c_time = to_local(c.completed_at, tz_str).strftime("%H:%M") if c.completed_at else ""
+                    time_str = f" at {c_time}" if c_time else ""
+                    lines.append(f"• ~~{c.title}~~{time_str}")
+
+            rec = deterministic_decision(db, user)
+            if rec and rec.task_id:
+                lines.append(f"\n🎯 Recommended focus right now: **{rec.title}** ({rec.duration_minutes}m)")
+
+            return (
+                AgentResponseSchema(
+                    thought="Instant deterministic today's tasks list.",
+                    actions=[],
+                    message="\n".join(lines),
+                    actions_summary=[f"Found {len(open_tasks)} open tasks and {len(completed_today)} completed"],
+                    evidence=[f"Active tasks: {len(open_tasks)}, Completed today: {len(completed_today)}"],
+                ),
+                [{
+                    "tool_name": "get_today_tasks",
+                    "success": True,
+                    "summary": f"Found {len(open_tasks)} open tasks for today",
+                    "data": {
+                        "open_count": len(open_tasks),
+                        "completed_today_count": len(completed_today),
+                    },
+                }],
+            )
+
+        # B0.1 Direct Task Creation: "create task ...", "add task ...", "create daily task ..."
+        create_task_match = re.match(
+            r"^(?:create|add|new)\s+(?:a\s+)?(?:daily\s+)?task(?:\s*[:\-])?\s+(?:to\s+)?(.+)$",
+            norm_msg,
+            re.IGNORECASE,
+        )
+        if create_task_match and not any(k in norm_msg for k in ["what", "show", "list", "view"]):
+            cand_title = create_task_match.group(1).strip()
+            # Avoid matching coding commands or long complex paragraphs
+            if len(cand_title) < 200 and not any(cand_title.lower().startswith(p) for p in ["coding", "terminal", "branch", "pr "]):
+                from app.schemas.task import TaskCreate
+                from app.services import task_service
+                from app.models.enums import LifeArea, TaskPriority
+
+                # Detect priority if mentioned in title
+                cand_priority = TaskPriority.MEDIUM
+                for pri in [TaskPriority.CRITICAL, TaskPriority.HIGH, TaskPriority.LOW]:
+                    if pri.value.lower() in cand_title.lower():
+                        cand_priority = pri
+                        cand_title = re.sub(rf"\b(?:priority\s+)?{pri.value}\b", "", cand_title, flags=re.IGNORECASE).strip()
+                        break
+
+                # Detect area if mentioned in title
+                cand_area = LifeArea.PERSONAL
+                for a in [LifeArea.COLLEGE, LifeArea.INTERNSHIP, LifeArea.STARTUP]:
+                    if a.value.lower() in cand_title.lower():
+                        cand_area = a
+                        cand_title = re.sub(rf"\b(?:area\s+)?{a.value}\b", "", cand_title, flags=re.IGNORECASE).strip()
+                        break
+
+                # Clean punctuation
+                clean_title = cand_title.strip(":- \t\r\n").capitalize()
+                if clean_title:
+                    task_in = TaskCreate(
+                        title=clean_title,
+                        area=cand_area,
+                        priority=cand_priority,
+                    )
+                    created_task = task_service.create_task(db, user.id, task_in)
+                    msg_reply = f"✅ Created task #{created_task.id}: **{created_task.title}** ({created_task.area.title()} · {created_task.priority.title()} priority)."
+                    return (
+                        AgentResponseSchema(
+                            thought=f"Directly created task #{created_task.id}.",
+                            actions=[],
+                            message=msg_reply,
+                            actions_summary=[f"Created task '{created_task.title}'"],
+                            evidence=[f"Task #{created_task.id} created in database"],
+                        ),
+                        [{
+                            "tool_name": "create_task",
+                            "success": True,
+                            "data": {"task_id": created_task.id, "title": created_task.title},
+                            "summary": msg_reply,
+                        }],
+                    )
+
         # B. Direct "What's my task?" / "What should I do?" queries
         task_query_triggers = {
             "what's my task",
@@ -1134,7 +1325,7 @@ class IrisSupervisor:
         if any(k in msg for k in planner_keywords):
             matched.append("planner")
 
-        # Scribe triggers: Diary, Notes notebook, Habits, Workouts, Finances, Startup
+        # Scribe triggers: Diary, Notes notebook, Habits, Workouts, Finances, Startup, Daily Tasks
         scribe_keywords = [
             "diary", "my notes", "take a note", "save note", "write note", "note in diary",
             "journal", "reflection", "startup idea", "write in diary", "read diary",
@@ -1146,6 +1337,8 @@ class IrisSupervisor:
             "phonepe", "paytm", "banking", "credit", "debit", "receipt", "receipts", "invoice", "invoices",
             "rupee", "rupees", "inr",
             "startup status", "outreach status", "log outreach",
+            "scribe", "daily task", "daily tasks", "today's task", "today's tasks", "todays tasks",
+            "create task", "add task", "log task", "my tasks",
         ]
         if any(k in msg for k in scribe_keywords):
             matched.append("scribe")
@@ -1224,7 +1417,7 @@ class IrisSupervisor:
             "Classify user intent into exactly one category:\n"
             "[A] Operator (terminal/shell commands, file operations, desktop apps, autonomous coding)\n"
             "[B] Planner (calendar, schedule timeblocks, task management, goals)\n"
-            "[C] Scribe (notes, diary, workout/gym log, habits, finance/expenses)\n"
+            "[C] Scribe (notes, diary, daily tasks, action items, workout/gym log, habits, finance/expenses)\n"
             "[D] BUBBA (emails, Gmail triage, Google Drive docs)\n"
             "[E] Chat (general chitchat, greetings, questions directly to IRIS)\n\n"
             "Reply with ONLY the single uppercase letter [A/B/C/D/E]."

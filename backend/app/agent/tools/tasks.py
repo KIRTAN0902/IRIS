@@ -8,13 +8,153 @@ from typing import Any
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from app.utils.datetime import to_local
+from app.utils.datetime import from_local, localize_date_boundaries, to_local, utcnow
 from app.agent.schemas import ToolResult
 from app.agent.tools.base import Tool
 from app.models.enums import EnergyLevel, LifeArea, TaskPriority, TaskStatus
+from app.models.task import Task
 from app.models.user import User
 from app.schemas.task import TaskCreate, TaskUpdate
 from app.services import task_service
+
+# --- 0. GetTodayTasksTool ---
+
+
+class GetTodayTasksParams(BaseModel):
+    area: LifeArea | None = Field(
+        None, description="Optional filter by area (COLLEGE, INTERNSHIP, STARTUP, PERSONAL)"
+    )
+    include_completed: bool = Field(
+        True, description="Whether to include tasks completed today"
+    )
+
+
+class GetTodayTasksTool(Tool):
+    name = "get_today_tasks"
+    description = (
+        "Retrieve all tasks relevant to today: tasks due today, overdue tasks, in-progress tasks, "
+        "and tasks completed today, formatted with priority rankings and estimated durations."
+    )
+    parameters_schema = GetTodayTasksParams
+    read_only = True
+
+    async def run(self, db: Session, user: User, **kwargs: Any) -> ToolResult:
+        tz_str = user.timezone or "UTC"
+        now_local = to_local(utcnow(), tz_str)
+        today_start_utc, today_end_utc = localize_date_boundaries(now_local.date(), tz_str)
+
+        area_filter = kwargs.get("area")
+        include_completed = kwargs.get("include_completed", True)
+
+        q_open = (
+            db.query(Task)
+            .filter(
+                Task.user_id == user.id,
+                Task.status.in_([TaskStatus.TODO.value, TaskStatus.IN_PROGRESS.value]),
+            )
+        )
+        if area_filter:
+            area_str = area_filter.value if hasattr(area_filter, "value") else str(area_filter)
+            q_open = q_open.filter(Task.area == area_str)
+
+        open_tasks = q_open.order_by(Task.deadline.asc().nullslast(), Task.priority.desc()).all()
+
+        overdue: list[dict[str, Any]] = []
+        due_today: list[dict[str, Any]] = []
+        other_open: list[dict[str, Any]] = []
+        in_progress: list[dict[str, Any]] = []
+
+        for t in open_tasks:
+            t_data = {
+                "id": t.id,
+                "title": t.title,
+                "area": t.area,
+                "priority": t.priority,
+                "status": t.status,
+                "deadline": to_local(t.deadline, tz_str).strftime("%H:%M") if t.deadline else None,
+                "deadline_full": t.deadline.isoformat() if t.deadline else None,
+                "estimated_duration": t.estimated_duration,
+                "description": t.description,
+            }
+            if t.status == TaskStatus.IN_PROGRESS.value:
+                in_progress.append(t_data)
+
+            if t.deadline:
+                if t.deadline < today_start_utc:
+                    overdue.append(t_data)
+                elif t.deadline <= today_end_utc:
+                    due_today.append(t_data)
+                else:
+                    other_open.append(t_data)
+            else:
+                other_open.append(t_data)
+
+        completed_today: list[dict[str, Any]] = []
+        if include_completed:
+            q_comp = (
+                db.query(Task)
+                .filter(
+                    Task.user_id == user.id,
+                    Task.status == TaskStatus.COMPLETED.value,
+                    Task.completed_at >= today_start_utc,
+                    Task.completed_at <= today_end_utc,
+                )
+            )
+            if area_filter:
+                area_str = area_filter.value if hasattr(area_filter, "value") else str(area_filter)
+                q_comp = q_comp.filter(Task.area == area_str)
+            completed_tasks = q_comp.order_by(Task.completed_at.desc()).all()
+            for t in completed_tasks:
+                completed_today.append({
+                    "id": t.id,
+                    "title": t.title,
+                    "area": t.area,
+                    "priority": t.priority,
+                    "completed_at": to_local(t.completed_at, tz_str).strftime("%H:%M") if t.completed_at else None,
+                    "actual_duration": t.actual_duration,
+                })
+
+        today_str = now_local.strftime("%A, %d %B %Y")
+        summary_parts = []
+        if due_today:
+            summary_parts.append(f"{len(due_today)} due today")
+        if in_progress:
+            summary_parts.append(f"{len(in_progress)} in progress")
+        if overdue:
+            summary_parts.append(f"{len(overdue)} overdue")
+        if other_open:
+            summary_parts.append(f"{len(other_open)} open")
+        if completed_today:
+            summary_parts.append(f"{len(completed_today)} completed today")
+
+        summary_text = (
+            f"Tasks for {today_str}: " + ", ".join(summary_parts)
+            if summary_parts
+            else f"No tasks scheduled or due for today ({today_str})."
+        )
+
+        return ToolResult(
+            tool_name=self.name,
+            success=True,
+            data={
+                "today_date": today_str,
+                "due_today": due_today,
+                "in_progress": in_progress,
+                "overdue": overdue,
+                "other_open": other_open,
+                "completed_today": completed_today,
+                "counts": {
+                    "due_today": len(due_today),
+                    "in_progress": len(in_progress),
+                    "overdue": len(overdue),
+                    "other_open": len(other_open),
+                    "completed_today": len(completed_today),
+                    "total_active": len(open_tasks),
+                },
+            },
+            summary=summary_text,
+        )
+
 
 # --- 1. GetTasksTool ---
 
@@ -131,6 +271,9 @@ class CreateTaskParams(BaseModel):
     deadline: datetime | None = Field(
         None, description="ISO datetime for deadline, e.g. '2026-09-02T18:00:00'"
     )
+    due_today: bool | None = Field(
+        None, description="If True, automatically sets deadline to today at 23:59 in the user's timezone"
+    )
     estimated_duration: int | None = Field(
         None, ge=5, le=720, description="Estimated minutes (e.g. 45, 90)"
     )
@@ -148,6 +291,12 @@ class CreateTaskTool(Tool):
     parameters_schema = CreateTaskParams
 
     async def run(self, db: Session, user: User, **kwargs: Any) -> ToolResult:
+        if kwargs.get("due_today") and not kwargs.get("deadline"):
+            tz_str = user.timezone or "UTC"
+            now_local = to_local(utcnow(), tz_str)
+            kwargs["deadline"] = from_local(now_local.date(), tz_str, end_of_day=True)
+        kwargs.pop("due_today", None)
+
         task_in = TaskCreate(**kwargs)
         task = task_service.create_task(db, user.id, task_in)
         summary = f"Created task #{task.id}: '{task.title}' ({task.area})"
@@ -343,3 +492,18 @@ class CompleteTasksTool(Tool):
 
         done, failed = _bulk_apply(kwargs["task_ids"], complete)
         return _bulk_result(self.name, "Completed", done, failed)
+
+
+def task_tools() -> list[Tool]:
+    """Return all standard task management tools."""
+    return [
+        GetTodayTasksTool(),
+        GetTasksTool(),
+        GetTaskTool(),
+        CreateTaskTool(),
+        UpdateTaskTool(),
+        CompleteTaskTool(),
+        DeleteTaskTool(),
+        CompleteTasksTool(),
+        DeleteTasksTool(),
+    ]

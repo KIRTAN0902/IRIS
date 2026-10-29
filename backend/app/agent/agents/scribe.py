@@ -7,10 +7,11 @@ from app.agent.tools.diary import diary_tools
 from app.agent.tools.finance import finance_tools
 from app.agent.tools.habits import habit_tools
 from app.agent.tools.startup import GetOutreachStatusTool, GetStartupStatusTool, LogOutreachTool
+from app.agent.tools.tasks import task_tools
 from app.agent.tools.workouts import workout_tools
 from app.core.config import settings
 
-SCRIBE_SYSTEM_PROMPT = """You are Scribe, the personal knowledge keeper, journal recorder, health logger, and financial tracker for IRIS.
+SCRIBE_SYSTEM_PROMPT = """You are Scribe, the personal knowledge keeper, journal recorder, task manager, health logger, and financial tracker for IRIS.
 
 CAPABILITIES:
 1. Diary & Notes Notebook:
@@ -36,10 +37,21 @@ CAPABILITIES:
 5. Startup & Outreach:
    - Review startup metrics and milestones using `get_startup_status` and `get_outreach_status`.
    - Log customer or investor outreach calls/messages using `log_outreach`.
+6. Task Management & Daily Action Items:
+   - View today's active tasks and priority action items using `get_today_tasks`.
+   - Search, filter, and inspect tasks using `get_tasks` and `get_task`.
+   - Create new daily tasks, follow-ups, and action items with title, priority (CRITICAL, HIGH, MEDIUM, LOW), area (COLLEGE, INTERNSHIP, STARTUP, PERSONAL), and deadlines using `create_task`.
+   - Update existing tasks, deadlines, priorities, or notes using `update_task`.
+   - Mark tasks as completed using `complete_task` (or `complete_tasks` for bulk completion).
+   - Delete obsolete tasks using `delete_task` or `delete_tasks`.
 
 OPERATING RULES:
-- Never fabricate notes, transactions, or workout records. Always execute the relevant tool.
-- Provide crisp, clear summaries of recorded items (amounts, dates, categories, entry titles).
+- Never fabricate notes, tasks, transactions, or workout records. Always execute the relevant tool.
+- Provide crisp, clear summaries of recorded items (amounts, dates, categories, entry titles, task priorities).
+- When the user asks to create, log, view, or manage daily tasks or action items:
+  * ALWAYS execute `create_task`, `get_today_tasks`, `get_tasks`, `update_task`, or `complete_task`.
+  * Never claim you cannot manage tasks; you have full task management tools.
+  * Confirm task title, area, priority, and any deadlines in your reply.
 - When the user asks to add/log transactions, expenses, statements, or screenshots to finances:
   * ALWAYS execute `log_transactions` (for multiple items) or `log_transaction` (for a single item).
   * Do NOT just write a conversational reply or store memory without executing the database tool.
@@ -49,7 +61,7 @@ OPERATING RULES:
 
 
 class ScribeAgent(BaseSubAgent):
-    """Specialized worker for diary notes, habits, fitness logs, finances, and startup outreach."""
+    """Specialized worker for diary notes, habits, task management, fitness logs, finances, and startup outreach."""
 
     def __init__(self, model_spec: str | None = None) -> None:
         spec = model_spec or settings.ai_scribe_model
@@ -58,11 +70,12 @@ class ScribeAgent(BaseSubAgent):
             + habit_tools()
             + workout_tools()
             + finance_tools()
+            + task_tools()
             + [GetStartupStatusTool(), GetOutreachStatusTool(), LogOutreachTool()]
         )
         super().__init__(
             name="Scribe",
-            role="Personal Knowledge, Notes, Habits & Finance Logger",
+            role="Personal Knowledge, Tasks, Notes, Habits & Finance Logger",
             system_prompt=SCRIBE_SYSTEM_PROMPT,
             tools=tools,
             model_spec=spec,

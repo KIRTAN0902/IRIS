@@ -171,7 +171,7 @@ async def voice_live_websocket(
             f"You are conversing directly with {user_name}.\n"
             "Speak with a natural, concise, intelligent, and warm tone suitable for real-time speech.\n"
             "Keep your responses direct, conversational, and grounded in the user's real situation, tasks, and schedule below.\n"
-            "When the user asks you to open or launch an application, run a command, check status, or lock the laptop, ALWAYS use your registered tools to execute the action immediately.\n\n"
+            "When the user asks you to open or launch an application, create a daily task, check today's tasks, complete a task, run a command, check status, or lock the laptop, ALWAYS use your registered tools to execute the action immediately.\n\n"
             f"{pm_text}\n\n"
             f"{situation_text}\n"
         )
@@ -271,12 +271,75 @@ async def voice_live_websocket(
                     )
                 return "Sovereign Privacy Shield engaged: Windows laptop display is locked."
 
+        def create_daily_task(title: str, area: str = "PERSONAL", priority: str = "MEDIUM", estimated_minutes: int = 30) -> str:
+            """Create a new daily task or action item in IRIS."""
+            from app.models.enums import LifeArea, TaskPriority
+            from app.schemas.task import TaskCreate
+            from app.services import task_service
+            with SessionLocal() as db_session:
+                area_val = getattr(LifeArea, area.upper(), LifeArea.PERSONAL)
+                pri_val = getattr(TaskPriority, priority.upper(), TaskPriority.MEDIUM)
+                task_in = TaskCreate(
+                    title=title,
+                    area=area_val,
+                    priority=pri_val,
+                    estimated_duration=estimated_minutes,
+                )
+                t = task_service.create_task(db_session, user.id, task_in)
+                return f"Created task #{t.id}: '{t.title}' ({t.area.title()} · {t.priority.title()} priority)."
+
+        def get_today_tasks() -> str:
+            """Retrieve the user's tasks for today, including priority and completion status."""
+            from app.models.task import Task
+            from app.models.enums import TaskStatus
+            from app.utils.datetime import localize_date_boundaries, to_local, utcnow
+            tz_str = user.timezone or "UTC"
+            now_local = to_local(utcnow(), tz_str)
+            today_start_utc, today_end_utc = localize_date_boundaries(now_local.date(), tz_str)
+
+            with SessionLocal() as db_session:
+                open_tasks = (
+                    db_session.query(Task)
+                    .filter(Task.user_id == user.id, Task.status.in_([TaskStatus.TODO.value, TaskStatus.IN_PROGRESS.value]))
+                    .order_by(Task.deadline.asc().nullslast(), Task.priority.desc())
+                    .all()
+                )
+                if not open_tasks:
+                    return f"You have no open tasks scheduled or due for today, {now_local.strftime('%A')}."
+                lines = [f"You have {len(open_tasks)} tasks for today:"]
+                for t in open_tasks[:6]:
+                    dur = f" ({t.estimated_duration}m)" if t.estimated_duration else ""
+                    lines.append(f"- [{t.priority}] {t.title}{dur}")
+                return "\n".join(lines)
+
+        def complete_task(task_title_or_id: str) -> str:
+            """Mark a task as completed by its title or ID."""
+            from app.models.task import Task
+            from app.services import task_service
+            with SessionLocal() as db_session:
+                t = None
+                if task_title_or_id.isdigit():
+                    t = db_session.query(Task).filter(Task.user_id == user.id, Task.id == int(task_title_or_id)).first()
+                if not t:
+                    t = (
+                        db_session.query(Task)
+                        .filter(Task.user_id == user.id, Task.title.ilike(f"%{task_title_or_id}%"))
+                        .first()
+                    )
+                if not t:
+                    return f"Could not find a task matching '{task_title_or_id}'."
+                task_service.complete_task(db_session, user.id, t.id, None)
+                return f"Marked task #{t.id} '{t.title}' as completed."
+
         tools_list = [
             launch_laptop_app,
             launch_mobile_app,
             execute_terminal_command,
             get_laptop_status,
             lock_laptop,
+            create_daily_task,
+            get_today_tasks,
+            complete_task,
         ]
 
         live_config = types.LiveConnectConfig(
@@ -348,6 +411,9 @@ async def voice_live_websocket(
                                 "execute_terminal_command": execute_terminal_command,
                                 "get_laptop_status": get_laptop_status,
                                 "lock_laptop": lock_laptop,
+                                "create_daily_task": create_daily_task,
+                                "get_today_tasks": get_today_tasks,
+                                "complete_task": complete_task,
                             }
                             fn = func_map.get(fc.name)
                             if fn:

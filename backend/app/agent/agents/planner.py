@@ -21,6 +21,7 @@ from app.agent.tools.tasks import (
     DeleteTaskTool,
     GetTasksTool,
     GetTaskTool,
+    GetTodayTasksTool,
     UpdateTaskTool,
 )
 from app.core.config import settings
@@ -58,6 +59,7 @@ class PlannerAgent(BaseSubAgent):
     def __init__(self, model_spec: str | None = None) -> None:
         spec = model_spec or settings.ai_planner_model
         tools = [
+            GetTodayTasksTool(),
             GetTasksTool(),
             GetTaskTool(),
             CreateTaskTool(),

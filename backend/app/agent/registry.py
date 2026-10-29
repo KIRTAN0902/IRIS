@@ -58,6 +58,7 @@ from app.agent.tools.tasks import (
     DeleteTaskTool,
     GetTasksTool,
     GetTaskTool,
+    GetTodayTasksTool,
     UpdateTaskTool,
 )
 from app.ai.provider import ToolDefinition
@@ -119,6 +120,7 @@ def create_default_registry() -> ToolRegistry:
     registry.register(GetConversationTool())
 
     # Tasks
+    registry.register(GetTodayTasksTool())
     registry.register(GetTasksTool())
     registry.register(GetTaskTool())
     registry.register(CreateTaskTool())
@@ -217,9 +219,13 @@ def create_orchestrator_registry() -> ToolRegistry:
     registry.register(SearchConversationsTool())
     registry.register(GetConversationTool())
 
-    # Overview read tools
+    # Overview read & direct task management tools
+    registry.register(GetTodayTasksTool())
     registry.register(GetTasksTool())
     registry.register(GetTaskTool())
+    registry.register(CreateTaskTool())
+    registry.register(UpdateTaskTool())
+    registry.register(CompleteTaskTool())
     registry.register(GetGoalsTool())
     registry.register(GetScheduleTool())
     registry.register(GetStartupStatusTool())

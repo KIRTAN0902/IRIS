@@ -69,7 +69,9 @@ from app.agent.tools.tasks import (
     DeleteTaskTool,
     GetTasksTool,
     GetTaskTool,
+    GetTodayTasksTool,
     UpdateTaskTool,
+    task_tools,
 )
 
 __all__ = [
@@ -81,6 +83,7 @@ __all__ = [
     "SearchConversationsTool",
     "GetConversationTool",
     # Tasks
+    "GetTodayTasksTool",
     "GetTasksTool",
     "GetTaskTool",
     "CreateTaskTool",
@@ -89,6 +92,7 @@ __all__ = [
     "DeleteTaskTool",
     "CompleteTasksTool",
     "DeleteTasksTool",
+    "task_tools",
     # Goals
     "GetGoalsTool",
     "CreateGoalTool",
