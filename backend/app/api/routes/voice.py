@@ -171,14 +171,17 @@ async def voice_live_websocket(
             f"You are conversing directly with {user_name}.\n"
             "Speak with a natural, concise, intelligent, and warm tone suitable for real-time speech.\n"
             "Keep your responses direct, conversational, and grounded in the user's real situation, tasks, and schedule below.\n"
-            "When the user asks you to open or launch an application, create a daily task, check today's tasks, complete a task, run a command, check status, or lock the laptop, ALWAYS use your registered tools to execute the action immediately.\n\n"
+            "When the user asks you to open or launch an application, create a daily task, check today's tasks, complete a task, run a command, check status, lock the laptop, or look at/inspect their mobile screen, ALWAYS use your registered tools to execute the action immediately.\n\n"
             f"{pm_text}\n\n"
             f"{situation_text}\n"
         )
 
+        active_screen_capture_futures: list[asyncio.Future[str]] = []
+
         # Real Sovereign IRIS Tools for Gemini Live Audio
-        def launch_laptop_app(app_name: str, directory: str = "") -> str:
+        async def launch_laptop_app(app_name: str, directory: str = "") -> str:
             """Launch or open an application on the user's Windows laptop workstation (e.g. terminal, agy, vscode, chrome, explorer, or any installed Windows app)."""
+            import secrets
             from app.services import mesh_service as ms
             from app.services import mesh_relay_service as mrs
 
@@ -189,14 +192,36 @@ async def voice_live_websocket(
                 else:
                     if not mrs.is_host_laptop_online(db_session, user.id, threshold_seconds=300.0):
                         return "Your Windows laptop is currently offline or unreachable on the IRIS mesh."
+                    req_id = secrets.token_hex(6)
                     mrs.push_relay_message(
                         db=db_session,
                         user_id=user.id,
                         sender_device_id="voice_live_agent",
                         target_device_id=mrs.LAPTOP_HOST_DEVICE_ID,
                         msg_type="REMOTE_COMMAND",
-                        payload={"command": "LAUNCH_APP", "app": app_name, "directory": directory},
+                        payload={"command": "LAUNCH_APP", "app": app_name, "directory": directory, "req_id": req_id},
                     )
+                    # Broadcast to active WebSocket hub peers
+                    try:
+                        hub_msg = ms.MeshMessage(
+                            type="REMOTE_COMMAND",
+                            sender_device="voice_live_agent",
+                            payload={"command": "LAUNCH_APP", "app": app_name, "directory": directory, "req_id": req_id},
+                        )
+                        await ms.hub.broadcast(hub_msg, exclude_sender=False)
+                    except Exception:
+                        pass
+
+                    res = await mrs.wait_for_relay_response(
+                        db=db_session,
+                        user_id=user.id,
+                        req_id=req_id,
+                        timeout_seconds=15.0,
+                    )
+                    if res and res.get("success"):
+                        return f"Successfully opened {app_name} on your Windows laptop."
+                    elif res and res.get("error"):
+                        return f"Laptop reported: {res.get('error')}"
                     return f"Dispatched launch command for {app_name} to your Windows laptop."
 
         def launch_mobile_app(app_name: str) -> str:
@@ -220,8 +245,9 @@ async def voice_live_websocket(
                 )
             return f"Opened {app_name} on your mobile phone."
 
-        def execute_terminal_command(command: str) -> str:
+        async def execute_terminal_command(command: str) -> str:
             """Run a shell or PowerShell command on the Windows laptop workstation."""
+            import secrets
             from app.services import mesh_service as ms
             from app.services import mesh_relay_service as mrs
 
@@ -233,15 +259,25 @@ async def voice_live_websocket(
                 else:
                     if not mrs.is_host_laptop_online(db_session, user.id, threshold_seconds=300.0):
                         return "Your Windows laptop is currently offline on the IRIS mesh."
+                    req_id = secrets.token_hex(6)
                     mrs.push_relay_message(
                         db=db_session,
                         user_id=user.id,
                         sender_device_id="voice_live_agent",
                         target_device_id=mrs.LAPTOP_HOST_DEVICE_ID,
-                        msg_type="REMOTE_COMMAND",
-                        payload={"command": "TERMINAL_EXEC", "command_line": command},
+                        msg_type="TERMINAL_EXEC",
+                        payload={"req_id": req_id, "command": command, "working_dir": r"C:\kirtan\IRIS", "timeout": 30},
                     )
-                    return f"Dispatched command '{command}' to your Windows laptop."
+                    res = await mrs.wait_for_relay_response(
+                        db=db_session,
+                        user_id=user.id,
+                        req_id=req_id,
+                        timeout_seconds=15.0,
+                    )
+                    if res:
+                        out = (res.get("stdout") or res.get("stderr") or "Command completed.").strip()
+                        return f"Output from laptop: {out[:500]}"
+                    return f"Command '{command}' sent to laptop, but no output was returned within timeout."
 
         def get_laptop_status() -> str:
             """Check the status, battery level, and connectivity of the Windows laptop."""
@@ -331,6 +367,40 @@ async def voice_live_websocket(
                 task_service.complete_task(db_session, user.id, t.id, None)
                 return f"Marked task #{t.id} '{t.title}' as completed."
 
+        async def inspect_current_screen(question: str = "") -> str:
+            """Capture and inspect what is currently displayed on the user's mobile screen to answer questions or provide visual assistance."""
+            try:
+                loop = asyncio.get_running_loop()
+                fut: asyncio.Future[str] = loop.create_future()
+                active_screen_capture_futures.append(fut)
+                await websocket.send_json({
+                    "type": "request_screen_capture",
+                    "question": question,
+                })
+                try:
+                    b64_image = await asyncio.wait_for(fut, timeout=12.0)
+                    if not b64_image:
+                        return "Screen capture was not provided or permission was cancelled."
+
+                    from app.services.vision_service import vision_service
+                    img_bytes, mime = vision_service.decode_base64_image(b64_image)
+                    with SessionLocal() as db_session:
+                        resp, _, _ = await vision_service.process_ephemeral_turn(
+                            db=db_session,
+                            user=user,
+                            images=[(img_bytes, mime)],
+                            prompt=question or "Describe what is currently visible on the screen and extract any important details.",
+                        )
+                        return f"Screen observation: {resp.content[:800]}"
+                finally:
+                    if fut in active_screen_capture_futures:
+                        active_screen_capture_futures.remove(fut)
+            except asyncio.TimeoutError:
+                return "Screen capture request timed out."
+            except Exception as e:
+                logger.warning("Error inspecting screen: %s", e)
+                return f"Could not analyze screen: {e}"
+
         tools_list = [
             launch_laptop_app,
             launch_mobile_app,
@@ -340,6 +410,7 @@ async def voice_live_websocket(
             create_daily_task,
             get_today_tasks,
             complete_task,
+            inspect_current_screen,
         ]
 
         live_config = types.LiveConnectConfig(
@@ -394,6 +465,11 @@ async def voice_live_websocket(
                                 )
                         elif p_type == "end_of_turn":
                             await session.send_client_content(turns=[], turn_complete=True)
+                        elif p_type == "screen_capture_response":
+                            b64 = payload.get("image_base64", "")
+                            for fut in list(active_screen_capture_futures):
+                                if not fut.done():
+                                    fut.set_result(b64)
                         elif p_type == "interrupt":
                             pass
                         elif p_type == "ping":
@@ -414,12 +490,16 @@ async def voice_live_websocket(
                                 "create_daily_task": create_daily_task,
                                 "get_today_tasks": get_today_tasks,
                                 "complete_task": complete_task,
+                                "inspect_current_screen": inspect_current_screen,
                             }
                             fn = func_map.get(fc.name)
                             if fn:
                                 try:
                                     args = fc.args or {}
-                                    res_val = fn(**args)
+                                    if asyncio.iscoroutinefunction(fn):
+                                        res_val = await fn(**args)
+                                    else:
+                                        res_val = fn(**args)
                                 except Exception as err:
                                     logger.exception("Error executing Live tool %s: %s", fc.name, err)
                                     res_val = f"Error executing {fc.name}: {err}"

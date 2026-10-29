@@ -2,7 +2,7 @@
 
 > **System Designation**: IRIS (*Intelligent Responsive Information System*)  
 > **Repository**: `C:\kirtan\IRIS`  
-> **Version**: 3.2 (Controlled Windows Desktop CLI Execution Layer, Permission Classes A/B/C/D, Background Job Manager, Postcondition Verifier, Scribe Task Suite, Sovereign Cross-Device Mesh)  
+> **Version**: 3.3 (Mobile Intelligence Upgrade, Windows Desktop CLI Execution Layer, Permission Classes A/B/C/D, Background Job Manager, Postcondition Verifier, Scribe Task Suite, Sovereign Voice Mesh Convergence, Ephemeral Screen Awareness)  
 > **Target Audience**: Core Engineers, Systems Architects, and Technical Maintainers  
 
 ---

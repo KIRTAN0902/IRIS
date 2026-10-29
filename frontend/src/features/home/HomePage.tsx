@@ -236,6 +236,30 @@ function Conversation({
   const voice = useVoiceConversation(async (text) => (await send(text, true))?.content ?? null);
   const talking = voice.phase !== "off";
 
+  // Auto-launch voice mode if launched from Android Assistant (?mode=voice or window.__IRIS_AUTO_VOICE__)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const hasModeVoice = params.get("mode") === "voice";
+    const hasAutoVoiceFlag = Boolean(
+      typeof window !== "undefined" && (window as unknown as { __IRIS_AUTO_VOICE__?: boolean }).__IRIS_AUTO_VOICE__
+    );
+    if (hasModeVoice || hasAutoVoiceFlag) {
+      if (typeof window !== "undefined") {
+        (window as unknown as { __IRIS_AUTO_VOICE__?: boolean }).__IRIS_AUTO_VOICE__ = false;
+      }
+      if (hasModeVoice) {
+        params.delete("mode");
+        const newSearch = params.toString();
+        const newUrl = window.location.pathname + (newSearch ? `?${newSearch}` : "");
+        window.history.replaceState({}, "", newUrl);
+      }
+      const t = setTimeout(() => {
+        void voice.start();
+      }, 250);
+      return () => clearTimeout(t);
+    }
+  }, [voice]);
+
   const busy = sendMsg.isPending || createConv.isPending;
   const isNewChat = !conversationId && !busy;
 
@@ -618,12 +642,26 @@ function VoiceOverlay({ voice }: { voice: ReturnType<typeof useVoiceConversation
         {voice.notice && <p className="mt-3 max-w-[480px] text-center text-[13px] text-caution">{voice.notice}</p>}
       </div>
 
-      <button
-        onClick={voice.end}
-        className="rounded-full border border-ops-line-bright px-6 py-2.5 text-[14px] text-ink hover:bg-ops-raised cursor-pointer"
-      >
-        End conversation
-      </button>
+      <div className="flex items-center gap-3">
+        {typeof voice.captureScreen === "function" && (
+          <button
+            type="button"
+            onClick={voice.captureScreen}
+            aria-label="Share current screen with IRIS"
+            title="Inspect screen"
+            className="flex items-center gap-1.5 rounded-full border border-ops-line-bright px-4 py-2 text-[13px] text-ink hover:bg-ops-raised cursor-pointer transition-colors"
+          >
+            <Monitor size={15} />
+            <span>Look at screen</span>
+          </button>
+        )}
+        <button
+          onClick={voice.end}
+          className="rounded-full border border-ops-line-bright px-6 py-2 text-[13px] text-ink hover:bg-ops-raised cursor-pointer"
+        >
+          End conversation
+        </button>
+      </div>
     </div>,
     document.body,
   );

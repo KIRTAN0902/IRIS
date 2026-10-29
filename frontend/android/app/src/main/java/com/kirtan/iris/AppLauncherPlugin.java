@@ -218,6 +218,15 @@ public class AppLauncherPlugin extends Plugin {
         }
     }
 
+    @PluginMethod
+    public void isVoicePending(PluginCall call) {
+        boolean pending = MainActivity.sPendingVoiceLaunch;
+        MainActivity.sPendingVoiceLaunch = false;
+        JSObject ret = new JSObject();
+        ret.put("pending", pending);
+        call.resolve(ret);
+    }
+
     private boolean isPackageInstalled(PackageManager pm, String packageName) {
         try {
             pm.getPackageInfo(packageName, 0);

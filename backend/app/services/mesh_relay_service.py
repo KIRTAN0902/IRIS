@@ -412,19 +412,52 @@ def is_recently_active(dt: datetime | None, threshold_seconds: float = 300.0) ->
     return diff < threshold_seconds
 
 
-def is_host_laptop_online(db: Session, user_id: int = 1, threshold_seconds: float = 180.0) -> bool:
+def is_host_laptop_online(db: Session, user_id: int = 1, threshold_seconds: float = 300.0) -> bool:
     """Returns True if the host laptop daemon is currently active."""
     if is_local_windows_host():
         return True
+
+    # 1. Check in-memory connected devices
+    try:
+        from app.services import mesh_service as ms
+        for d in ms.hub.devices.values():
+            if "laptop" in (d.device_type or "").lower():
+                return True
+    except Exception:
+        pass
+
+    # 2. Check primary host pairing
     pairing = db.query(MeshPairing).filter(MeshPairing.device_id == LAPTOP_HOST_DEVICE_ID).first()
-    if pairing and pairing.last_seen_at:
-        return is_recently_active(pairing.last_seen_at, threshold_seconds=threshold_seconds)
+    if pairing and pairing.last_seen_at and is_recently_active(pairing.last_seen_at, threshold_seconds=threshold_seconds):
+        return True
+
+    # 3. Check any active laptop pairing for the user
+    any_laptop = (
+        db.query(MeshPairing)
+        .filter(
+            MeshPairing.user_id == user_id,
+            MeshPairing.device_type.ilike("%laptop%"),
+            MeshPairing.is_active == True,
+        )
+        .order_by(MeshPairing.last_seen_at.desc())
+        .first()
+    )
+    if any_laptop and any_laptop.last_seen_at:
+        return is_recently_active(any_laptop.last_seen_at, threshold_seconds=threshold_seconds)
+
     return False
 
 
-def get_laptop_host_info(db: Session, user_id: int = 1, threshold_seconds: float = 180.0) -> dict[str, Any]:
+def get_laptop_host_info(db: Session, user_id: int = 1, threshold_seconds: float = 300.0) -> dict[str, Any]:
     """Returns the host laptop's current pairing state, battery, and online status."""
     pairing = db.query(MeshPairing).filter(MeshPairing.device_id == LAPTOP_HOST_DEVICE_ID).first()
+    if not pairing:
+        pairing = (
+            db.query(MeshPairing)
+            .filter(MeshPairing.user_id == user_id, MeshPairing.device_type.ilike("%laptop%"))
+            .order_by(MeshPairing.last_seen_at.desc())
+            .first()
+        )
     online = False
     battery_level = None
     is_charging = None

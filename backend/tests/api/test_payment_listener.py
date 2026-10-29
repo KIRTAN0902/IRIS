@@ -59,3 +59,58 @@ def test_auto_log_payment_invalid_amount(client: TestClient, db):
     res = client.post("/api/finance/auto-log", json=payload)
     assert res.status_code == 200
     assert res.json()["status"] == "ignored"
+
+
+def test_auto_log_payment_income(client: TestClient, db):
+    payload = {
+        "amount": 2500.0,
+        "merchant": "Rahul Sharma",
+        "direction": "income",
+        "transaction_ref": "429811223344",
+        "raw_text": "Credited ₹2,500.00 from Rahul Sharma via UPI Ref 429811223344",
+        "source": "gpay",
+        "occurred_on": "2026-10-27",
+    }
+    res = client.post("/api/finance/auto-log", json=payload)
+    assert res.status_code == 200
+    data = res.json()
+    assert data["status"] == "logged"
+    assert data["transaction"]["amount"] == 2500.0
+    assert data["transaction"]["kind"] in ("income", "INCOME")
+    assert "429811223344" in data["transaction"]["note"]
+
+    # Deduplication by transaction reference
+    res2 = client.post("/api/finance/auto-log", json=payload)
+    assert res2.status_code == 200
+    assert res2.json()["status"] == "duplicate"
+    assert res2.json()["transaction"]["id"] == data["transaction"]["id"]
+
+
+def test_auto_log_payment_refund(client: TestClient, db):
+    payload = {
+        "amount": 199.0,
+        "merchant": "Swiggy Refund",
+        "direction": "refund",
+        "transaction_ref": "REF998877",
+        "raw_text": "Refund of Rs 199 for Swiggy initiated successfully",
+        "source": "gpay",
+    }
+    res = client.post("/api/finance/auto-log", json=payload)
+    assert res.status_code == 200
+    data = res.json()
+    assert data["status"] == "logged"
+    assert data["transaction"]["kind"] in ("income", "INCOME")
+    assert "Refund" in data["transaction"]["note"]
+
+
+def test_auto_log_payment_failed_ignored(client: TestClient, db):
+    payload = {
+        "amount": 750.0,
+        "merchant": "Uber",
+        "direction": "failed",
+        "raw_text": "Payment of Rs 750 to Uber failed.",
+        "source": "gpay",
+    }
+    res = client.post("/api/finance/auto-log", json=payload)
+    assert res.status_code == 200
+    assert res.json()["status"] == "ignored"

@@ -579,6 +579,35 @@ export function useVoiceConversation(onUtterance: (text: string) => Promise<stri
               }
             } else if (data.type === "launch_mobile_app" && data.app) {
               void launchPhoneApp(data.app);
+            } else if (data.type === "request_screen_capture") {
+              void (async () => {
+                try {
+                  const { captureCurrentScreen } = await import("@/lib/screenCapture");
+                  const captured = await captureCurrentScreen();
+                  if (captured) {
+                    const reader = new FileReader();
+                    reader.onload = () => {
+                      const b64 = String(reader.result || "");
+                      if (ws.readyState === WebSocket.OPEN) {
+                        ws.send(JSON.stringify({
+                          type: "screen_capture_response",
+                          image_base64: b64,
+                          mime_type: captured.file.type,
+                        }));
+                      }
+                    };
+                    reader.readAsDataURL(captured.file);
+                  } else {
+                    if (ws.readyState === WebSocket.OPEN) {
+                      ws.send(JSON.stringify({ type: "screen_capture_response", image_base64: "" }));
+                    }
+                  }
+                } catch (err) {
+                  if (ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({ type: "screen_capture_response", image_base64: "", error: String(err) }));
+                  }
+                }
+              })();
             } else if (data.type === "text") {
               setSaid((prev) => (prev ? prev + " " + data.text : data.text));
             } else if (data.type === "turn_complete") {
@@ -758,7 +787,36 @@ export function useVoiceConversation(onUtterance: (text: string) => Promise<stri
   /** Mic loudness for visuals, 0..1. */
   const level = useCallback(() => Math.min(1, Math.max(0, ((session.current?.level ?? 0) - 0.01) * 7)), []);
 
-  return { phase, heard, said, notice, level, start, end, tap, dismissNotice: () => setNotice(null) };
+  /** Capture and stream current screen frame to active Live session. */
+  const captureScreen = useCallback(async () => {
+    const s = session.current;
+    if (!s) return;
+    try {
+      const { captureCurrentScreen } = await import("@/lib/screenCapture");
+      const captured = await captureCurrentScreen();
+      if (!captured) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        const b64 = String(reader.result || "");
+        if (s.ws && s.ws.readyState === WebSocket.OPEN) {
+          s.ws.send(JSON.stringify({
+            type: "screen_capture_response",
+            image_base64: b64,
+            mime_type: captured.file.type,
+          }));
+          setNotice("Shared screen frame with IRIS");
+          setTimeout(() => setNotice(null), 3000);
+        }
+      };
+      reader.readAsDataURL(captured.file);
+    } catch (err: any) {
+      console.warn("Screen capture failed:", err);
+      setNotice(err?.message || "Screen capture could not be completed.");
+      setTimeout(() => setNotice(null), 4000);
+    }
+  }, []);
+
+  return { phase, heard, said, notice, level, start, end, tap, captureScreen, dismissNotice: () => setNotice(null) };
 }
 
 /** Plain, speakable text: no markdown, and short enough to read aloud. */

@@ -265,6 +265,9 @@ class Categories(BaseModel):
 class AutoLogPaymentRequest(BaseModel):
     amount: float
     merchant: str
+    direction: str = "expense"  # "expense" | "income" | "refund" | "reversal" | "failed" | "pending"
+    currency: str = "INR"
+    transaction_ref: str | None = None
     raw_text: str | None = None
     occurred_on: date | None = None
     source: str = "gpay"
@@ -273,7 +276,7 @@ class AutoLogPaymentRequest(BaseModel):
 
 
 class AutoLogPaymentResponse(BaseModel):
-    status: str  # "logged" | "duplicate" | "ignored"
+    status: str  # "logged" | "duplicate" | "ignored" | "reversal_handled"
     message: str
     transaction: TransactionOut | None = None
 

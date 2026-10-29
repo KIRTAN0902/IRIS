@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { Outlet, useLocation } from "react-router-dom";
+import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { Search } from "lucide-react";
 import { MobileBottomNav } from "@/components/layout/TopStrip";
 import { MobileTopBar, Sidebar } from "@/components/layout/Sidebar";
@@ -14,6 +14,7 @@ import { useUiStore } from "@/stores";
  */
 export function AppShell() {
   const location = useLocation();
+  const navigate = useNavigate();
   const setAskOpen = useUiStore((s) => s.setAskOpen);
 
   // Hydrate any running focus session once at boot.
@@ -50,24 +51,51 @@ export function AppShell() {
       }
     };
     const onAutoVoice = () => {
-      const voiceButton = document.querySelector<HTMLButtonElement>('button[aria-label="Talk to IRIS"]');
-      if (voiceButton) {
-        voiceButton.click();
+      const trigger = (attempts = 15) => {
+        const voiceButton = document.querySelector<HTMLButtonElement>('button[aria-label="Talk to IRIS"]');
+        if (voiceButton) {
+          voiceButton.click();
+        } else if (attempts > 0) {
+          setTimeout(() => trigger(attempts - 1), 200);
+        } else {
+          setAskOpen(true);
+        }
+      };
+
+      if (location.pathname !== "/") {
+        navigate("/?mode=voice");
+        setTimeout(() => trigger(15), 300);
       } else {
-        setAskOpen(true);
+        trigger(15);
       }
     };
+
     if (typeof window !== "undefined" && (window as unknown as { __IRIS_AUTO_VOICE__?: boolean }).__IRIS_AUTO_VOICE__) {
       (window as unknown as { __IRIS_AUTO_VOICE__?: boolean }).__IRIS_AUTO_VOICE__ = false;
-      setTimeout(onAutoVoice, 400);
+      setTimeout(onAutoVoice, 200);
     }
+
+    // Query native pending assistant trigger if running in Capacitor
+    const checkNativePending = async () => {
+      try {
+        const cap = (window as unknown as { Capacitor?: { Plugins?: { AppLauncher?: { isVoicePending: () => Promise<{ pending: boolean }> } } } }).Capacitor;
+        const res = await cap?.Plugins?.AppLauncher?.isVoicePending?.();
+        if (res?.pending) {
+          onAutoVoice();
+        }
+      } catch {
+        /* ignore */
+      }
+    };
+    void checkNativePending();
+
     window.addEventListener("keydown", onKey);
     window.addEventListener("iris-auto-voice", onAutoVoice);
     return () => {
       window.removeEventListener("keydown", onKey);
       window.removeEventListener("iris-auto-voice", onAutoVoice);
     };
-  }, [setAskOpen]);
+  }, [location.pathname, navigate, setAskOpen]);
 
   return (
     <div className="flex min-h-dvh bg-ops-ground">
