@@ -1,13 +1,23 @@
 package com.kirtan.iris;
 
+import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
+import android.graphics.Bitmap;
+import android.graphics.Canvas;
+import android.graphics.Rect;
 import android.net.Uri;
+import android.os.Build;
+import android.os.Handler;
+import android.os.Looper;
 import android.provider.MediaStore;
 import android.provider.Settings;
+import android.util.Base64;
 import android.util.Log;
+import android.view.PixelCopy;
+import android.view.View;
 
 import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
@@ -16,6 +26,7 @@ import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 
+import java.io.ByteArrayOutputStream;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -225,6 +236,78 @@ public class AppLauncherPlugin extends Plugin {
         JSObject ret = new JSObject();
         ret.put("pending", pending);
         call.resolve(ret);
+    }
+
+    @PluginMethod
+    public void captureScreen(PluginCall call) {
+        Activity activity = getActivity();
+        if (activity == null || activity.getWindow() == null) {
+            call.reject("Activity or Window is not available");
+            return;
+        }
+
+        View decorView = activity.getWindow().getDecorView();
+        int width = decorView.getWidth();
+        int height = decorView.getHeight();
+
+        if (width <= 0 || height <= 0) {
+            width = 1080;
+            height = 1920;
+        }
+
+        final Bitmap bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+        int[] location = new int[2];
+        decorView.getLocationInWindow(location);
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            try {
+                PixelCopy.request(
+                    activity.getWindow(),
+                    new Rect(location[0], location[1], location[0] + width, location[1] + height),
+                    bitmap,
+                    copyResult -> {
+                        if (copyResult == PixelCopy.SUCCESS) {
+                            returnBitmapAsBase64(bitmap, call);
+                        } else {
+                            fallbackViewDraw(decorView, bitmap, call);
+                        }
+                    },
+                    new Handler(Looper.getMainLooper())
+                );
+                return;
+            } catch (Exception e) {
+                Log.w(TAG, "PixelCopy request failed, falling back to Canvas draw", e);
+            }
+        }
+
+        fallbackViewDraw(decorView, bitmap, call);
+    }
+
+    private void fallbackViewDraw(View view, Bitmap bitmap, PluginCall call) {
+        try {
+            Canvas canvas = new Canvas(bitmap);
+            view.draw(canvas);
+            returnBitmapAsBase64(bitmap, call);
+        } catch (Exception e) {
+            call.reject("Failed to capture screen view: " + e.getMessage());
+        }
+    }
+
+    private void returnBitmapAsBase64(Bitmap bitmap, PluginCall call) {
+        try {
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            bitmap.compress(Bitmap.CompressFormat.JPEG, 85, baos);
+            byte[] imageBytes = baos.toByteArray();
+            String base64Image = "data:image/jpeg;base64," + Base64.encodeToString(imageBytes, Base64.NO_WRAP);
+
+            JSObject ret = new JSObject();
+            ret.put("success", true);
+            ret.put("image_base64", base64Image);
+            ret.put("mime_type", "image/jpeg");
+            call.resolve(ret);
+        } catch (Exception e) {
+            call.reject("Error encoding bitmap: " + e.getMessage());
+        }
     }
 
     private boolean isPackageInstalled(PackageManager pm, String packageName) {
