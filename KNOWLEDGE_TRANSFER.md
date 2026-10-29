@@ -2,7 +2,7 @@
 
 > **System Designation**: IRIS (*Intelligent Responsive Information System*)  
 > **Repository**: `C:\kirtan\IRIS`  
-> **Version**: 3.0 (Sovereign Cross-Device Mesh, Bidirectional Native Android/Windows Launcher, Gemini Live Sovereign Voice Tools, Clock-Drift Fault-Tolerant Relay)  
+> **Version**: 3.1 (Scribe & Omnipresent Task Management, Gemini Live Sovereign Voice Tools, Sovereign Cross-Device Mesh, Bidirectional Native Android/Windows Launcher, Clock-Drift Fault-Tolerant Relay)  
 > **Target Audience**: Core Engineers, Systems Architects, and Technical Maintainers  
 
 ---
@@ -157,6 +157,8 @@ Before any prompt touches an LLM API, `try_fast_path()` analyzes user intent wit
   - Target Resolution: Spoken indicators (`"on my laptop"`, `"on my phone"`) or device heuristics (mobile apps: WhatsApp, Camera, Instagram, GPay, Uber, Swiggy; desktop apps: Terminal, AGY CLI, VS Code, Explorer).
   - Millisecond execution without LLM roundtrips.
 - **Time & Date**: Instant local timestamp formatting (~1.1s turn total).
+- **Today's Tasks Checklist** (*"what are my today's tasks"*, *"today's tasks"*, *"show today's tasks"*): Returns an immediate formatted Markdown checklist with priority emojis (🔴 CRITICAL, 🟡 HIGH, ⚪ MEDIUM, 🟢 LOW), deadlines, and completed items in `< 15ms`.
+- **Direct Task Creation** (*"create task [title]"*, *"add daily task [title]"*): Instantly creates tasks in the database with contextual area defaults and automatic end-of-day deadline.
 - **Top Priority Task** (*"what's my task"*, *"what should I do"*): Calls `deterministic_decision(db, user)` to score all open tasks against deadlines, project weighting, and available schedule blocks.
 - **Task Completion** (*"task done"*, *"completed task"*): Marks top open task complete and returns the next highest-leverage task.
 - **Fitness & Yoga Checkoffs** (*"gym done"*, *"yoga done"*, *"asana done"*): Instantly marks daily workout / yoga routines and habits complete.
@@ -178,8 +180,8 @@ If the request requires complex execution:
 | Sub-Agent | Primary Responsibilities | Available Tools |
 |---|---|---|
 | **Operator** | Workstation OS actions, terminal commands, directory navigation, file reading/writing/searching, Antigravity (AGY) ConPTY autonomous coding dispatch, Windows app launching, and mobile app launching. | `run_terminal_command`, `read_workspace_file`, `write_workspace_file`, `search_files`, `launch_laptop_app`, `launch_mobile_app`, `trigger_autonomous_coding` |
-| **Planner** | Chronos dynamic availability engine, schedule time-blocking, task hierarchies, subtask breakdown, project milestone tracking, daily review generation. | `create_task`, `update_task`, `complete_task`, `create_timeblock`, `get_daily_schedule`, `plan_day_draft` |
-| **Scribe** | Personal journal entries, Gym lifting splits, daily all-week Yoga routines & asana tracking, habit streaks, personal finance (expenses, cash flow, budgets), startup CRM outreach pipeline. | `log_diary_entry`, `read_diary`, `log_workout`, `check_yoga_asana`, `log_expense`, `get_finances`, `update_lead_status` |
+| **Planner** | Chronos dynamic availability engine, schedule time-blocking, task hierarchies, subtask breakdown, project milestone tracking, daily review generation. | `create_task`, `update_task`, `complete_task`, `get_today_tasks`, `get_tasks`, `create_timeblock`, `get_daily_schedule`, `plan_day_draft` |
+| **Scribe** | Personal knowledge & daily task management, journal entries, Gym lifting splits, daily all-week Yoga routines & asana tracking, habit streaks, personal finance (expenses, cash flow, budgets), startup CRM outreach pipeline. | `get_today_tasks`, `get_tasks`, `get_task`, `create_task`, `update_task`, `complete_task`, `delete_task`, `log_diary_entry`, `read_diary`, `log_workout`, `check_yoga_asana`, `log_expense`, `get_finances`, `update_lead_status` |
 | **BUBBA** | Google Workspace ecosystem integration: Gmail inbox reading, thread triage, drafting replies, sending emails; Google Drive search and document analysis. | `list_unread_emails`, `search_emails`, `draft_email`, `send_email`, `search_drive_files`, `read_drive_document` |
 
 ### 4. Gemini 3.x Thought Signature Preservation
@@ -255,6 +257,9 @@ sequenceDiagram
   - `execute_terminal_command(command)`: Runs shell/PowerShell commands on the laptop and speaks results.
   - `get_laptop_status()`: Speaks real-time laptop battery percentage, charging state, and mesh connectivity.
   - `lock_laptop()`: Engages the Sovereign Privacy Shield on the Windows display.
+  - `create_daily_task(title, area, priority)`: Creates a new task in the database and returns task ID and title.
+  - `get_today_tasks()`: Retrieves all tasks scheduled or due today, categorized into open, in-progress, and completed.
+  - `complete_task(task_id)`: Marks an open task completed in the database.
 - **Real-Time Tool Interception**: `gemini_to_client()` catches `response.tool_call.function_calls`, runs the native action, and sends back `session.send_tool_response(function_responses=...)` so the model audibly confirms execution with zero latency.
 
 ### 2. Turn-Based Conversational Voice (`converse()`)
