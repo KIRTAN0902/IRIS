@@ -730,7 +730,7 @@ def launch_windows_app(
         app_name = "Antigravity CLI"
 
     # --- 2. Specialized Terminal Launching ---
-    elif any(k in app_clean for k in ["terminal", "powershell", "pwsh", "wt", "cmd", "console"]) and (directory or argument):
+    elif any(k in app_clean for k in ["terminal", "powershell", "pwsh", "wt", "cmd", "console"]):
         keywords = ["cascadia", "cmd", "powershell", "terminal", "pwsh"]
         sys_root = os.environ.get("SystemRoot", r"C:\Windows")
         ps_path = Path(sys_root) / r"System32\WindowsPowerShell\v1.0\powershell.exe"
@@ -776,7 +776,7 @@ def launch_windows_app(
         if app_match:
             kind, path = app_match
             app_stem = Path(path).stem.replace(".exe", "").title()
-            app_name = app_stem
+            app_name = "Antigravity IDE" if is_agy_ide else app_stem
             keywords = [raw_app, app_clean, app_stem.lower()]
 
             if kind in ("lnk", "protocol"):
@@ -968,6 +968,24 @@ def execute_terminal_command(
 
     # If user runs 'agy' with -p or other non-interactive flags, let it proceed to execution below
 
+    # Security policy check for destructive commands
+    try:
+        from app.execution.policy import default_policy, redact_secrets, PermissionClass
+        perm_class, reason = default_policy.classify_command(clean_cmd, cwd=work_dir)
+        if perm_class == PermissionClass.CLASS_D_DESTRUCTIVE and default_policy.block_class_d:
+            logger.warning("Terminal command blocked by policy: %s (Reason: %s)", clean_cmd, reason)
+            return {
+                "success": False,
+                "returncode": 1,
+                "stdout": "",
+                "stderr": f"Command blocked by security policy: {reason}",
+                "command": clean_cmd,
+                "cwd": work_dir,
+                "elapsed_ms": 0,
+            }
+    except Exception:
+        redact_secrets = lambda s: s
+
     logger.info("Executing remote terminal command: %s (cwd=%s)", clean_cmd, work_dir)
 
     start_t = time.perf_counter()
@@ -986,8 +1004,8 @@ def execute_terminal_command(
         return {
             "success": res.returncode == 0,
             "returncode": res.returncode,
-            "stdout": res.stdout,
-            "stderr": res.stderr,
+            "stdout": redact_secrets(res.stdout),
+            "stderr": redact_secrets(res.stderr),
             "command": clean_cmd,
             "cwd": work_dir,
             "elapsed_ms": elapsed_ms,

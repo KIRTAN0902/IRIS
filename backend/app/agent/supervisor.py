@@ -150,6 +150,44 @@ class IrisSupervisor:
         if "reflow schedule" in clean_msg or "pushed back by" in clean_msg:
             return self._fast_reflow_schedule(db, user, clean_msg)
 
+        # A0.0 Desktop Execution Approval Interceptor
+        approval_match = re.match(r"^(?:approve|authorized?|confirm|yes\s+execute)\s+(appr_[a-f0-9]{32})$", clean_msg, re.IGNORECASE)
+        if approval_match:
+            appr_token = approval_match.group(1).lower()
+            from app.execution.policy import default_policy
+            from app.execution.registry import desktop_executor
+            from app.execution.contracts import ExecutionRequest
+            rec = default_policy._approvals.get(appr_token)
+            if not rec:
+                return (
+                    AgentResponseSchema(
+                        thought="Approval token not found.",
+                        actions=[],
+                        message=f"❌ Approval token `{appr_token}` was not found or has expired.",
+                        actions_summary=["Approval token invalid"],
+                    ),
+                    [{"tool_name": "approve_command", "success": False, "summary": "Invalid token"}],
+                )
+            req = ExecutionRequest(
+                capability="shell_command",
+                command=rec["command"],
+                working_dir=rec["cwd"],
+                approval_token=appr_token,
+            )
+            exec_res = desktop_executor.execute(req)
+            status_emoji = "✅" if exec_res.is_success else "❌"
+            out = (exec_res.stdout or exec_res.stderr or "Executed with no output.").strip()
+            return (
+                AgentResponseSchema(
+                    thought=f"Authorized and executed approved command: {rec['command']}",
+                    actions=[],
+                    message=f"{status_emoji} **Authorized Execution Completed** (Exit {exec_res.exit_code}):\n```\n{out}\n```",
+                    actions_summary=[f"Executed approved command {rec['command']}"],
+                    evidence=[f"Approved token: {appr_token}"],
+                ),
+                [{"tool_name": "approve_command", "success": exec_res.is_success, "summary": f"Executed {rec['command']}"}],
+            )
+
         # A. Quick Time / Date queries
         time_triggers = {
             "what time is it",
@@ -680,21 +718,34 @@ class IrisSupervisor:
             from app.services import mesh_relay_service as mrs
 
             # Extract directory preserving original casing from user_message
-            orig_dir_match = re.search(
-                r'\b(?:in|at|into)\s+([a-zA-Z]:\\[^\s"\'`]+|[a-zA-Z]:/[^\s"\'`]+|[a-zA-Z0-9_\-\\.]+)',
-                user_message,
-                re.IGNORECASE,
-            )
             target_directory = None
-            if orig_dir_match:
-                cand_dir = orig_dir_match.group(1).strip().strip("'\"`")
-                if cand_dir.lower() not in ["terminal", "cli", "powershell", "cmd", "console", "wt", "window", "tab", "laptop", "pc", "phone"]:
-                    target_directory = cand_dir
-                    clean_app = re.sub(r'\b(?:in|at|into)\s+.*$', '', raw_target_app, flags=re.IGNORECASE).strip()
+            if re.search(r'\b(?:in|at|into)\s+(?:my\s+)?iris(?:\s+repo|\s+repository|\s+workspace)?\b', user_message, re.IGNORECASE):
+                target_directory = r"C:\kirtan\IRIS"
+                clean_app = re.sub(r'\b(?:in|at|into)\s+.*$', '', raw_target_app, flags=re.IGNORECASE).strip()
+            elif re.search(r'\b(?:in|at|into)\s+(?:my\s+)?downloads(?:\s+folder)?\b', user_message, re.IGNORECASE):
+                target_directory = "Downloads"
+                clean_app = re.sub(r'\b(?:in|at|into)\s+.*$', '', raw_target_app, flags=re.IGNORECASE).strip()
+            elif re.search(r'\b(?:in|at|into)\s+(?:my\s+)?desktop(?:\s+folder)?\b', user_message, re.IGNORECASE):
+                target_directory = "Desktop"
+                clean_app = re.sub(r'\b(?:in|at|into)\s+.*$', '', raw_target_app, flags=re.IGNORECASE).strip()
+            elif re.search(r'\b(?:in|at|into)\s+(?:my\s+)?documents(?:\s+folder)?\b', user_message, re.IGNORECASE):
+                target_directory = "Documents"
+                clean_app = re.sub(r'\b(?:in|at|into)\s+.*$', '', raw_target_app, flags=re.IGNORECASE).strip()
+            else:
+                orig_dir_match = re.search(
+                    r'\b(?:in|at|into)\s+(?:the\s+|my\s+)?([a-zA-Z]:\\[^\s"\'`]+|[a-zA-Z]:/[^\s"\'`]+|[a-zA-Z0-9_\-\\.]+)',
+                    user_message,
+                    re.IGNORECASE,
+                )
+                if orig_dir_match:
+                    cand_dir = orig_dir_match.group(1).strip().strip("'\"`")
+                    if cand_dir.lower() not in ["terminal", "cli", "powershell", "cmd", "console", "wt", "window", "tab", "laptop", "pc", "phone", "my", "the"]:
+                        target_directory = cand_dir
+                        clean_app = re.sub(r'\b(?:in|at|into)\s+.*$', '', raw_target_app, flags=re.IGNORECASE).strip()
+                    else:
+                        clean_app = raw_target_app
                 else:
                     clean_app = raw_target_app
-            else:
-                clean_app = raw_target_app
 
             clean_app = re.sub(r"\s+(?:for\s+me|please)$", "", clean_app, flags=re.IGNORECASE).strip()
             clean_app_low = clean_app.lower()
@@ -750,6 +801,20 @@ class IrisSupervisor:
                 target_dir = target_directory
                 prompt_text = None
                 should_resume = False
+
+                if clean_app_low in ["downloads", "downloads folder", "my downloads", "my downloads folder"]:
+                    clean_app = "explorer"
+                    target_dir = target_dir or "Downloads"
+                elif clean_app_low in ["desktop", "desktop folder", "my desktop", "my desktop folder"]:
+                    clean_app = "explorer"
+                    target_dir = target_dir or "Desktop"
+                elif clean_app_low in ["documents", "documents folder", "my documents", "my documents folder"]:
+                    clean_app = "explorer"
+                    target_dir = target_dir or "Documents"
+                elif clean_app_low in ["vs code", "vscode", "code"]:
+                    clean_app = "vscode"
+                elif clean_app_low in ["chrome", "google chrome", "browser"]:
+                    clean_app = "chrome"
 
                 if is_agy_cli:
                     target_dir, prompt_text, should_resume = ms.parse_antigravity_cli_intent(user_message, default_dir=r"C:\kirtan\IRIS")

@@ -15,6 +15,14 @@ from app.agent.tools.coding import (
     coding_tools,
 )
 from app.agent.tools.diary import diary_tools
+from app.agent.tools.desktop import (
+    CancelBackgroundJobTool,
+    ExecuteDesktopCommandTool,
+    FindLatestLaptopFileTool,
+    GetBackgroundJobStatusTool,
+    InspectDesktopProcessTool,
+    desktop_tools,
+)
 from app.agent.tools.drive import drive_tools
 from app.agent.tools.email import (
     CreateEmailDraftTool,
@@ -147,4 +155,11 @@ __all__ = [
     # Diary
     "diary_tools",
     "drive_tools",
+    # Desktop CLI & Execution
+    "desktop_tools",
+    "ExecuteDesktopCommandTool",
+    "GetBackgroundJobStatusTool",
+    "CancelBackgroundJobTool",
+    "InspectDesktopProcessTool",
+    "FindLatestLaptopFileTool",
 ]

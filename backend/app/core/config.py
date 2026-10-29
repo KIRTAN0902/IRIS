@@ -143,6 +143,11 @@ class Settings(BaseSettings):
     google_drive_client_secret: str | None = None
     google_drive_redirect_uri: str = "http://localhost:8085/"
 
+    # --- Desktop CLI & Controlled Windows Execution ---
+    desktop_cli_enabled: bool = True
+    desktop_cli_require_approval_for_class_c: bool = True
+    desktop_cli_block_class_d: bool = True
+
     @property
     def is_development(self) -> bool:
         return self.environment.lower() == "development"

@@ -17,6 +17,7 @@ from app.agent.tools.awareness import (
 from app.agent.tools.actions import action_tools
 from app.agent.tools.base import Tool
 from app.agent.tools.coding import coding_tools
+from app.agent.tools.desktop import desktop_tools
 from app.agent.tools.diary import diary_tools
 from app.agent.tools.drive import drive_tools
 from app.agent.tools.email import email_tools
@@ -194,6 +195,10 @@ def create_default_registry() -> ToolRegistry:
 
     # IRIS Mesh Continuity Ecosystem
     for tool in mesh_tools():
+        registry.register(tool)
+
+    # Desktop CLI & Execution Ecosystem
+    for tool in desktop_tools():
         registry.register(tool)
 
     # Diary & Notes notebook
