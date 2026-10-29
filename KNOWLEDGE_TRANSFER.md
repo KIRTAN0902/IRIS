@@ -2,7 +2,7 @@
 
 > **System Designation**: IRIS (*Intelligent Responsive Information System*)  
 > **Repository**: `C:\kirtan\IRIS`  
-> **Version**: 3.1 (Scribe & Omnipresent Task Management, Gemini Live Sovereign Voice Tools, Sovereign Cross-Device Mesh, Bidirectional Native Android/Windows Launcher, Clock-Drift Fault-Tolerant Relay)  
+> **Version**: 3.2 (Controlled Windows Desktop CLI Execution Layer, Permission Classes A/B/C/D, Background Job Manager, Postcondition Verifier, Scribe Task Suite, Sovereign Cross-Device Mesh)  
 > **Target Audience**: Core Engineers, Systems Architects, and Technical Maintainers  
 
 ---
@@ -179,7 +179,7 @@ If the request requires complex execution:
 
 | Sub-Agent | Primary Responsibilities | Available Tools |
 |---|---|---|
-| **Operator** | Workstation OS actions, terminal commands, directory navigation, file reading/writing/searching, Antigravity (AGY) ConPTY autonomous coding dispatch, Windows app launching, and mobile app launching. | `run_terminal_command`, `read_workspace_file`, `write_workspace_file`, `search_files`, `launch_laptop_app`, `launch_mobile_app`, `trigger_autonomous_coding` |
+| **Operator** | Workstation OS actions, controlled PowerShell/CLI execution, background tasks, directory navigation, file reading/writing/searching, process & port inspection, Antigravity (AGY) ConPTY autonomous coding dispatch, Windows app launching, and mobile app launching. | `execute_desktop_command`, `get_background_job_status`, `cancel_background_job`, `inspect_desktop_process`, `find_latest_laptop_file`, `run_laptop_terminal_command`, `read_laptop_file`, `write_laptop_file`, `search_laptop_files`, `launch_laptop_app`, `launch_mobile_app`, `start_autonomous_coding` |
 | **Planner** | Chronos dynamic availability engine, schedule time-blocking, task hierarchies, subtask breakdown, project milestone tracking, daily review generation. | `create_task`, `update_task`, `complete_task`, `get_today_tasks`, `get_tasks`, `create_timeblock`, `get_daily_schedule`, `plan_day_draft` |
 | **Scribe** | Personal knowledge & daily task management, journal entries, Gym lifting splits, daily all-week Yoga routines & asana tracking, habit streaks, personal finance (expenses, cash flow, budgets), startup CRM outreach pipeline. | `get_today_tasks`, `get_tasks`, `get_task`, `create_task`, `update_task`, `complete_task`, `delete_task`, `log_diary_entry`, `read_diary`, `log_workout`, `check_yoga_asana`, `log_expense`, `get_finances`, `update_lead_status` |
 | **BUBBA** | Google Workspace ecosystem integration: Gmail inbox reading, thread triage, drafting replies, sending emails; Google Drive search and document analysis. | `list_unread_emails`, `search_emails`, `draft_email`, `send_email`, `search_drive_files`, `read_drive_document` |
