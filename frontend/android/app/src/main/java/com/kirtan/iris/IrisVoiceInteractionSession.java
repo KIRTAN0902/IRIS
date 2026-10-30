@@ -76,6 +76,15 @@ public class IrisVoiceInteractionSession extends VoiceInteractionSession {
     }
 
     @Override
+    public void onHandleScreenshot(android.graphics.Bitmap screenshot) {
+        super.onHandleScreenshot(screenshot);
+        if (screenshot != null) {
+            Log.i(TAG, "OS delivered assistant screenshot: " + screenshot.getWidth() + "x" + screenshot.getHeight());
+            IrisScreenCaptureManager.setAssistScreenshot(screenshot);
+        }
+    }
+
+    @Override
     public void onHide() {
         super.onHide();
         Log.i(TAG, "VoiceInteractionSession onHide");

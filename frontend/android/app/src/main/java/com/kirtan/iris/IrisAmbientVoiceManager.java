@@ -1,7 +1,7 @@
 package com.kirtan.iris;
 
-import android.app.Activity;
 import android.content.Context;
+import android.graphics.Bitmap;
 import android.media.AudioFormat;
 import android.media.AudioManager;
 import android.media.AudioRecord;
@@ -12,7 +12,6 @@ import android.os.Looper;
 import android.util.Base64;
 import android.util.Log;
 
-import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.ByteArrayOutputStream;
@@ -26,6 +25,17 @@ import okhttp3.WebSocket;
 import okhttp3.WebSocketListener;
 import okio.ByteString;
 
+/**
+ * Universal Ambient Voice Streaming & Hardware Action Manager for IRIS.
+ *
+ * Coordinates:
+ * 1. Automatic 24kHz 16-bit mono PCM capture via AudioRecord.
+ * 2. Full-duplex WebSocket connection to /api/voice/live.
+ * 3. AudioTrack streaming playback.
+ * 4. Screen Perception hardware capture dispatch (delivers screen_capture_response).
+ * 5. Native local tool dispatching (AppLauncherPlugin.launchAppDirect).
+ * 6. Zero Background Surveillance: microphone hardware is opened strictly during active turns.
+ */
 public class IrisAmbientVoiceManager {
 
     private static final String TAG = "IRIS_AmbientVoice";
@@ -33,7 +43,7 @@ public class IrisAmbientVoiceManager {
     private static final String DEFAULT_WS_URL = "wss://irisai.runs-on.dev/api/voice/live";
 
     private final Context mContext;
-    private final IrisOverlayView mOverlayView;
+    private final IrisVisualContainer mVisualContainer;
     private final Handler mMainHandler;
 
     private WebSocket mWebSocket;
@@ -44,9 +54,11 @@ public class IrisAmbientVoiceManager {
     private final AtomicBoolean mIsActive = new AtomicBoolean(false);
     private final AtomicBoolean mIsRecording = new AtomicBoolean(false);
 
-    public IrisAmbientVoiceManager(Context context, IrisOverlayView overlayView) {
+    private Runnable mFollowUpTimeoutRunnable;
+
+    public IrisAmbientVoiceManager(Context context, IrisVisualContainer visualContainer) {
         this.mContext = context;
-        this.mOverlayView = overlayView;
+        this.mVisualContainer = visualContainer;
         this.mMainHandler = new Handler(Looper.getMainLooper());
     }
 
@@ -59,7 +71,9 @@ public class IrisAmbientVoiceManager {
         String targetUrl = (wsUrl != null && !wsUrl.trim().isEmpty()) ? wsUrl : DEFAULT_WS_URL;
         Log.i(TAG, "Starting ambient voice session with endpoint: " + targetUrl);
 
-        mOverlayView.setState(IrisOverlayView.STATE_ACTIVATING);
+        if (mVisualContainer != null) {
+            mVisualContainer.setState(IrisVisualContainer.STATE_ACTIVATING);
+        }
         initAudioTrack();
         connectWebSocket(targetUrl);
     }
@@ -88,17 +102,25 @@ public class IrisAmbientVoiceManager {
     private void connectWebSocket(String url) {
         OkHttpClient client = new OkHttpClient.Builder()
             .readTimeout(0, TimeUnit.MILLISECONDS)
-            .writeTimeout(10, TimeUnit.SECONDS)
+            .connectTimeout(8, TimeUnit.SECONDS)
             .build();
 
-        Request request = new Request.Builder().url(url).build();
-        mWebSocket = client.newWebSocket(request, new WebSocketListener() {
+        Request request = new Request.Builder()
+            .url(url)
+            .addHeader("X-IRIS-Target-Device", "phone_android")
+            .addHeader("X-IRIS-Ambient-Mode", "sphere")
+            .build();
+
+        client.newWebSocket(request, new WebSocketListener() {
             @Override
             public void onOpen(WebSocket webSocket, Response response) {
-                Log.i(TAG, "Ambient WebSocket connected.");
+                mWebSocket = webSocket;
+                Log.i(TAG, "Connected to IRIS Voice WebSocket.");
                 mMainHandler.post(() -> {
-                    mOverlayView.setState(IrisOverlayView.STATE_LISTENING);
-                    mOverlayView.setStatusText("Listening...");
+                    if (mVisualContainer != null) {
+                        mVisualContainer.setState(IrisVisualContainer.STATE_LISTENING);
+                        mVisualContainer.setStatusText("Listening...");
+                    }
                     startAudioRecording();
                 });
             }
@@ -111,34 +133,75 @@ public class IrisAmbientVoiceManager {
 
                     if ("ready".equals(type)) {
                         mMainHandler.post(() -> {
-                            mOverlayView.setState(IrisOverlayView.STATE_LISTENING);
-                            mOverlayView.setStatusText("Listening...");
+                            if (mVisualContainer != null) {
+                                mVisualContainer.setState(IrisVisualContainer.STATE_LISTENING);
+                                mVisualContainer.setStatusText("Listening...");
+                            }
                         });
                     } else if ("text".equals(type)) {
                         String txt = json.optString("text", "");
                         mMainHandler.post(() -> {
-                            if (txt.length() < 50) {
-                                mOverlayView.setStatusText(txt);
+                            if (mVisualContainer != null && txt.length() < 60) {
+                                mVisualContainer.setStatusText(txt);
                             }
                         });
                     } else if ("launch_mobile_app".equals(type)) {
                         String app = json.optString("app", "");
                         mMainHandler.post(() -> {
-                            mOverlayView.setState(IrisOverlayView.STATE_EXECUTING);
-                            mOverlayView.setStatusText("Opening " + app + "...");
+                            if (mVisualContainer != null) {
+                                mVisualContainer.setState(IrisVisualContainer.STATE_EXECUTING);
+                                mVisualContainer.setStatusText("Opening " + app + "...");
+                            }
                             AppLauncherPlugin.launchAppDirect(mContext, app);
                         });
                     } else if ("request_screen_capture".equals(type)) {
+                        String reqId = json.optString("request_id", "");
+                        Log.i(TAG, "Received request_screen_capture from server (id: " + reqId + ")");
                         mMainHandler.post(() -> {
-                            mOverlayView.setState(IrisOverlayView.STATE_PROCESSING);
-                            mOverlayView.setStatusText("Inspecting screen...");
-                            // Screen capture request: send back image response
-                            // If screen perception is needed, client returns image
+                            if (mVisualContainer != null) {
+                                mVisualContainer.setState(IrisVisualContainer.STATE_PROCESSING);
+                                mVisualContainer.setStatusText("Inspecting screen...");
+                            }
+                            // Execute Hardware Screen Capture
+                            IrisScreenCaptureManager.captureCurrentDisplay(mContext, new IrisScreenCaptureManager.CaptureCallback() {
+                                @Override
+                                public void onSuccess(Bitmap bitmap, String base64Jpeg) {
+                                    Log.i(TAG, "Screen captured successfully, delivering response.");
+                                    try {
+                                        JSONObject resp = new JSONObject();
+                                        resp.put("type", "screen_capture_response");
+                                        resp.put("request_id", reqId);
+                                        resp.put("image_base64", base64Jpeg);
+                                        if (mWebSocket != null) {
+                                            mWebSocket.send(resp.toString());
+                                        }
+                                    } catch (Exception e) {
+                                        Log.e(TAG, "Error framing screen_capture_response: " + e.getMessage());
+                                    }
+                                }
+
+                                @Override
+                                public void onError(String errorMessage) {
+                                    Log.w(TAG, "Screen capture failed: " + errorMessage);
+                                    try {
+                                        JSONObject resp = new JSONObject();
+                                        resp.put("type", "screen_capture_response");
+                                        resp.put("request_id", reqId);
+                                        resp.put("error", errorMessage);
+                                        if (mWebSocket != null) {
+                                            mWebSocket.send(resp.toString());
+                                        }
+                                    } catch (Exception ignored) {}
+                                }
+                            });
                         });
                     } else if ("turn_complete".equals(type)) {
                         mMainHandler.post(() -> {
-                            mOverlayView.setState(IrisOverlayView.STATE_LISTENING);
-                            mOverlayView.setStatusText("Listening...");
+                            if (mVisualContainer != null) {
+                                mVisualContainer.setState(IrisVisualContainer.STATE_LISTENING);
+                                mVisualContainer.setStatusText("Listening...");
+                            }
+                            scheduleFollowUpWindow();
                         });
                     }
                 } catch (Exception e) {
@@ -148,13 +211,16 @@ public class IrisAmbientVoiceManager {
 
             @Override
             public void onMessage(WebSocket webSocket, ByteString bytes) {
+                cancelFollowUpTimeout();
                 byte[] rawAudio = bytes.toByteArray();
                 if (mAudioTrack != null && rawAudio.length > 0) {
                     mAudioTrack.write(rawAudio, 0, rawAudio.length);
                     float amp = calculateRmsAmplitude(rawAudio);
                     mMainHandler.post(() -> {
-                        mOverlayView.setState(IrisOverlayView.STATE_SPEAKING);
-                        mOverlayView.setAudioAmplitude(amp);
+                        if (mVisualContainer != null) {
+                            mVisualContainer.setState(IrisVisualContainer.STATE_SPEAKING);
+                            mVisualContainer.setAudioAmplitude(amp);
+                        }
                     });
                 }
             }
@@ -163,8 +229,10 @@ public class IrisAmbientVoiceManager {
             public void onFailure(WebSocket webSocket, Throwable t, Response response) {
                 Log.e(TAG, "WebSocket connection failure: " + t.getMessage());
                 mMainHandler.post(() -> {
-                    mOverlayView.setState(IrisOverlayView.STATE_ERROR);
-                    mOverlayView.setStatusText("Connection error");
+                    if (mVisualContainer != null) {
+                        mVisualContainer.setState(IrisVisualContainer.STATE_ERROR);
+                        mVisualContainer.setStatusText("Connection error");
+                    }
                     mMainHandler.postDelayed(() -> stopSession(), 2000);
                 });
             }
@@ -177,23 +245,49 @@ public class IrisAmbientVoiceManager {
         });
     }
 
+    private void scheduleFollowUpWindow() {
+        cancelFollowUpTimeout();
+        // Keep listening for 8 seconds for conversational follow-ups (e.g. "Now open Chrome")
+        mFollowUpTimeoutRunnable = () -> {
+            Log.i(TAG, "Follow-up window elapsed with no user speech.");
+            if (mVisualContainer != null) {
+                mVisualContainer.setState(IrisVisualContainer.STATE_IDLE);
+            }
+        };
+        mMainHandler.postDelayed(mFollowUpTimeoutRunnable, 8000);
+    }
+
+    private void cancelFollowUpTimeout() {
+        if (mFollowUpTimeoutRunnable != null) {
+            mMainHandler.removeCallbacks(mFollowUpTimeoutRunnable);
+            mFollowUpTimeoutRunnable = null;
+        }
+    }
+
     private void startAudioRecording() {
         if (mIsRecording.getAndSet(true)) return;
 
-        int bufferSize = AudioRecord.getMinBufferSize(
-            SAMPLE_RATE,
-            AudioFormat.CHANNEL_IN_MONO,
-            AudioFormat.ENCODING_PCM_16BIT
-        );
-
         try {
+            int minBuffer = AudioRecord.getMinBufferSize(
+                SAMPLE_RATE,
+                AudioFormat.CHANNEL_IN_MONO,
+                AudioFormat.ENCODING_PCM_16BIT
+            );
+            int bufferSize = Math.max(minBuffer * 2, 4096);
+
             mAudioRecord = new AudioRecord(
                 MediaRecorder.AudioSource.VOICE_RECOGNITION,
                 SAMPLE_RATE,
                 AudioFormat.CHANNEL_IN_MONO,
                 AudioFormat.ENCODING_PCM_16BIT,
-                Math.max(bufferSize * 2, 4096)
+                bufferSize
             );
+
+            if (mAudioRecord.getState() != AudioRecord.STATE_INITIALIZED) {
+                Log.e(TAG, "AudioRecord initialization failed.");
+                mIsRecording.set(false);
+                return;
+            }
 
             mAudioRecord.startRecording();
             mRecordThread = new Thread(() -> {
@@ -204,8 +298,8 @@ public class IrisAmbientVoiceManager {
                         mWebSocket.send(ByteString.of(buffer, 0, read));
                         float rms = calculateRmsAmplitude(buffer, read);
                         mMainHandler.post(() -> {
-                            if (mOverlayView.getState() == IrisOverlayView.STATE_LISTENING) {
-                                mOverlayView.setAudioAmplitude(rms);
+                            if (mVisualContainer != null && mVisualContainer.getState() == IrisVisualContainer.STATE_LISTENING) {
+                                mVisualContainer.setAudioAmplitude(rms);
                             }
                         });
                     }
@@ -215,8 +309,10 @@ public class IrisAmbientVoiceManager {
         } catch (SecurityException se) {
             Log.e(TAG, "Microphone permission denied: " + se.getMessage());
             mMainHandler.post(() -> {
-                mOverlayView.setState(IrisOverlayView.STATE_ERROR);
-                mOverlayView.setStatusText("Microphone permission denied");
+                if (mVisualContainer != null) {
+                    mVisualContainer.setState(IrisVisualContainer.STATE_ERROR);
+                    mVisualContainer.setStatusText("Microphone permission denied");
+                }
             });
         } catch (Exception e) {
             Log.e(TAG, "AudioRecord initialization error: " + e.getMessage(), e);
@@ -238,14 +334,16 @@ public class IrisAmbientVoiceManager {
         }
 
         double rms = Math.sqrt((double) sum / samples);
-        // Normalize 0..32767 to 0.0..1.0
-        return (float) Math.min(1.0, rms / 8000.0);
+        // Normalize 16-bit audio (0 - 32768) to 0.0 - 1.0 with soft knee curve
+        float normalized = (float) (rms / 8000.0);
+        return Math.min(1.0f, Math.max(0.0f, normalized));
     }
 
     public synchronized void stopSession() {
         if (!mIsActive.getAndSet(false)) return;
-        Log.i(TAG, "Stopping ambient voice session.");
 
+        Log.i(TAG, "Stopping ambient voice session, releasing audio hardware.");
+        cancelFollowUpTimeout();
         mIsRecording.set(false);
 
         if (mRecordThread != null) {
@@ -255,7 +353,9 @@ public class IrisAmbientVoiceManager {
 
         if (mAudioRecord != null) {
             try {
-                mAudioRecord.stop();
+                if (mAudioRecord.getRecordingState() == AudioRecord.RECORDSTATE_RECORDING) {
+                    mAudioRecord.stop();
+                }
                 mAudioRecord.release();
             } catch (Exception ignored) {}
             mAudioRecord = null;
@@ -271,11 +371,20 @@ public class IrisAmbientVoiceManager {
 
         if (mWebSocket != null) {
             try {
-                mWebSocket.close(1000, "Ambient session ended by user");
+                mWebSocket.close(1000, "Turn completed");
             } catch (Exception ignored) {}
             mWebSocket = null;
         }
 
-        mOverlayView.dismiss();
+        mMainHandler.post(() -> {
+            if (mVisualContainer != null) {
+                mVisualContainer.setState(IrisVisualContainer.STATE_IDLE);
+                mVisualContainer.setAudioAmplitude(0.0f);
+            }
+        });
+    }
+
+    public boolean isActive() {
+        return mIsActive.get();
     }
 }

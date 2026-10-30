@@ -17,19 +17,38 @@ export function isScreenCaptureSupported(): boolean {
 }
 
 async function captureViaNativeBridge(): Promise<CapturedScreen | null> {
-  const cap = typeof window !== "undefined" ? (window as unknown as { Capacitor?: { isNativePlatform?: () => boolean; Plugins?: { AppLauncher?: { captureScreen?: () => Promise<{ success: boolean; image_base64?: string }> } } } }).Capacitor : undefined;
-  if (!cap || !cap.isNativePlatform?.() || !cap.Plugins?.AppLauncher?.captureScreen) {
+  const cap = typeof window !== "undefined" ? (window as unknown as { Capacitor?: { isNativePlatform?: () => boolean; Plugins?: { AppLauncher?: { captureScreen?: () => Promise<{ success: boolean; image_base64?: string }> }; IrisAmbient?: { captureScreenNative?: () => Promise<{ success: boolean; image_base64?: string }> } } } }).Capacitor : undefined;
+  if (!cap || !cap.isNativePlatform?.()) {
     return null;
   }
 
+  // 1. Prioritize IrisAmbient native screen capture (hardware MediaProjection / VoiceInteractionSession)
   try {
-    const res = await cap.Plugins.AppLauncher.captureScreen();
-    if (res?.success && res.image_base64) {
-      const response = await fetch(res.image_base64);
-      const blob = await response.blob();
-      const fileName = `screen-capture-${Date.now()}.jpg`;
-      const file = new File([blob], fileName, { type: "image/jpeg" });
-      return { file, preview: res.image_base64 };
+    if (cap.Plugins?.IrisAmbient?.captureScreenNative) {
+      const res = await cap.Plugins.IrisAmbient.captureScreenNative();
+      if (res?.success && res.image_base64) {
+        const response = await fetch(res.image_base64);
+        const blob = await response.blob();
+        const fileName = `screen-capture-${Date.now()}.jpg`;
+        const file = new File([blob], fileName, { type: "image/jpeg" });
+        return { file, preview: res.image_base64 };
+      }
+    }
+  } catch (err) {
+    console.warn("IrisAmbient.captureScreenNative error:", err);
+  }
+
+  // 2. Fallback to AppLauncher captureScreen
+  try {
+    if (cap.Plugins?.AppLauncher?.captureScreen) {
+      const res = await cap.Plugins.AppLauncher.captureScreen();
+      if (res?.success && res.image_base64) {
+        const response = await fetch(res.image_base64);
+        const blob = await response.blob();
+        const fileName = `screen-capture-${Date.now()}.jpg`;
+        const file = new File([blob], fileName, { type: "image/jpeg" });
+        return { file, preview: res.image_base64 };
+      }
     }
   } catch (err) {
     console.warn("Native screen capture bridge returned error:", err);
@@ -156,20 +175,26 @@ async function captureViaDom(): Promise<CapturedScreen | null> {
 }
 
 export async function captureCurrentScreen(): Promise<CapturedScreen | null> {
-  // 1. Try Native Android Bridge if in Capacitor
-  try {
-    const nativeRes = await captureViaNativeBridge();
-    if (nativeRes) return nativeRes;
-  } catch (e) {
-    console.debug("Native bridge capture skipped:", e);
+  const isNative = typeof window !== "undefined" && Boolean((window as unknown as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor?.isNativePlatform?.());
+
+  // 1. Try Native Android Bridge if in Capacitor (Hardware screen capture via MediaProjection / VoiceInteraction)
+  if (isNative) {
+    try {
+      const nativeRes = await captureViaNativeBridge();
+      if (nativeRes) return nativeRes;
+    } catch (e) {
+      console.debug("Native bridge capture skipped:", e);
+    }
   }
 
-  // 2. Try browser getDisplayMedia API (Desktop Chrome / Electron)
-  try {
-    const displayMediaRes = await captureViaGetDisplayMedia();
-    if (displayMediaRes) return displayMediaRes;
-  } catch (e) {
-    console.debug("getDisplayMedia skipped or unsupported:", e);
+  // 2. Try browser getDisplayMedia API (Desktop Chrome / Electron only - bypass on Android WebView)
+  if (!isNative) {
+    try {
+      const displayMediaRes = await captureViaGetDisplayMedia();
+      if (displayMediaRes) return displayMediaRes;
+    } catch (e) {
+      console.debug("getDisplayMedia skipped or unsupported:", e);
+    }
   }
 
   // 3. Fallback to client-side DOM rendering (Universal mobile & WebView fallback)

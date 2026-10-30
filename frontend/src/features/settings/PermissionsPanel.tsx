@@ -4,9 +4,11 @@ import {
   Bell,
   Camera,
   CheckCircle2,
+  CircleDot,
   CreditCard,
   ExternalLink,
   Mic,
+  Radio,
   ShieldCheck,
   Smartphone,
   Sparkles,
@@ -18,9 +20,13 @@ import { openSystemAppSettings } from "@/lib/appLauncher";
 import {
   checkAssistantRole,
   checkOverlayPermission,
+  getPreferSphereMode,
   requestAssistantRole,
   requestOverlayPermission,
+  setPreferSphereMode,
+  stopFloatingSphere,
   triggerAmbientAssistant,
+  triggerFloatingSphere,
 } from "@/lib/irisAmbient";
 
 type PermissionStatus = "granted" | "denied" | "prompt" | "unknown";
@@ -32,6 +38,7 @@ export function PermissionsPanel() {
   const [upiListenerGranted, setUpiListenerGranted] = useState(false);
   const [assistantRoleGranted, setAssistantRoleGranted] = useState(false);
   const [overlayGranted, setOverlayGranted] = useState(false);
+  const [preferSphere, setPreferSphere] = useState(true);
   const [actionNotice, setActionNotice] = useState<string | null>(null);
   const [isRequestingAll, setIsRequestingAll] = useState(false);
 
@@ -83,6 +90,8 @@ export function PermissionsPanel() {
     setAssistantRoleGranted(hasAssistant);
     const hasOverlay = await checkOverlayPermission();
     setOverlayGranted(hasOverlay);
+    const spherePref = await getPreferSphereMode();
+    setPreferSphere(spherePref);
   };
 
   useEffect(() => {
@@ -152,6 +161,39 @@ export function PermissionsPanel() {
     } finally {
       setIsRequestingAll(false);
     }
+  };
+
+  const handleToggleSphere = async () => {
+    const nextVal = !preferSphere;
+    const ok = await setPreferSphereMode(nextVal);
+    if (ok) {
+      setPreferSphere(nextVal);
+      setActionNotice(
+        nextVal
+          ? "Ambient activations and gestures will now launch the compact Floating Voice Sphere."
+          : "Gestures will launch the standard full-screen IRIS dashboard."
+      );
+    }
+  };
+
+  const handleTestSphere = async () => {
+    if (!overlayGranted) {
+      setActionNotice("Overlay permission required. Tap 'Allow Overlay' first.");
+      await requestOverlayPermission();
+      await checkPermissions();
+      return;
+    }
+    const started = await triggerFloatingSphere();
+    if (started) {
+      setActionNotice("Floating IRIS Sphere launched! Speak to it or tap to dismiss.");
+    } else {
+      setActionNotice("Could not launch Floating Sphere. Please verify overlay permission.");
+    }
+  };
+
+  const handleStopSphere = async () => {
+    await stopFloatingSphere();
+    setActionNotice("Floating Sphere dismissed.");
   };
 
   const grantedCount =
@@ -354,32 +396,82 @@ export function PermissionsPanel() {
       {isMobile && (
         <Panel title="Advanced Android System Integration (P4 Ambient JARVIS)" lamp={<Lamp tone="go" />}>
           <div className="space-y-4 pt-2 text-[13px]">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-ai/5 border border-ai/20 rounded-xl p-3.5">
-              <div>
-                <span className="font-semibold text-ink text-[13px] flex items-center gap-1.5">
-                  <Sparkles size={15} className="text-ai" />
-                  <span>Ambient Voice-First Experience</span>
-                </span>
-                <p className="text-[12px] text-ink-dim mt-0.5">
-                  Summon IRIS instantly from any app (WhatsApp, Chrome, Games) or the home screen without navigating into the app.
+            {/* Primary Ambient Entry: Floating Voice Sphere */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-gradient-to-r from-ai/10 via-ai/5 to-transparent border border-ai/30 rounded-xl p-4">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 rounded-full bg-ai/20 text-ai">
+                    <CircleDot size={18} className="animate-pulse" />
+                  </div>
+                  <h4 className="font-semibold text-ink text-[14px]">
+                    Floating IRIS Voice Sphere (Realme GT 7T Experience)
+                  </h4>
+                  <span className="inline-flex items-center gap-1 rounded-full bg-ai/15 px-2 py-0.5 text-[10px] font-semibold text-ai border border-ai/25">
+                    Recommended
+                  </span>
+                </div>
+                <p className="text-[12px] text-ink-dim max-w-xl">
+                  Replaces full-app activation with a compact 68dp holographic voice orb above any running app (WhatsApp, Chrome, Games) with instant listening on unlock or gesture.
                 </p>
+                <div className="flex items-center gap-2 pt-1 text-[11px] text-ink-faint">
+                  <span>Target Launcher:</span>
+                  <code className="text-ai bg-ops-panel px-1.5 py-0.5 rounded border border-ops-line">
+                    IRIS Voice Sphere
+                  </code>
+                  <span>• Overlay Status:</span>
+                  <span className={overlayGranted ? "text-emerald-400 font-medium" : "text-amber-400 font-medium"}>
+                    {overlayGranted ? "Granted" : "Permission Needed"}
+                  </span>
+                </div>
               </div>
-              <Button
-                variant="ai"
-                size="sm"
-                onClick={async () => {
-                  const started = await triggerAmbientAssistant();
-                  if (started) {
-                    setActionNotice("Triggered ambient assistant overlay!");
-                  } else {
-                    setActionNotice("Could not trigger overlay. Verify overlay permission is granted.");
-                  }
-                }}
-                className="shrink-0 text-[12px] flex items-center gap-1.5"
-              >
-                <Sparkles size={13} />
-                <span>Test Ambient Overlay</span>
-              </Button>
+
+              <div className="flex flex-wrap sm:flex-col items-stretch sm:items-end gap-2 shrink-0">
+                <Button
+                  variant={preferSphere ? "ai" : "outline"}
+                  size="sm"
+                  onClick={handleToggleSphere}
+                  className="text-[12px] flex items-center justify-center gap-1.5"
+                >
+                  <Radio size={13} />
+                  <span>{preferSphere ? "Sphere Mode: Active" : "Sphere Mode: Inactive"}</span>
+                </Button>
+                <div className="flex items-center gap-1.5">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleTestSphere}
+                    className="text-[11px] flex items-center gap-1"
+                  >
+                    <CircleDot size={12} className="text-ai" />
+                    <span>Launch Sphere</span>
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleStopSphere}
+                    className="text-[11px] text-ink-faint hover:text-ink"
+                  >
+                    <span>Dismiss</span>
+                  </Button>
+                </div>
+              </div>
+            </div>
+
+            {/* Realme GT 7T Gesture Guide Card */}
+            <div className="rounded-xl border border-ops-line bg-ops-panel/60 p-3.5 text-[12px] space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="font-medium text-ink flex items-center gap-1.5">
+                  <Smartphone size={14} className="text-ai" />
+                  <span>Realme GT 7T Setup Guide (Screen-Off Gestures)</span>
+                </span>
+                <span className="text-[10px] text-ink-faint">ColorOS / Realme UI 5.0+</span>
+              </div>
+              <ol className="list-decimal list-inside space-y-1 text-ink-dim text-[11px]">
+                <li>Open phone <strong className="text-ink">Settings</strong> → <strong className="text-ink">Special features</strong> → <strong className="text-ink">Gestures & motions</strong> → <strong className="text-ink">Screen-off gestures</strong>.</li>
+                <li>Tap <strong className="text-ink">Draw M</strong> (or <strong className="text-ink">Draw W</strong>) → Select <strong className="text-ink">Open an app</strong>.</li>
+                <li>Choose <strong className="text-ai">IRIS Voice Sphere</strong> (not the main IRIS dashboard).</li>
+                <li>Now drawing the gesture on your screen instantly brings up the floating sphere with immediate microphone listening!</li>
+              </ol>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
@@ -437,18 +529,36 @@ export function PermissionsPanel() {
                     Allows the luminous Google Assistant-style edge-glow border to render over running apps.
                   </p>
                 </div>
-                <Button
-                  variant={overlayGranted ? "ghost" : "outline"}
-                  size="sm"
-                  onClick={async () => {
-                    await requestOverlayPermission();
-                    await checkPermissions();
-                  }}
-                  className="w-full justify-center gap-1 text-[11px]"
-                >
-                  <span>{overlayGranted ? "Active" : "Allow Overlay"}</span>
-                  <ExternalLink size={11} />
-                </Button>
+                <div className="flex items-center gap-1.5">
+                  <Button
+                    variant={overlayGranted ? "ghost" : "outline"}
+                    size="sm"
+                    onClick={async () => {
+                      await requestOverlayPermission();
+                      await checkPermissions();
+                    }}
+                    className="flex-1 justify-center gap-1 text-[11px]"
+                  >
+                    <span>{overlayGranted ? "Active" : "Allow Overlay"}</span>
+                    <ExternalLink size={11} />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={async () => {
+                      const ok = await triggerAmbientAssistant();
+                      if (!ok) {
+                        setActionNotice("Could not start Edge-Glow overlay. Ensure overlay permission is granted.");
+                      } else {
+                        setActionNotice("Ambient Edge-Glow overlay launched.");
+                      }
+                    }}
+                    className="justify-center gap-1 text-[11px]"
+                  >
+                    <Sparkles size={11} className="text-ai" />
+                    <span>Test</span>
+                  </Button>
+                </div>
               </div>
 
               {/* 3. System App Info */}

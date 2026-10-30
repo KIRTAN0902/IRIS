@@ -20,7 +20,7 @@ import android.view.View;
 import android.view.animation.AccelerateDecelerateInterpolator;
 import android.view.animation.DecelerateInterpolator;
 
-public class IrisOverlayView extends View {
+public class IrisOverlayView extends View implements IrisVisualContainer {
 
     public static final int STATE_IDLE = 0;
     public static final int STATE_ACTIVATING = 1;

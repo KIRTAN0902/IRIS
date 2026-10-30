@@ -16,12 +16,12 @@ public class IrisQuickTileService extends TileService {
 
         // Check if we can draw overlays directly
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && Settings.canDrawOverlays(this)) {
-            IrisAmbientService.startAmbient(this);
+            IrisSphereService.startSphere(this);
             return;
         }
 
-        // Fallback to AssistantActivity with ambient action
-        Intent intent = new Intent(this, AssistantActivity.class);
+        // Fallback to IrisSphereActivity
+        Intent intent = new Intent(this, IrisSphereActivity.class);
         intent.setAction("com.kirtan.iris.ACTION_AMBIENT_VOICE");
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
 

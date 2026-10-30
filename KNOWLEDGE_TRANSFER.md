@@ -546,7 +546,23 @@ flowchart TD
 - **1x1 Glowing Home Widget**: `IrisWidgetProvider` for instantaneous one-touch launcher entry.
 - **OEM Back-Tap Notice**: ColorOS/Realme UI restricts back-tap gestures to built-in system apps (Flashlight, Camera) without exposing a public third-party Android API. Simulating back-tap via continuous accelerometer polling causes severe battery drain and is actively terminated by OEM power managers. Therefore, native Power Button, Corner Swipe, and Quick Tile are the certified, zero-drain activation mechanisms.
 
-### 2. Luminous Edge-Glow Visual Engine (`IrisOverlayView.java`)
+### 2. Floating IRIS Voice Sphere & Ambient Visual Engine
+
+#### A. Floating IRIS Voice Sphere (`IrisSphereView.java`, `IrisSphereService.java`, `IrisSphereActivity.java`)
+- **Primary Ambient Experience**: Replaces full-application activation with a compact 68dp holographic orb floating directly on the Android `WindowManager` (`TYPE_APPLICATION_OVERLAY`).
+- **Zero Full-App Interruption**: Calling `IrisSphereActivity` launches `IrisSphereService`, triggers `moveTaskToBack(true)`, and finishes immediately. The underlying application (e.g. WhatsApp, Chrome, YouTube) remains uninterrupted on screen while the sphere hovers above it.
+- **Immediate Listening**: Upon appearance, `IrisAmbientVoiceManager` starts audio capture immediately without requiring any secondary user tap.
+- **Visual Design & Physics**:
+  - *Multi-Layer Depth*: Deep dark glass disc (`#141724`), central glowing nucleus (`#00E5FF`), rotating orbital energy ring (`#7C4DFF`), dynamic particle glow.
+  - *State Machine*: Reacts to conversational state (`STATE_LISTENING`, `STATE_PROCESSING`, `STATE_SPEAKING`, `STATE_EXECUTING`, `STATE_IDLE`).
+  - *Audio Amplitude Pulsing*: Nucleus and orbital rings pulse in real-time with incoming/outgoing microphone and speaker RMS levels.
+  - *Interactive Physics*: Smooth dragging with display boundary clamping, velocity flicking, and magnetic snapping to the nearest screen edge (left or right).
+  - *Micro-Gestures*: Single tap toggles listening/pause; long-press or fling downward dismisses the sphere.
+- **Realme GT 7T Gesture Integration**:
+  - `IrisSphereActivity` is registered with `category.LAUNCHER` under the label `"IRIS Voice Sphere"`.
+  - In Realme UI (*Settings → Special features → Gestures & motions → Screen-off gestures → Draw M → Open an app*), selecting **IRIS Voice Sphere** activates the voice orb directly from the lock screen upon unlock.
+
+#### B. Luminous Edge-Glow Visual Engine (`IrisOverlayView.java`)
 - **Google Assistant-Inspired Aesthetics**: Displays a full-perimeter animated luminous glow around display edges without obscuring the underlying application content.
 - **Real-Time Audio Amplitude Modulation**: Real-time microphone RMS amplitude modulates border thickness and glow intensity dynamically during speech (`setAudioAmplitude`).
 - **State Machine**:
@@ -557,7 +573,26 @@ flowchart TD
   - `STATE_ERROR`: Crimson (`#FF5252`) indication.
 - **Fluid Dismissal**: Tapping outside or swiping down instantly dismisses the overlay and terminates audio pipelines.
 
-### 3. Audio Streaming, Zero Surveillance & Privacy Architecture (`IrisAmbientVoiceManager.java`)
+### 3. Screen Perception Architecture & Hardware Framebuffer Capture (`IrisScreenCaptureManager.java`)
+- **Dual-Path Hardware Framebuffer Engine**:
+  1. *VoiceInteractionSession Path*: When running as the default system digital assistant, uses Android's native `VoiceInteractionSession.onHandleScreenshot(Bitmap screenshot)` hook to obtain unoccluded hardware framebuffer snapshots directly from the window manager without user prompts.
+  2. *MediaProjection / VirtualDisplay Path*: Uses Android's `MediaProjection` API paired with an `ImageReader` (`PixelFormat.RGBA_8888`) and `VirtualDisplay` to capture display output in 1080p, converting downsampled framebuffers into JPEG byte arrays.
+- **Native Android Bridge Fallback Fix**:
+  - Standard web browsers support `navigator.mediaDevices.getDisplayMedia()`, but Android WebView Chromium does not, producing the error `"screen perception is not supported by this browser engine"`.
+  - `screenCapture.ts` cleanly separates environments: native Android routes directly to `IrisAmbient.captureScreenNative()` and `AppLauncher.captureScreen()`, while desktop Chrome / Electron uses `getDisplayMedia()`.
+- **WebSocket Roundtrip Protocol**:
+  1. Spoken query *"What is on my screen?"* triggers Gemini Live / P1 Supervisor tool `inspect_screen`.
+  2. Backend `ScreenPerceptionService` emits WebSocket message `{"type": "request_screen_capture", "request_id": "cap_xyz"}`.
+  3. `IrisAmbientVoiceManager` captures the hardware framebuffer via `IrisScreenCaptureManager.captureCurrentDisplay` and replies with `{"type": "screen_capture_response", "request_id": "cap_xyz", "image_base64": "..."}`.
+  4. Backend fulfills the pending future, analyzes the buffer ephemerally through `VisionService`, and updates `ActiveVisualPerception`.
+- **Zero-Image-Storage Guarantee**:
+  - Raw image bytes exist strictly in RAM during model inference; no screenshots are saved to disk, object stores, or databases.
+  - Only structured text summaries, extracted code, and UI elements are retained in the 120s active visual perception cache.
+- **Change Detection & Grounded Follow-up**:
+  - Follow-up questions asked within 120 seconds are grounded directly in the active visual context without taking redundant screenshots.
+  - Queries after 120 seconds trigger change detection, prompting the user: *"My previous view of your screen is X minute(s) old and may have changed. Please ask me to inspect your screen again."*
+
+### 4. Audio Streaming, Zero Surveillance & Privacy Architecture (`IrisAmbientVoiceManager.java`)
 - **Zero Background Surveillance**: Microphone hardware is **never** accessed while idle. Audio hardware is opened only on user-initiated activation and immediately stopped and released upon turn completion or dismissal. Fully complies with Android 14/15 `FOREGROUND_SERVICE_MICROPHONE` enforcement.
 - **Audio Pipeline**: 24,000 Hz, 16-bit mono PCM capture and playback.
 - **Direct WebSocket Link**: Streams directly to `/api/voice/live` on the production cloud or local daemon.

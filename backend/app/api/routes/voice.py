@@ -235,8 +235,7 @@ async def voice_live_websocket(
                         elif p_type == "end_of_turn":
                             await session.send_client_content(turns=[], turn_complete=True)
                         elif p_type == "screen_capture_response":
-                            b64 = payload.get("image_base64", "")
-                            screen_perception_service.complete_capture_future(b64)
+                            screen_perception_service.complete_capture_future(payload)
                         elif p_type == "interrupt":
                             pass
                         elif p_type == "ping":

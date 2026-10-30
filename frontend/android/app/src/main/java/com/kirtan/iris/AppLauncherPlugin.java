@@ -395,47 +395,63 @@ public class AppLauncherPlugin extends Plugin {
 
     @PluginMethod
     public void captureScreen(PluginCall call) {
+        Context context = getContext();
         Activity activity = getActivity();
-        if (activity == null || activity.getWindow() == null) {
-            call.reject("Activity or Window is not available");
-            return;
-        }
 
-        View decorView = activity.getWindow().getDecorView();
-        int width = decorView.getWidth();
-        int height = decorView.getHeight();
-
-        if (width <= 0 || height <= 0) {
-            width = 1080;
-            height = 1920;
-        }
-
-        final Bitmap bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
-        int[] location = new int[2];
-        decorView.getLocationInWindow(location);
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            try {
-                PixelCopy.request(
-                    activity.getWindow(),
-                    new Rect(location[0], location[1], location[0] + width, location[1] + height),
-                    bitmap,
-                    copyResult -> {
-                        if (copyResult == PixelCopy.SUCCESS) {
-                            returnBitmapAsBase64(bitmap, call);
-                        } else {
-                            fallbackViewDraw(decorView, bitmap, call);
-                        }
-                    },
-                    new Handler(Looper.getMainLooper())
-                );
-                return;
-            } catch (Exception e) {
-                Log.w(TAG, "PixelCopy request failed, falling back to Canvas draw", e);
+        // 1. Prioritize Hardware Screen Perception via IrisScreenCaptureManager
+        IrisScreenCaptureManager.captureCurrentDisplay(context != null ? context : activity, new IrisScreenCaptureManager.CaptureCallback() {
+            @Override
+            public void onSuccess(Bitmap bitmap, String base64Jpeg) {
+                JSObject ret = new JSObject();
+                ret.put("success", true);
+                ret.put("image_base64", base64Jpeg);
+                call.resolve(ret);
             }
-        }
 
-        fallbackViewDraw(decorView, bitmap, call);
+            @Override
+            public void onError(String errorMessage) {
+                Log.w(TAG, "IrisScreenCaptureManager failed: " + errorMessage + ", attempting PixelCopy fallback.");
+                if (activity == null || activity.getWindow() == null) {
+                    call.reject("Screen capture failed: " + errorMessage);
+                    return;
+                }
+
+                View decorView = activity.getWindow().getDecorView();
+                int width = decorView.getWidth();
+                int height = decorView.getHeight();
+
+                if (width <= 0 || height <= 0) {
+                    width = 1080;
+                    height = 1920;
+                }
+
+                final Bitmap fallbackBmp = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+                int[] location = new int[2];
+                decorView.getLocationInWindow(location);
+
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    try {
+                        PixelCopy.request(
+                            activity.getWindow(),
+                            new Rect(location[0], location[1], location[0] + width, location[1] + height),
+                            fallbackBmp,
+                            copyResult -> {
+                                if (copyResult == PixelCopy.SUCCESS) {
+                                    returnBitmapAsBase64(fallbackBmp, call);
+                                } else {
+                                    fallbackViewDraw(decorView, fallbackBmp, call);
+                                }
+                            },
+                            new Handler(Looper.getMainLooper())
+                        );
+                        return;
+                    } catch (Exception e) {
+                        Log.w(TAG, "PixelCopy fallback failed: " + e.getMessage());
+                    }
+                }
+                fallbackViewDraw(decorView, fallbackBmp, call);
+            }
+        });
     }
 
     private void fallbackViewDraw(View view, Bitmap bitmap, PluginCall call) {

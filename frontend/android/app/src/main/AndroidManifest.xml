@@ -70,6 +70,39 @@
             android:foregroundServiceType="microphone"
             android:exported="false" />
 
+        <!-- Floating Sphere Foreground Service -->
+        <service
+            android:name=".IrisSphereService"
+            android:label="IRIS Voice Sphere"
+            android:foregroundServiceType="microphone"
+            android:exported="false" />
+
+        <!-- Floating Sphere Native Launcher Activity (Screen-off gestures / Shortcuts) -->
+        <activity
+            android:name=".IrisSphereActivity"
+            android:label="IRIS Voice Sphere"
+            android:theme="@style/AppTheme.Translucent"
+            android:launchMode="singleTask"
+            android:excludeFromRecents="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.ASSIST" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VOICE_COMMAND" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="com.kirtan.iris.ACTION_SPHERE" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
         <!-- Android System Digital Assistant Service -->
         <service
             android:name=".IrisVoiceInteractionService"

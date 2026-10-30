@@ -1,6 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
     <shortcut
+        android:shortcutId="floating_sphere"
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="Voice Sphere"
+        android:shortcutLongLabel="IRIS Voice Sphere">
+        <intent
+            android:action="com.kirtan.iris.ACTION_SPHERE"
+            android:targetPackage="com.kirtan.iris"
+            android:targetClass="com.kirtan.iris.IrisSphereActivity" />
+        <categories android:name="android.shortcut.conversation" />
+    </shortcut>
+    <shortcut
         android:shortcutId="ambient_voice"
         android:enabled="true"
         android:icon="@mipmap/ic_launcher"

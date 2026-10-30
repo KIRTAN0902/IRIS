@@ -3,6 +3,8 @@ package com.kirtan.iris;
 import android.app.role.RoleManager;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
+import android.graphics.Bitmap;
 import android.net.Uri;
 import android.os.Build;
 import android.provider.Settings;
@@ -18,6 +20,8 @@ import com.getcapacitor.annotation.CapacitorPlugin;
 public class IrisAmbientPlugin extends Plugin {
 
     private static final String TAG = "IRIS_AmbientPlugin";
+    private static final String PREFS_NAME = "iris_settings";
+    private static final String KEY_PREFER_SPHERE = "prefer_floating_sphere";
 
     @PluginMethod
     public void isAssistantRoleGranted(PluginCall call) {
@@ -115,5 +119,76 @@ public class IrisAmbientPlugin extends Plugin {
         } catch (Exception e) {
             call.reject("Failed to trigger ambient session: " + e.getMessage());
         }
+    }
+
+    @PluginMethod
+    public void triggerFloatingSphere(PluginCall call) {
+        Context context = getContext();
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && Settings.canDrawOverlays(context)) {
+                IrisSphereService.startSphere(context);
+            } else {
+                Intent intent = new Intent(context, IrisSphereActivity.class);
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                context.startActivity(intent);
+            }
+            JSObject ret = new JSObject();
+            ret.put("success", true);
+            call.resolve(ret);
+        } catch (Exception e) {
+            call.reject("Failed to trigger floating sphere: " + e.getMessage());
+        }
+    }
+
+    @PluginMethod
+    public void stopFloatingSphere(PluginCall call) {
+        Context context = getContext();
+        try {
+            IrisSphereService.stopSphere(context);
+            JSObject ret = new JSObject();
+            ret.put("success", true);
+            call.resolve(ret);
+        } catch (Exception e) {
+            call.reject("Failed to stop floating sphere: " + e.getMessage());
+        }
+    }
+
+    @PluginMethod
+    public void setPreferSphereMode(PluginCall call) {
+        boolean enabled = call.getBoolean("enabled", true);
+        SharedPreferences prefs = getContext().getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+        prefs.edit().putBoolean(KEY_PREFER_SPHERE, enabled).apply();
+        JSObject ret = new JSObject();
+        ret.put("success", true);
+        ret.put("preferSphereMode", enabled);
+        call.resolve(ret);
+    }
+
+    @PluginMethod
+    public void getPreferSphereMode(PluginCall call) {
+        SharedPreferences prefs = getContext().getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+        boolean enabled = prefs.getBoolean(KEY_PREFER_SPHERE, true);
+        JSObject ret = new JSObject();
+        ret.put("preferSphereMode", enabled);
+        call.resolve(ret);
+    }
+
+    @PluginMethod
+    public void captureScreenNative(PluginCall call) {
+        Context context = getContext();
+        IrisScreenCaptureManager.captureCurrentDisplay(context, new IrisScreenCaptureManager.CaptureCallback() {
+            @Override
+            public void onSuccess(Bitmap bitmap, String base64Jpeg) {
+                JSObject ret = new JSObject();
+                ret.put("success", true);
+                ret.put("image_base64", base64Jpeg);
+                call.resolve(ret);
+            }
+
+            @Override
+            public void onError(String errorMessage) {
+                call.reject("Screen capture failed: " + errorMessage);
+            }
+        });
     }
 }
