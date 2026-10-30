@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.agent.schemas import ToolResult
-from app.agent.tools.base import Tool
+from app.agent.tools.base import RiskLevel, Tool, VerificationStrategy
 from app.models.ai_memory import AIMemory
 from app.models.user import User
 from app.schemas.memory import MEMORY_CATEGORY_GUIDE, MemoryCategory
@@ -32,6 +32,16 @@ class SaveMemoryTool(Tool):
     name = "save_memory"
     description = "Store a durable fact, preference, instruction, or context into IRIS long-term memory."
     parameters_schema = SaveMemoryParams
+    risk_level = RiskLevel.ORDINARY_WRITE
+    verification_strategy = VerificationStrategy.DB_CHECK
+    category = "memory"
+
+    async def verify(self, db: Session, user: User, result: ToolResult, **kwargs: Any) -> bool:
+        mem_id = result.data.get("id") if isinstance(result.data, dict) else None
+        if not mem_id:
+            return False
+        mem = db.query(AIMemory).filter(AIMemory.id == mem_id, AIMemory.user_id == user.id).first()
+        return mem is not None
 
     async def run(self, db: Session, user: User, **kwargs: Any) -> ToolResult:
         content = kwargs["content"]
@@ -120,6 +130,20 @@ class ForgetMemoryTool(Tool):
     name = "forget_memory"
     description = "Remove or forget an outdated memory or preference by ID or key."
     parameters_schema = ForgetMemoryParams
+    risk_level = RiskLevel.REVERSIBLE
+    verification_strategy = VerificationStrategy.DB_CHECK
+    category = "memory"
+
+    async def verify(self, db: Session, user: User, result: ToolResult, **kwargs: Any) -> bool:
+        memory_id = kwargs.get("memory_id")
+        key = kwargs.get("key")
+        if memory_id:
+            m = db.query(AIMemory).filter(AIMemory.id == memory_id, AIMemory.user_id == user.id).first()
+            return m is None
+        if key:
+            m = db.query(AIMemory).filter(AIMemory.user_id == user.id, AIMemory.key == key.lower().strip()).first()
+            return m is None
+        return True
 
     async def run(self, db: Session, user: User, **kwargs: Any) -> ToolResult:
         memory_id = kwargs.get("memory_id")

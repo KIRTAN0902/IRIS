@@ -58,6 +58,7 @@ class BaseSubAgent:
         user: User,
         instruction: str,
         context: dict[str, Any] | None = None,
+        history: list[ChatMessage] | None = None,
     ) -> SubAgentReport:
         """Run the sub-agent loop against the user instruction and return an execution report."""
         extra_ctx = ""
@@ -72,7 +73,7 @@ class BaseSubAgent:
                 db=db,
                 user=user,
                 system_prompt=full_system,
-                history=[],
+                history=history or [],
                 user_message=instruction,
             )
 

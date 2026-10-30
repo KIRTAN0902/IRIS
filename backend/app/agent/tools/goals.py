@@ -9,7 +9,8 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.agent.schemas import ToolResult
-from app.agent.tools.base import Tool
+from app.agent.tools.base import RiskLevel, Tool, VerificationStrategy
+from app.models.goal import Goal
 from app.models.enums import GoalStatus, LifeArea
 from app.models.user import User
 from app.schemas.goal import GoalCreate, GoalUpdate
@@ -79,6 +80,16 @@ class CreateGoalTool(Tool):
     name = "create_goal"
     description = "Create a new goal or sub-goal in IRIS."
     parameters_schema = CreateGoalParams
+    risk_level = RiskLevel.ORDINARY_WRITE
+    verification_strategy = VerificationStrategy.DB_CHECK
+    category = "goals"
+
+    async def verify(self, db: Session, user: User, result: ToolResult, **kwargs: Any) -> bool:
+        goal_id = result.data.get("goal_id") if isinstance(result.data, dict) else None
+        if not goal_id:
+            return False
+        g = db.query(Goal).filter(Goal.id == goal_id, Goal.user_id == user.id).first()
+        return g is not None
 
     async def run(self, db: Session, user: User, **kwargs: Any) -> ToolResult:
         goal_in = GoalCreate(**kwargs)
@@ -110,6 +121,16 @@ class UpdateGoalTool(Tool):
     name = "update_goal"
     description = "Update goal progress, status, target value, or deadline."
     parameters_schema = UpdateGoalParams
+    risk_level = RiskLevel.ORDINARY_WRITE
+    verification_strategy = VerificationStrategy.DB_CHECK
+    category = "goals"
+
+    async def verify(self, db: Session, user: User, result: ToolResult, **kwargs: Any) -> bool:
+        goal_id = kwargs.get("goal_id") or (result.data.get("goal_id") if isinstance(result.data, dict) else None)
+        if not goal_id:
+            return False
+        g = db.query(Goal).filter(Goal.id == goal_id, Goal.user_id == user.id).first()
+        return g is not None
 
     async def run(self, db: Session, user: User, **kwargs: Any) -> ToolResult:
         goal_id = kwargs.pop("goal_id")

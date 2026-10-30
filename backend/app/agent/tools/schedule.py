@@ -10,9 +10,10 @@ from sqlalchemy.orm import Session
 
 from app.utils.datetime import to_local
 from app.agent.schemas import ToolResult
-from app.agent.tools.base import Tool
+from app.agent.tools.base import RiskLevel, Tool, VerificationStrategy
 from app.models.enums import TimeBlockStatus, TimeBlockType
 from app.models.recurring_schedule import RecurringSchedule
+from app.models.time_block import TimeBlock
 from app.models.user import User
 from app.schemas.time_block import TimeBlockCreate, TimeBlockUpdate
 from app.services import schedule_service, time_engine
@@ -97,6 +98,16 @@ class CreateTimeBlockTool(Tool):
         "Schedule a new time block on the user's timeline (e.g. 90m focus session or meeting)."
     )
     parameters_schema = CreateTimeBlockParams
+    risk_level = RiskLevel.ORDINARY_WRITE
+    verification_strategy = VerificationStrategy.DB_CHECK
+    category = "schedule"
+
+    async def verify(self, db: Session, user: User, result: ToolResult, **kwargs: Any) -> bool:
+        block_id = result.data.get("block_id") if isinstance(result.data, dict) else None
+        if not block_id:
+            return False
+        tb = db.query(TimeBlock).filter(TimeBlock.id == block_id, TimeBlock.user_id == user.id).first()
+        return tb is not None
 
     async def run(self, db: Session, user: User, **kwargs: Any) -> ToolResult:
         block_in = TimeBlockCreate(**kwargs)
@@ -139,6 +150,16 @@ class UpdateTimeBlockTool(Tool):
     name = "update_time_block"
     description = "Move, resize, or update status of an existing time block."
     parameters_schema = UpdateTimeBlockParams
+    risk_level = RiskLevel.ORDINARY_WRITE
+    verification_strategy = VerificationStrategy.DB_CHECK
+    category = "schedule"
+
+    async def verify(self, db: Session, user: User, result: ToolResult, **kwargs: Any) -> bool:
+        block_id = kwargs.get("block_id") or (result.data.get("block_id") if isinstance(result.data, dict) else None)
+        if not block_id:
+            return False
+        tb = db.query(TimeBlock).filter(TimeBlock.id == block_id, TimeBlock.user_id == user.id).first()
+        return tb is not None
 
     async def run(self, db: Session, user: User, **kwargs: Any) -> ToolResult:
         block_id = kwargs.pop("block_id")
@@ -170,6 +191,16 @@ class DeleteTimeBlockTool(Tool):
     description = "Delete or cancel a scheduled time block."
     parameters_schema = DeleteTimeBlockParams
     is_destructive = True
+    risk_level = RiskLevel.REVERSIBLE
+    verification_strategy = VerificationStrategy.DB_CHECK
+    category = "schedule"
+
+    async def verify(self, db: Session, user: User, result: ToolResult, **kwargs: Any) -> bool:
+        block_id = kwargs.get("block_id") or (result.data.get("deleted_block_id") if isinstance(result.data, dict) else None)
+        if not block_id:
+            return False
+        tb = db.query(TimeBlock).filter(TimeBlock.id == block_id, TimeBlock.user_id == user.id).first()
+        return tb is None
 
     async def run(self, db: Session, user: User, **kwargs: Any) -> ToolResult:
         block_id = kwargs["block_id"]

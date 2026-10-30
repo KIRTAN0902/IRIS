@@ -1720,6 +1720,7 @@ class IrisSupervisor:
         user: User,
         instruction: str,
         context: dict[str, Any],
+        history: list[Any] | None = None,
     ) -> SubAgentReport:
         """Execute the sub-agent corresponding to the given domain."""
         if domain == "operator":
@@ -1740,7 +1741,7 @@ class IrisSupervisor:
 
         sliced_context = self.slice_context_for_domain(db, user, domain, context)
         return await agent.execute(
-            db=db, user=user, instruction=instruction, context=sliced_context
+            db=db, user=user, instruction=instruction, context=sliced_context, history=history
         )
 
     # --- 4. Synthesis & Response Formatting ----------------------------------

@@ -209,52 +209,8 @@ def create_default_registry() -> ToolRegistry:
 
 
 def create_orchestrator_registry() -> ToolRegistry:
-    """Create lightweight registry for the conversational Orchestrator (IRIS Core).
-
-    Excludes low-level worker tools (terminal CLI, file writes, code execution,
-    raw email editing, workout planning), delegating those to Operator, Planner,
-    Scribe, and BUBBA while keeping Orchestrator payload under 1,500 tokens.
-    """
-    registry = ToolRegistry()
-
-    # Awareness (situation + personal model)
-    registry.register(GetSituationTool())
-    registry.register(GetPersonalProfileTool())
-    registry.register(GetCompletedTasksTool())
-    registry.register(SearchConversationsTool())
-    registry.register(GetConversationTool())
-
-    # Overview read & direct task management tools
-    registry.register(GetTodayTasksTool())
-    registry.register(GetTasksTool())
-    registry.register(GetTaskTool())
-    registry.register(CreateTaskTool())
-    registry.register(UpdateTaskTool())
-    registry.register(CompleteTaskTool())
-    registry.register(GetGoalsTool())
-    registry.register(GetScheduleTool())
-    registry.register(GetStartupStatusTool())
-
-    # Intelligence & Recommendations
-    registry.register(GetTodayStateTool())
-    registry.register(GetCurrentStateTool())
-    registry.register(GetAttentionItemsTool())
-    registry.register(GetDecisionRecommendationTool())
-    registry.register(GetCurrentRecommendationTool())
-    registry.register(GetDecisionHistoryTool())
-
-    # Memory
-    registry.register(SaveMemoryTool())
-    registry.register(SearchMemoryTool())
-    registry.register(ForgetMemoryTool())
-    registry.register(ListMemoriesTool())
-
-    # Finance (high-level logging and summary)
-    for tool in finance_tools():
-        if tool.name in {"log_transaction", "log_transactions", "get_finances"}:
-            registry.register(tool)
-
-    return registry
+    """Create comprehensive registry for IRIS Core, enabling full multi-domain autonomy."""
+    return create_default_registry()
 
 
 # Global default instances

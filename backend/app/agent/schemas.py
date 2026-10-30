@@ -28,6 +28,12 @@ class ToolResult(BaseModel):
         None, description="Human-friendly summary of the outcome for user display"
     )
     audit_event: dict[str, Any] | None = None
+    verified: bool | None = Field(
+        None, description="Authoritative postcondition verification status (True/False/None)"
+    )
+    verification_error: str | None = Field(
+        None, description="Details if postcondition verification failed"
+    )
 
 
 class AgentResponseSchema(BaseModel):

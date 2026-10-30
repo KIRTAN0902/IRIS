@@ -91,8 +91,10 @@ FINAL_ANSWER_DEFINITION = ToolDefinition(
 
 _SHARED_RULES = """\
 - Ground every claim in the context above, stored memory, or tool results. Never invent tasks, IDs, dates or numbers.
-- If you need an ID or fresh data, look it up with a get_/list_/search_ tool first.
-- If a tool returns an error, read it, fix the arguments and retry if it makes sense; otherwise explain the problem honestly.
+- If the user's question can be answered completely from the existing conversation history or provided context, answer directly without calling unnecessary lookup tools.
+- If you need an ID or fresh data that is not in context, look it up with a get_/list_/search_ tool first.
+- If a follow-up refers to an earlier item ("the second one", "that task", "change its deadline"), inspect conversation history to resolve the exact entity ID before acting.
+- If a tool returns an error or has verified=false, read the error, diagnose the issue, and either adapt with corrected parameters or explain the failure honestly to the user. Never claim an action succeeded if it was not verified.
 - Only change data when the user asked for it or clearly implied it. Never repeat an action that already succeeded.
 - Batch work: to apply one action to several items, use the bulk tool if there is one (e.g. delete_tasks, complete_tasks) or send all the calls together in one response. Never handle one item per reply."""
 
@@ -494,18 +496,30 @@ class AgentHarness:
             if mutating:
                 state.in_flight_mutations.discard(key)
 
+        is_verified = getattr(res, "verified", True)
+        effective_success = res.success and (is_verified is not False)
+        err_msg = res.error or (res.verification_error if not is_verified else None)
         record = {
             "tool_name": res.tool_name,
-            "success": res.success,
+            "success": effective_success,
             "summary": res.summary,
-            "error": res.error,
+            "error": err_msg,
             "data": res.data,
+            "verified": is_verified,
         }
-        feedback = json.dumps(
-            {"success": res.success, "summary": res.summary, "error": res.error, "data": res.data},
-            default=str,
-        )
-        return record, feedback, key, mutating, res.success
+        feedback_dict: dict[str, Any] = {
+            "success": effective_success,
+            "summary": res.summary,
+            "error": err_msg,
+            "data": res.data,
+            "verified": is_verified,
+        }
+        if getattr(res, "verification_error", None):
+            record["verification_error"] = res.verification_error
+            feedback_dict["verification_error"] = res.verification_error
+
+        feedback = json.dumps(feedback_dict, default=str)
+        return record, feedback, key, mutating, effective_success
 
     def _finish(
         self,
@@ -524,7 +538,9 @@ class AgentHarness:
             actions=[],
             message=message.strip(),
             actions_summary=[
-                a["summary"] for a in state.actions_executed if a["success"] and a["summary"]
+                a["summary"]
+                for a in state.actions_executed
+                if a["success"] and a.get("verified", True) and a["summary"]
             ],
             evidence=evidence or [],
             recommended_action=recommended_action,

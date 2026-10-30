@@ -2,7 +2,7 @@
 
 > **System Designation**: IRIS (*Intelligent Responsive Information System*)  
 > **Repository**: `C:\kirtan\IRIS`  
-> **Version**: 3.3 (Mobile Intelligence Upgrade, Windows Desktop CLI Execution Layer, Permission Classes A/B/C/D, Background Job Manager, Postcondition Verifier, Scribe Task Suite, Sovereign Voice Mesh Convergence, Ephemeral Screen Awareness)  
+> **Version**: 3.4 (P1 Complete Intelligence Architecture Rework: 10-Stage Unified Reasoning Loop, Authoritative Postcondition Verification, Risk-Level Policy Gates, Context-Preserving Sub-Agent Swarm, Unstarved Cross-Domain Core Orchestration)  
 > **Target Audience**: Core Engineers, Systems Architects, and Technical Maintainers  
 
 ---
@@ -186,6 +186,54 @@ If the request requires complex execution:
 
 ### 4. Gemini 3.x Thought Signature Preservation
 Gemini 3.x models emit provider-specific `extra_content.google.thought_signature` tokens on tool calls. The harness preserves these signatures on `ToolCallRequest` and echoes them back during multi-turn execution, while safely stripping them during failover to non-Gemini models (Gemma, Groq) to avoid HTTP 400 parameter errors.
+
+### 5. Unified 10-Stage Agentic Reasoning Loop (`UnifiedReasoningEngine`)
+In Version 3.4, IRIS has fundamentally evolved from a keyword/regex command router into a genuinely generative, reasoning-driven, context-aware autonomous personal intelligence system.
+
+```mermaid
+flowchart LR
+    S1["1. Understand"] --> S2["2. Contextualize"]
+    S2 --> S3["3. Reason"]
+    S3 --> S4["4. Plan"]
+    S4 --> S5["5. Select Capabilities"]
+    S5 --> S6["6. Execute"]
+    S6 --> S7["7. Observe"]
+    S7 --> S8["8. Verify"]
+    S8 --> S9["9. Adapt"]
+    S9 --> S10["10. Respond"]
+```
+
+1. **Understand**: Interprets complex objectives, handles natural phrasing variations, resolves entity referents across conversation history ("the second one", "that task"), and detects queries answerable directly from context without calling unnecessary tools.
+2. **Contextualize**: Synthesizes active personal model, situational context, and bounded long-term memories from `memory_service`.
+3. **Reason**: Evaluates dependencies, risks, and feasibility before choosing an approach.
+4. **Plan**: Formulates step-by-step execution workflows with verification checkpoints.
+5. **Select Capabilities**: Matches required steps against the tool registry and validates execution policies.
+6. **Execute**: Dispatches calls through `AgentHarness` (`native_tools` or `structured_json`).
+7. **Observe**: Captures return data, exit codes, and side effects.
+8. **Verify**: Authoritatively queries real state (database records, filesystem, running processes).
+9. **Adapt**: Diagnoses errors (parameter error, transient, missing entity, unverified postcondition) and adapts parameters or reports discrepancies honestly.
+10. **Respond**: Constructs evidence-grounded final reply. Never claims an action succeeded if postcondition verification failed.
+
+### 6. Authoritative Postcondition Verification & Policy Gate
+- **Tool Metadata Contract (`Tool`)**:
+  - `risk_level`: `READ_ONLY`, `REVERSIBLE`, `ORDINARY_WRITE`, `SENSITIVE`
+  - `verification_strategy`: `NONE`, `DB_CHECK`, `FILE_CHECK`, `PROCESS_CHECK`, `CUSTOM`
+  - `requires_approval`: bool
+  - `verify(db, user, result, **params)`: Authoritative postcondition check method.
+- **Verification Enforcement**:
+  - `CreateTaskTool` / `UpdateTaskTool`: Validates entity exists in database with matching attributes.
+  - `CompleteTaskTool`: Validates entity is in `COMPLETED` status.
+  - `DeleteTaskTool`: Validates entity is deleted and no longer present.
+  - `CreateTimeBlockTool`: Validates block exists in schedule.
+  - Unverified mutating actions (`verified: false`) are excluded from `actions_summary` and reported honestly.
+- **Deterministic Approval Gate**:
+  - Sensitive / destructive actions require cryptographic approval tokens (`appr_...`).
+  - Without an approval token, tool execution halts with `APPROVAL_REQUIRED` and supplies a single-use token.
+  - Execution proceeds only once the user replies with authorization (`approve <token>`).
+
+### 7. Cross-Domain Orchestration & Subagent Context Continuity
+- **Unstarved Core Agent**: `IrisAgent` possesses full capabilities across all domains (College, Internship, Startup, Personal, Desktop CLI, Mesh, Diary, Workouts, Email, Coding, and Finance). Cross-domain workflows are handled seamlessly by IRIS Core.
+- **Context-Preserving Subagents**: When specialized single-domain subagents are dispatched (`Operator`, `Planner`, `Scribe`, `BUBBA`), the full conversation history is passed, eliminating the previous stateless `history=[]` context loss.
 
 ---
 

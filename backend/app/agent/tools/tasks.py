@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.utils.datetime import from_local, localize_date_boundaries, to_local, utcnow
 from app.agent.schemas import ToolResult
-from app.agent.tools.base import Tool
+from app.agent.tools.base import RiskLevel, Tool, VerificationStrategy
 from app.models.enums import EnergyLevel, LifeArea, TaskPriority, TaskStatus
 from app.models.task import Task
 from app.models.user import User
@@ -289,6 +289,16 @@ class CreateTaskTool(Tool):
     name = "create_task"
     description = "Create a new task in IRIS with specified title, area, deadline, and priority."
     parameters_schema = CreateTaskParams
+    risk_level = RiskLevel.ORDINARY_WRITE
+    verification_strategy = VerificationStrategy.DB_CHECK
+    category = "tasks"
+
+    async def verify(self, db: Session, user: User, result: ToolResult, **kwargs: Any) -> bool:
+        task_id = result.data.get("task_id") if isinstance(result.data, dict) else None
+        if not task_id:
+            return False
+        task = db.query(Task).filter(Task.id == task_id, Task.user_id == user.id).first()
+        return task is not None
 
     async def run(self, db: Session, user: User, **kwargs: Any) -> ToolResult:
         if kwargs.get("due_today") and not kwargs.get("deadline"):
@@ -338,6 +348,16 @@ class UpdateTaskTool(Tool):
         "Update an existing task's fields such as title, deadline, area, priority, or status."
     )
     parameters_schema = UpdateTaskParams
+    risk_level = RiskLevel.ORDINARY_WRITE
+    verification_strategy = VerificationStrategy.DB_CHECK
+    category = "tasks"
+
+    async def verify(self, db: Session, user: User, result: ToolResult, **kwargs: Any) -> bool:
+        task_id = result.data.get("task_id") if isinstance(result.data, dict) else None
+        if not task_id:
+            return False
+        task = db.query(Task).filter(Task.id == task_id, Task.user_id == user.id).first()
+        return task is not None
 
     async def run(self, db: Session, user: User, **kwargs: Any) -> ToolResult:
         task_id = kwargs.pop("task_id")
@@ -366,6 +386,16 @@ class CompleteTaskTool(Tool):
     name = "complete_task"
     description = "Mark an open task as completed, optionally recording actual duration spent."
     parameters_schema = CompleteTaskParams
+    risk_level = RiskLevel.ORDINARY_WRITE
+    verification_strategy = VerificationStrategy.DB_CHECK
+    category = "tasks"
+
+    async def verify(self, db: Session, user: User, result: ToolResult, **kwargs: Any) -> bool:
+        task_id = kwargs.get("task_id") or (result.data.get("task_id") if isinstance(result.data, dict) else None)
+        if not task_id:
+            return False
+        task = db.query(Task).filter(Task.id == task_id, Task.user_id == user.id).first()
+        return task is not None and task.status == TaskStatus.COMPLETED.value
 
     async def run(self, db: Session, user: User, **kwargs: Any) -> ToolResult:
         task_id = kwargs["task_id"]
@@ -403,6 +433,16 @@ class DeleteTaskTool(Tool):
     description = "Permanently delete a task. Only use when explicitly instructed by the user."
     parameters_schema = DeleteTaskParams
     is_destructive = True
+    risk_level = RiskLevel.REVERSIBLE
+    verification_strategy = VerificationStrategy.DB_CHECK
+    category = "tasks"
+
+    async def verify(self, db: Session, user: User, result: ToolResult, **kwargs: Any) -> bool:
+        task_id = kwargs.get("task_id") or (result.data.get("deleted_task_id") if isinstance(result.data, dict) else None)
+        if not task_id:
+            return False
+        task = db.query(Task).filter(Task.id == task_id, Task.user_id == user.id).first()
+        return task is None
 
     async def run(self, db: Session, user: User, **kwargs: Any) -> ToolResult:
         task_id = kwargs["task_id"]

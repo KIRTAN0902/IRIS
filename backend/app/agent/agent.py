@@ -174,7 +174,10 @@ class IrisAgent:
 
             try:
                 if provider.enabled:
-                    # Check specialized sub-agent delegation (instant deterministic routing)
+                    caps = provider.capabilities
+                    history = self._history_messages(conversation, caps.history_messages)
+
+                    # Check specialized sub-agent delegation (for single-domain operations)
                     routed_domains = (
                         self.supervisor.route_intent(user_message)
                         if (not isinstance(provider, MockProvider) and settings.ai_multi_agent_enabled)
@@ -187,36 +190,45 @@ class IrisAgent:
                             logger.debug("Async intent router skipped: %s", router_exc)
                             routed_domains = []
 
-                    if routed_domains:
+                    # If exactly one specialized domain is targeted, delegate with full conversation history.
+                    # If multiple domains are involved (cross-domain request), delegate to IRIS Core unified engine.
+                    if len(routed_domains) == 1:
                         try:
-                            reports = []
-                            for dom in routed_domains:
-                                rep = await self.supervisor.dispatch_to_subagent(
-                                    domain=dom,
-                                    db=db,
-                                    user=user,
-                                    instruction=user_message,
-                                    context=context,
-                                )
-                                reports.append(rep)
-                            if any(r.success for r in reports):
+                            dom = routed_domains[0]
+                            rep = await self.supervisor.dispatch_to_subagent(
+                                domain=dom,
+                                db=db,
+                                user=user,
+                                instruction=user_message,
+                                context=context,
+                                history=history,
+                            )
+                            if rep.success:
                                 response_schema, actions_executed = self.supervisor.synthesize_reports(
-                                    reports, user_message
+                                    [rep], user_message
                                 )
                                 source = "SUB_AGENT"
                                 harness_meta = {
                                     "strategy": "multi_agent_delegation",
                                     "domains": routed_domains,
-                                    "agents": [r.agent_name for r in reports],
+                                    "agents": [rep.agent_name],
                                 }
                             else:
                                 logger.warning(
-                                    "Sub-agent delegation returned no successful reports; falling back to orchestrator harness"
+                                    "Sub-agent %s failed; falling back to orchestrator harness: %s",
+                                    dom,
+                                    rep.error,
                                 )
                                 response_schema = None
                         except Exception as exc:
                             logger.warning("Sub-agent delegation error: %s; falling back to orchestrator harness", exc)
                             response_schema = None
+                    elif len(routed_domains) > 1:
+                        logger.info(
+                            "Multi-domain objective identified (%s); routing to IRIS Core unified reasoning engine",
+                            routed_domains,
+                        )
+                        response_schema = None
 
                     if response_schema is None:
                         try:

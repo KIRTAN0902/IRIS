@@ -52,6 +52,9 @@ def make_tool(
     params: type[BaseModel] | None = None,
     read_only: bool | None = None,
     destructive: bool = False,
+    risk_level: Any = None,
+    verification_strategy: Any = None,
+    category: str = "general",
 ) -> Tool:
     """Build a Tool from a ``run(db, user, **params) -> (data, summary)`` function."""
 
@@ -59,17 +62,24 @@ def make_tool(
         data, summary = run(db, user, **kwargs)
         return ToolResult(tool_name=self.name, success=True, data=_dump(data), summary=summary)
 
+    attrs: dict[str, Any] = {
+        "name": name,
+        "description": description,
+        "parameters_schema": params,
+        "read_only": read_only,
+        "is_destructive": destructive,
+        "category": category,
+        "run": _run,
+    }
+    if risk_level is not None:
+        attrs["risk_level"] = risk_level
+    if verification_strategy is not None:
+        attrs["verification_strategy"] = verification_strategy
+
     cls = type(
         "".join(p.title() for p in name.split("_")) + "Tool",
         (Tool,),
-        {
-            "name": name,
-            "description": description,
-            "parameters_schema": params,
-            "read_only": read_only,
-            "is_destructive": destructive,
-            "run": _run,
-        },
+        attrs,
     )
     return cls()
 
