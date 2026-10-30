@@ -791,10 +791,32 @@ def launch_windows_app(
             else:
                 cmd = ["cmd.exe", "/c", "start", "", path]
         else:
-            # Fallback to shell start
-            cmd = ["cmd.exe", "/c", "start", "", raw_app]
-            if target_dir and target_dir != default_workspace:
-                cmd.append(target_dir)
+            # Check if destination is a known web service destination (e.g. Google Drive, Docs, Notion)
+            from app.devices.windows.browser_discovery import windows_browser_discovery
+            service_url = windows_browser_discovery.resolve_service_destination(raw_app)
+            if service_url:
+                browser_res = windows_browser_discovery.open_url(service_url)
+                if browser_res.get("success"):
+                    return {
+                        "success": True,
+                        "app": raw_app.title(),
+                        "browser": browser_res.get("browser"),
+                        "url": service_url,
+                        "message": f"Opened {raw_app.title()} in {browser_res.get('browser')} at {service_url} on your Windows laptop.",
+                    }
+
+            # Check if command exists in PATH or has an executable extension
+            if shutil.which(raw_app) or raw_app.lower().endswith(".exe"):
+                cmd = ["cmd.exe", "/c", "start", "", raw_app]
+                if target_dir and target_dir != default_workspace:
+                    cmd.append(target_dir)
+            else:
+                return {
+                    "success": False,
+                    "app": raw_app,
+                    "error": f"Application '{raw_app}' is not installed on this Windows laptop.",
+                    "message": f"Could not find or launch '{raw_app}'. It is not installed and is not a recognized web service.",
+                }
 
     if not cmd:
         return {

@@ -750,17 +750,28 @@ class IrisSupervisor:
             clean_app = re.sub(r"\s+(?:for\s+me|please)$", "", clean_app, flags=re.IGNORECASE).strip()
             clean_app_low = clean_app.lower()
 
-            # Target Device Resolution: Phone vs Laptop
-            mobile_indicators = {
-                "camera", "whatsapp", "instagram", "gpay", "google pay", "phonepe", "paytm",
-                "zomato", "swiggy", "uber", "ola", "zepto", "blinkit", "gallery", "phone",
-                "contacts", "messages", "sms"
-            }
-            is_phone_target = device_hint in ["phone", "mobile"] or (
-                device_hint == "" and clean_app_low in mobile_indicators
-            )
+            # Dynamic Target Device Resolution: Phone vs Laptop via Capability Resolver
+            from app.devices.contracts import DeviceType
+            from app.devices.registry import default_registry
+            from app.devices.target_resolver import default_target_resolver
+
+            resolution = default_target_resolver.resolve(user_message, client_device=device_hint or None)
+            is_phone_target = resolution.target_device == DeviceType.ANDROID_PHONE
 
             if is_phone_target:
+                is_phone_online = default_registry.is_device_online(DeviceType.ANDROID_PHONE, db=db, user_id=str(user.id))
+                if not is_phone_online:
+                    msg_reply = "⚠️ Your Android phone (Realme GT 7T) is currently offline or unreachable on Sovereign Mesh."
+                    return (
+                        AgentResponseSchema(
+                            thought=f"Android phone is offline for {clean_app}.",
+                            actions=[],
+                            message=msg_reply,
+                            actions_summary=["Phone offline"],
+                        ),
+                        [{"tool_name": "launch_mobile_app", "success": False, "summary": msg_reply}],
+                    )
+
                 # Dispatch dynamically to Mobile Phone Companion
                 msg_obj = ms.MeshMessage(
                     type="LAUNCH_APP",
@@ -849,10 +860,22 @@ class IrisSupervisor:
                         else:
                             msg_reply = "💻 Opened Terminal in your home directory on your Windows laptop."
                     elif res.get("success"):
-                        folder_str = f" in `{target_dir}`" if target_dir else ""
-                        msg_reply = f"💻 Opened **{app_title}**{folder_str} on your Windows laptop."
+                        if "browser" in res:
+                            msg_reply = f"🌐 Opened **{clean_app.title()}** in {res.get('browser')} at `{res.get('url')}` on your Windows laptop."
+                        else:
+                            folder_str = f" in `{target_dir}`" if target_dir else ""
+                            msg_reply = f"💻 Opened **{app_title}**{folder_str} on your Windows laptop."
                     else:
-                        msg_reply = f"Could not launch {clean_app}: {res.get('error')}"
+                        msg_reply = f"⚠️ Could not launch {clean_app}: {res.get('error', 'Not installed')}"
+                        return (
+                            AgentResponseSchema(
+                                thought=f"Failed to launch {clean_app}: {res.get('error')}",
+                                actions=[],
+                                message=msg_reply,
+                                actions_summary=[f"Failed to open {clean_app}"],
+                            ),
+                            [{"tool_name": "launch_laptop_app", "success": False, "summary": msg_reply}],
+                        )
                 else:
                     if not mrs.is_host_laptop_online(db, user.id, threshold_seconds=300.0):
                         return (

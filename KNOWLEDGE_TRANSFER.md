@@ -2,7 +2,7 @@
 
 > **System Designation**: IRIS (*Intelligent Responsive Information System*)  
 > **Repository**: `C:\kirtan\IRIS`  
-> **Version**: 3.4 (P1 Complete Intelligence Architecture Rework: 10-Stage Unified Reasoning Loop, Authoritative Postcondition Verification, Risk-Level Policy Gates, Context-Preserving Sub-Agent Swarm, Unstarved Cross-Domain Core Orchestration)  
+> **Version**: 4.0 (P2 Universal Device Intelligence & Capability-Driven Execution: Dynamic Windows Start Menu/Registry Scanner, Dynamic Browser Discovery & Service URL Fallback, Typed Capability Contracts, Sovereign Mesh Transport & Offline Protection, Native Win32 System Control, Android Companion Native Telemetry)  
 > **Target Audience**: Core Engineers, Systems Architects, and Technical Maintainers  
 
 ---
@@ -12,13 +12,14 @@
 2. [Core Principles & Design Philosophy](#2-core-principles--design-philosophy)
 3. [End-to-End System Architecture](#3-end-to-end-system-architecture)
 4. [The Multi-Agent Swarm & Supervisor](#4-the-multi-agent-swarm--supervisor)
-5. [Ephemeral Multimodal Vision Pipeline](#5-ephemeral-multimodal-vision-pipeline)
-6. [Voice Engine & Situational Awareness](#6-voice-engine--situational-awareness)
-7. [Sovereign Mesh Network & Remote Desktop Mirroring](#7-sovereign-mesh-network--remote-desktop-mirroring)
-8. [Comprehensive Tech Stack Breakdown](#8-comprehensive-tech-stack-breakdown)
-9. [Hosting, Environments & Deployment Topologies](#9-hosting-environments--deployment-topologies)
-10. [Codebase Anatomy & Directory Tree](#10-codebase-anatomy--directory-tree)
-11. [Operational Runbook & Developer Cheatsheet](#11-operational-runbook--developer-cheatsheet)
+5. [Universal Device Intelligence & Capability-Driven Execution (P2)](#5-universal-device-intelligence--capability-driven-execution-p2)
+6. [Ephemeral Multimodal Vision Pipeline](#6-ephemeral-multimodal-vision-pipeline)
+7. [Voice Engine & Situational Awareness](#7-voice-engine--situational-awareness)
+8. [Sovereign Mesh Network & Remote Desktop Mirroring](#8-sovereign-mesh-network--remote-desktop-mirroring)
+9. [Comprehensive Tech Stack Breakdown](#9-comprehensive-tech-stack-breakdown)
+10. [Hosting, Environments & Deployment Topologies](#10-hosting-environments--deployment-topologies)
+11. [Codebase Anatomy & Directory Tree](#11-codebase-anatomy--directory-tree)
+12. [Operational Runbook & Developer Cheatsheet](#12-operational-runbook--developer-cheatsheet)
 
 ---
 
@@ -237,7 +238,82 @@ flowchart LR
 
 ---
 
-## 5. Ephemeral Multimodal Vision Pipeline
+## 5. Universal Device Intelligence & Capability-Driven Execution (P2)
+
+The P2 architecture fundamentally transforms IRIS from a system reliant on hardcoded device command dictionaries into an **autonomous, capability-driven cross-device personal operating system**.
+
+### 1. The Core Principle
+> **"IRIS must discover device capabilities rather than depend on hardcoded device-command mappings."**
+
+When a user requests *"Open Google Drive on my laptop"*, IRIS:
+1. Understands the user's objective and target device (`laptop_windows`).
+2. Discovers whether Google Drive has a native desktop application installed.
+3. Upon discovering no native `.exe` exists, avoids throwing a shell error and instead resolves the official web service destination (`https://drive.google.com`).
+4. Discovers installed web browsers on the machine (Chrome, Edge, Brave, Firefox).
+5. Launches the preferred browser navigating to the validated URL.
+6. Verifies browser process initialization and reports verified success.
+
+### 2. Typed Device Capability Contracts (`backend/app/devices/contracts.py`)
+- **`DeviceType`**: `WINDOWS_LAPTOP` (`laptop_windows`), `ANDROID_PHONE` (`phone_android`), `LOCAL_AGENT`, `UNKNOWN`.
+- **`CapabilityCategory`**: `APPLICATION`, `BROWSER`, `OS_CONTROL`, `FILESYSTEM`, `SYSTEM_INFO`, `TELEMETRY`, `AUTOMATION`.
+- **`CapabilityRisk`**: `READ_ONLY`, `REVERSIBLE`, `ORDINARY_WRITE`, `SENSITIVE`, `CRITICAL`.
+- **`DeviceExecutionRequest`**: Typed execution envelope with `request_id`, `correlation_id`, `target_device_id`, `capability_id`, `parameters`, `idempotency_token`, and `approval_token`.
+- **`DeviceExecutionResult`**: Verified result envelope with `success`, `data`, `error`, `verified` boolean, `verification_details`, and `duration_ms`.
+
+### 3. Windows Workstation Execution Engine (`backend/app/devices/windows/`)
+- **Dynamic Application Discovery (`WindowsAppDiscovery`)**:
+  - Automatically indexes 100% of installed desktop and store applications from:
+    1. System-wide Start Menu shortcuts (`%ProgramData%\Microsoft\Windows\Start Menu\Programs\*.lnk`)
+    2. User Start Menu shortcuts (`%AppData%\Microsoft\Windows\Start Menu\Programs\*.lnk`)
+    3. Windows Registry App Paths (`HKLM` & `HKCU` `SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths`)
+    4. Common Windows built-ins (`wt.exe`, `powershell.exe`, `cmd.exe`, `notepad.exe`, `calc.exe`, `explorer.exe`, `taskmgr.exe`, `ms-settings:`)
+  - No static app dictionaries required. Automatically discovers newly installed applications at runtime.
+- **Dynamic Browser Discovery & Service Fallback (`WindowsBrowserDiscovery`)**:
+  - Dynamically detects available Windows browsers (Edge, Chrome, Brave, Firefox).
+  - Enforces strict URL scheme validation (`http`/`https` only).
+  - Resolves online productivity and enterprise destinations (`COMMON_SERVICE_URLS`: Google Drive, Google Docs, Google Sheets, Notion, Figma, GitHub, Linear, Trello, Spotify, etc.).
+- **Native Win32 System Control (`WindowsSystemControl`)**:
+  - Direct Win32 `LockWorkStation` API via `ctypes.windll.user32.LockWorkStation()`.
+  - Native power telemetry via `Kernel32.GetSystemPowerStatus` (AC Line status, battery percentage, charging state).
+  - OS architecture, memory, and filesystem queries.
+- **Postcondition Verification (`WindowsDeviceExecutor`)**:
+  - Verifies process creation, PID assignment, and survival past initial startup.
+  - Bypasses Windows Foreground Lock Timeout by attaching thread input to bring requested windows directly to the top.
+
+### 4. Android Companion Engine & Sovereign Mesh Transport (`backend/app/devices/android/`)
+- **`AndroidDeviceExecutor`**:
+  - Dispatches execution requests to the Realme GT 7T companion via Sovereign Mesh WebSockets (`MeshHub`) and DB relay queue.
+  - **Offline Device Protection**: Queries live presence in registry and relay heartbeat; if phone is unreachable, returns structured error and **does not fake success**.
+  - **Idempotency Protection**: Intercepts duplicate tokens, preventing redundant app launches or alert chimes.
+- **Capacitor Native Bridge (`AppLauncherPlugin.java`)**:
+  - Dynamic Intent package search (matches label dynamically if package unlisted).
+  - Native `openUrl` capability for Android browser navigation.
+  - Native `getBatteryStatus` via sticky `ACTION_BATTERY_CHANGED` intent.
+  - Native `getNetworkStatus` via Android `ConnectivityManager` (WiFi vs Cellular).
+
+### 5. Dynamic Device Target Resolver (`backend/app/devices/target_resolver.py`)
+Intelligently resolves target device without rigid intent branches:
+1. **Explicit Cues**: *"on my phone"*, *"on my mobile"* -> `ANDROID_PHONE`; *"on my laptop"*, *"on my computer"* -> `WINDOWS_LAPTOP` (confidence 0.98).
+2. **Device-Exclusive Actions**: *"lock workstation"* -> `WINDOWS_LAPTOP` (confidence 1.0); *"ring phone"* -> `ANDROID_PHONE` (confidence 1.0).
+3. **Application Affinity**: Mobile-first apps (WhatsApp, PhonePe, GPay, Camera) -> `ANDROID_PHONE`; Workstation dev tools (VS Code, Terminal, Antigravity IDE) -> `WINDOWS_LAPTOP`.
+4. **Presence Awareness**: If ambiguous, defaults to active client surface.
+
+### 6. Acceptance Testing Matrix (Tests A through J)
+The entire P2 test suite ([`test_device_acceptance.py`](file:///C:/kirtan/IRIS/backend/tests/devices/test_device_acceptance.py)) passes with 100% compliance:
+- **Test A (Android App Discovery)**: "Open WhatsApp on my phone" -> routes to phone, dispatches launch intent.
+- **Test B (Windows App Discovery)**: "Open Chrome on my laptop" -> discovers app dynamically without hardcoding, launches and verifies.
+- **Test C (Browser Fallback)**: "Open Google Drive on my laptop" -> detects no desktop `.exe` -> discovers browser -> navigates to `https://drive.google.com` -> verified.
+- **Test D (Unlisted App)**: Newly installed application discovered and executed dynamically without code edits.
+- **Test E (Target Resolution)**: Accurately resolves phone, laptop, battery, and workstation locking.
+- **Test F (Missing Application)**: Uninstalled application accurately reports failure and **does not fake success**.
+- **Test G (Offline Device)**: Unreachable companion safely returns error and **does not fake success**.
+- **Test H (Permission Enforcement)**: Sensitive/destructive commands rejected without approval tokens.
+- **Test I (Idempotency)**: Replay execution tokens suppressed.
+- **Test J (Cross-Device Verification)**: End-to-end execution and result flow across Sovereign Mesh.
+
+---
+
+## 6. Ephemeral Multimodal Vision Pipeline
 
 The vision pipeline ([`vision_service.py`](file:///C:/kirtan/IRIS/backend/app/services/vision_service.py)) provides ephemeral visual comprehension for receipts, invoices, error screens, syllabi, and documents.
 
@@ -271,7 +347,7 @@ flowchart TD
 
 ---
 
-## 6. Voice Engine & Situational Awareness
+## 7. Voice Engine & Situational Awareness
 
 IRIS features dual voice operating modes: **Real-Time Gemini Live Bidirectional WebSocket** and **Turn-Based Conversational Voice**, fully integrated with sovereign workstation and mobile peer controls.
 
@@ -318,7 +394,7 @@ sequenceDiagram
 
 ---
 
-## 7. Sovereign Mesh Network & Remote Desktop Mirroring
+## 8. Sovereign Mesh Network & Remote Desktop Mirroring
 
 The **Sovereign Mesh** connects your mobile phone (on any 5G network or hotel Wi-Fi) with your Windows laptop workstation at **$0 cloud cost**, without open router ports, dynamic DNS, or third-party paid tunnels (like ngrok).
 
@@ -380,7 +456,7 @@ In asymmetric networks (Vercel serverless cloud + Windows laptop + Android 5G), 
 
 ---
 
-## 8. Comprehensive Tech Stack Breakdown
+## 9. Comprehensive Tech Stack Breakdown
 
 ### Frontend (User Interface)
 - **Framework**: React 18.3 Single Page Application (SPA) with TypeScript 5.6.
@@ -418,7 +494,7 @@ In asymmetric networks (Vercel serverless cloud + Windows laptop + Android 5G), 
 
 ---
 
-## 9. Hosting, Environments & Deployment Topologies
+## 10. Hosting, Environments & Deployment Topologies
 
 ### Topology A: Native Windows Desktop Workstation (Current Daily Driver)
 - **Backend**: Runs locally as a silent Windows background process via `start-mesh-silent.vbs` on port 8000.
@@ -445,7 +521,7 @@ In asymmetric networks (Vercel serverless cloud + Windows laptop + Android 5G), 
 
 ---
 
-## 10. Codebase Anatomy & Directory Tree
+## 11. Codebase Anatomy & Directory Tree
 
 ```text
 C:\kirtan\IRIS\
@@ -505,7 +581,7 @@ C:\kirtan\IRIS\
 
 ---
 
-## 11. Operational Runbook & Developer Cheatsheet
+## 12. Operational Runbook & Developer Cheatsheet
 
 ### 1. Launching IRIS on the Windows Workstation
 ```powershell
@@ -527,7 +603,7 @@ npm run dev
 
 ### 3. Running Test Suites
 ```powershell
-# Backend Pytest Suite (384 passed)
+# Backend Pytest Suite (464 passed)
 cd C:\kirtan\IRIS\backend
 .\.venv\Scripts\python.exe -m pytest -q
 

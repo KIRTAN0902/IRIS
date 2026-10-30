@@ -50,3 +50,6 @@ shield_*.json
 
 
 .forge/
+
+*.apk
+downloads/

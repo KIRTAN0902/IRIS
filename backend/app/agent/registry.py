@@ -201,6 +201,11 @@ def create_default_registry() -> ToolRegistry:
     for tool in desktop_tools():
         registry.register(tool)
 
+    # Universal Device Intelligence & Execution
+    from app.devices.tools import device_tools
+    for tool in device_tools():
+        registry.register(tool)
+
     # Diary & Notes notebook
     for tool in diary_tools():
         registry.register(tool)

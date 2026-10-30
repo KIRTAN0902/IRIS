@@ -3,12 +3,18 @@ package com.kirtan.iris;
 import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Rect;
+import android.net.ConnectivityManager;
+import android.net.Network;
+import android.net.NetworkCapabilities;
+import android.net.NetworkInfo;
 import android.net.Uri;
+import android.os.BatteryManager;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
@@ -236,6 +242,96 @@ public class AppLauncherPlugin extends Plugin {
         JSObject ret = new JSObject();
         ret.put("pending", pending);
         call.resolve(ret);
+    }
+
+    @PluginMethod
+    public void openUrl(PluginCall call) {
+        String urlString = call.getString("url");
+        if (urlString == null || urlString.trim().isEmpty()) {
+            call.reject("url parameter is required");
+            return;
+        }
+        try {
+            Context context = getContext();
+            Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(urlString.trim()));
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            context.startActivity(intent);
+            JSObject ret = new JSObject();
+            ret.put("success", true);
+            ret.put("url", urlString);
+            call.resolve(ret);
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to open URL: " + urlString, e);
+            call.reject("Failed to open URL: " + e.getMessage());
+        }
+    }
+
+    @PluginMethod
+    public void getBatteryStatus(PluginCall call) {
+        try {
+            Context context = getContext();
+            IntentFilter ifilter = new IntentFilter(Intent.ACTION_BATTERY_CHANGED);
+            Intent batteryStatus = context.registerReceiver(null, ifilter);
+            int level = -1;
+            int scale = -1;
+            boolean isCharging = false;
+            if (batteryStatus != null) {
+                level = batteryStatus.getIntExtra(BatteryManager.EXTRA_LEVEL, -1);
+                scale = batteryStatus.getIntExtra(BatteryManager.EXTRA_SCALE, -1);
+                int status = batteryStatus.getIntExtra(BatteryManager.EXTRA_STATUS, -1);
+                isCharging = status == BatteryManager.BATTERY_STATUS_CHARGING ||
+                             status == BatteryManager.BATTERY_STATUS_FULL;
+            }
+            int batteryPct = (level >= 0 && scale > 0) ? (int) ((level / (float) scale) * 100) : -1;
+            JSObject ret = new JSObject();
+            ret.put("success", true);
+            ret.put("battery_level", batteryPct);
+            ret.put("is_charging", isCharging);
+            call.resolve(ret);
+        } catch (Exception e) {
+            call.reject("Failed to get battery status: " + e.getMessage());
+        }
+    }
+
+    @PluginMethod
+    public void getNetworkStatus(PluginCall call) {
+        try {
+            Context context = getContext();
+            ConnectivityManager cm = (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
+            boolean isConnected = false;
+            String connectionType = "none";
+            if (cm != null) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    Network activeNet = cm.getActiveNetwork();
+                    if (activeNet != null) {
+                        NetworkCapabilities caps = cm.getNetworkCapabilities(activeNet);
+                        if (caps != null) {
+                            isConnected = caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET);
+                            if (caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) {
+                                connectionType = "wifi";
+                            } else if (caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)) {
+                                connectionType = "cellular";
+                            } else if (caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)) {
+                                connectionType = "ethernet";
+                            }
+                        }
+                    }
+                } else {
+                    NetworkInfo activeInfo = cm.getActiveNetworkInfo();
+                    if (activeInfo != null && activeInfo.isConnected()) {
+                        isConnected = true;
+                        connectionType = activeInfo.getTypeName().toLowerCase();
+                    }
+                }
+            }
+            JSObject ret = new JSObject();
+            ret.put("success", true);
+            ret.put("connected", isConnected);
+            ret.put("connection_type", connectionType);
+            call.resolve(ret);
+        } catch (Exception e) {
+            call.reject("Failed to get network status: " + e.getMessage());
+        }
     }
 
     @PluginMethod
