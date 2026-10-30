@@ -167,7 +167,7 @@ public class IrisAmbientPlugin extends Plugin {
     @PluginMethod
     public void getPreferSphereMode(PluginCall call) {
         SharedPreferences prefs = getContext().getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
-        boolean enabled = prefs.getBoolean(KEY_PREFER_SPHERE, true);
+        boolean enabled = prefs.getBoolean(KEY_PREFER_SPHERE, false);
         JSObject ret = new JSObject();
         ret.put("preferSphereMode", enabled);
         call.resolve(ret);

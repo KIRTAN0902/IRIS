@@ -19,20 +19,27 @@ public class MainActivity extends BridgeActivity {
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
-        // Check if intent or user preference delegates directly to floating sphere
+        registerPlugin(PaymentPlugin.class);
+        registerPlugin(AppLauncherPlugin.class);
+        registerPlugin(IrisAmbientPlugin.class);
+        super.onCreate(savedInstanceState);
+
+        // Check if intent explicitly requested ambient sphere mode
         if (shouldDelegateToSphere(getIntent())) {
             Log.i(TAG, "Delegating activation directly to IrisSphereService without opening full app.");
             IrisSphereService.startSphere(this);
             moveTaskToBack(true);
             finish();
-            super.onCreate(savedInstanceState);
             return;
         }
 
-        registerPlugin(PaymentPlugin.class);
-        registerPlugin(AppLauncherPlugin.class);
-        registerPlugin(IrisAmbientPlugin.class);
-        super.onCreate(savedInstanceState);
+        // Request microphone permission on first app launch if not yet granted
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+            if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(new String[]{android.Manifest.permission.RECORD_AUDIO}, 101);
+            }
+        }
+
         handleVoiceIntent(getIntent());
     }
 
@@ -52,8 +59,14 @@ public class MainActivity extends BridgeActivity {
         if (intent == null) return false;
 
         String action = intent.getAction();
-        if ("com.kirtan.iris.ACTION_SPHERE".equals(action) ||
-            "com.kirtan.iris.ACTION_AMBIENT_VOICE".equals(action)) {
+
+        // 1. Normal app launcher clicks from home screen MUST ALWAYS open the dashboard!
+        if (Intent.ACTION_MAIN.equals(action) && intent.hasCategory(Intent.CATEGORY_LAUNCHER)) {
+            return false;
+        }
+
+        // 2. Explicit sphere actions
+        if ("com.kirtan.iris.ACTION_SPHERE".equals(action)) {
             return true;
         }
 
@@ -61,8 +74,10 @@ public class MainActivity extends BridgeActivity {
             return true;
         }
 
-        // If user set "prefer floating sphere" and didn't explicitly request the dashboard
-        if (!intent.getBooleanExtra("force_dashboard", false)) {
+        // 3. Ambient voice or assist intent delegation if user prefers sphere mode
+        if ("com.kirtan.iris.ACTION_AMBIENT_VOICE".equals(action) ||
+            Intent.ACTION_ASSIST.equals(action) ||
+            "android.intent.action.VOICE_COMMAND".equals(action)) {
             SharedPreferences prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
             return prefs.getBoolean(KEY_PREFER_SPHERE, false);
         }

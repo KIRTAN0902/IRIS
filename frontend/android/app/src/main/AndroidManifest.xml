@@ -74,8 +74,12 @@
         <service
             android:name=".IrisSphereService"
             android:label="IRIS Voice Sphere"
-            android:foregroundServiceType="microphone"
-            android:exported="false" />
+            android:foregroundServiceType="specialUse|microphone"
+            android:exported="false">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Floating voice assistant sphere overlay" />
+        </service>
 
         <!-- Floating Sphere Native Launcher Activity (Screen-off gestures / Shortcuts) -->
         <activity
@@ -86,10 +90,6 @@
             android:excludeFromRecents="true"
             android:exported="true">
             <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-            <intent-filter>
                 <action android:name="android.intent.action.ASSIST" />
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
@@ -99,6 +99,10 @@
             </intent-filter>
             <intent-filter>
                 <action android:name="com.kirtan.iris.ACTION_SPHERE" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="com.kirtan.iris.ACTION_AMBIENT_VOICE" />
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
@@ -175,6 +179,7 @@
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
 </manifest>

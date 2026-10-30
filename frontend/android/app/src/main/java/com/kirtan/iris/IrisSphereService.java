@@ -96,15 +96,30 @@ public class IrisSphereService extends Service implements IrisSphereView.OnSpher
 
         Notification notification = builder.build();
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE);
-        } else {
-            startForeground(NOTIFICATION_ID, notification);
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                boolean hasMic = checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) == android.content.pm.PackageManager.PERMISSION_GRANTED;
+                int type = hasMic ? ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE : ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE;
+                startForeground(NOTIFICATION_ID, notification, type);
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE);
+            } else {
+                startForeground(NOTIFICATION_ID, notification);
+            }
+        } catch (Throwable t) {
+            Log.w(TAG, "startForeground caught exception: " + t.getMessage() + ". Continuing overlay attachment.");
+            try {
+                startForeground(NOTIFICATION_ID, notification);
+            } catch (Throwable ignored) {}
         }
     }
 
     private void showFloatingSphere() {
         if (mIsViewAttached) return;
+
+        if (mWindowManager == null) {
+            mWindowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
+        }
 
         // Verify overlay permission
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
@@ -125,7 +140,17 @@ public class IrisSphereService extends Service implements IrisSphereView.OnSpher
             | WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED;
 
         DisplayMetrics dm = getResources().getDisplayMetrics();
-        int sphereSize = (int) (88 * dm.density);
+        int screenW = dm.widthPixels;
+        int screenH = dm.heightPixels;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && mWindowManager != null) {
+            try {
+                android.graphics.Rect bounds = mWindowManager.getCurrentWindowMetrics().getBounds();
+                screenW = bounds.width();
+                screenH = bounds.height();
+            } catch (Throwable ignored) {}
+        }
+
+        int sphereSize = (int) (88 * (dm.density > 0 ? dm.density : 2.5f));
 
         mLayoutParams = new WindowManager.LayoutParams(
             sphereSize,
@@ -136,11 +161,11 @@ public class IrisSphereService extends Service implements IrisSphereView.OnSpher
         );
 
         mLayoutParams.gravity = Gravity.TOP | Gravity.START;
-        // Default position: top right edge of screen
-        mLayoutParams.x = dm.widthPixels - sphereSize - 16;
-        mLayoutParams.y = (int) (dm.heightPixels * 0.28f);
+        mLayoutParams.x = Math.max(0, screenW - sphereSize - 32);
+        mLayoutParams.y = Math.max(100, (int) (screenH * 0.28f));
 
         mSphereView = new IrisSphereView(this);
+        mSphereView.setVisibility(android.view.View.VISIBLE);
         mSphereView.setWindowManagerParams(mWindowManager, mLayoutParams);
         mSphereView.setOnSphereInteractionListener(this);
 

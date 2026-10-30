@@ -38,7 +38,7 @@ export function PermissionsPanel() {
   const [upiListenerGranted, setUpiListenerGranted] = useState(false);
   const [assistantRoleGranted, setAssistantRoleGranted] = useState(false);
   const [overlayGranted, setOverlayGranted] = useState(false);
-  const [preferSphere, setPreferSphere] = useState(true);
+  const [preferSphere, setPreferSphere] = useState(false);
   const [actionNotice, setActionNotice] = useState<string | null>(null);
   const [isRequestingAll, setIsRequestingAll] = useState(false);
 

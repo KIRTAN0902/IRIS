@@ -108,7 +108,7 @@ export async function getPreferSphereMode(): Promise<boolean> {
   } catch (e) {
     console.warn("getPreferSphereMode error:", e);
   }
-  return true; // Default to true for ambient experience
+  return false; // Default to false so dashboard opens normally until user enables sphere mode
 }
 
 export async function setPreferSphereMode(enabled: boolean): Promise<boolean> {

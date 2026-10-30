@@ -5,6 +5,8 @@ import android.content.Intent;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.provider.Settings;
 import android.util.Log;
 import android.view.Gravity;
@@ -27,6 +29,7 @@ public class IrisSphereActivity extends Activity implements IrisSphereView.OnSph
 
     private IrisSphereView mSphereView;
     private IrisAmbientVoiceManager mVoiceManager;
+    private boolean mIsRequestingPermission = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -37,10 +40,11 @@ public class IrisSphereActivity extends Activity implements IrisSphereView.OnSph
             Log.i(TAG, "Overlay permission granted. Dispatching standalone IrisSphereService.");
             IrisSphereService.startSphere(this);
 
-            // Move to back immediately so the underlying application stays in the foreground
-            moveTaskToBack(true);
-            finish();
-            overridePendingTransition(0, 0);
+            new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                moveTaskToBack(true);
+                finish();
+                overridePendingTransition(0, 0);
+            }, 300);
             return;
         }
 
@@ -83,6 +87,7 @@ public class IrisSphereActivity extends Activity implements IrisSphereView.OnSph
 
         // Prompt user to grant permanent overlay permission so future activations float over all apps
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
+            mIsRequestingPermission = true;
             Toast.makeText(this, "Enable 'Display over other apps' for IRIS to float everywhere", Toast.LENGTH_LONG).show();
             Intent intent = new Intent(
                 Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
@@ -93,13 +98,34 @@ public class IrisSphereActivity extends Activity implements IrisSphereView.OnSph
     }
 
     @Override
+    protected void onResume() {
+        super.onResume();
+        if (mIsRequestingPermission) {
+            mIsRequestingPermission = false;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && Settings.canDrawOverlays(this)) {
+                Log.i(TAG, "Overlay permission granted upon returning to IrisSphereActivity.");
+                IrisSphereService.startSphere(this);
+                new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                    moveTaskToBack(true);
+                    finish();
+                    overridePendingTransition(0, 0);
+                }, 300);
+            }
+        }
+    }
+
+    @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
         if (requestCode == REQUEST_OVERLAY_PERMISSION) {
+            mIsRequestingPermission = false;
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && Settings.canDrawOverlays(this)) {
                 IrisSphereService.startSphere(this);
-                finish();
-                overridePendingTransition(0, 0);
+                new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                    moveTaskToBack(true);
+                    finish();
+                    overridePendingTransition(0, 0);
+                }, 300);
             }
         }
     }
@@ -130,6 +156,10 @@ public class IrisSphereActivity extends Activity implements IrisSphereView.OnSph
     @Override
     protected void onPause() {
         super.onPause();
+        if (mIsRequestingPermission) {
+            // Do NOT finish while user is granting permission in Android Settings!
+            return;
+        }
         if (mVoiceManager != null) {
             mVoiceManager.stopSession();
         }
