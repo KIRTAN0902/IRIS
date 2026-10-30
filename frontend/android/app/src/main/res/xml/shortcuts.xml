@@ -4,8 +4,8 @@
         android:shortcutId="floating_sphere"
         android:enabled="true"
         android:icon="@mipmap/ic_launcher"
-        android:shortcutShortLabel="Voice Sphere"
-        android:shortcutLongLabel="IRIS Voice Sphere">
+        android:shortcutShortLabel="@string/shortcut_sphere_short"
+        android:shortcutLongLabel="@string/shortcut_sphere_long">
         <intent
             android:action="com.kirtan.iris.ACTION_SPHERE"
             android:targetPackage="com.kirtan.iris"
