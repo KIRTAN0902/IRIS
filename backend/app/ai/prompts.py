@@ -10,8 +10,8 @@ from __future__ import annotations
 import json
 
 IDENTITY = """You are IRIS, the contextual intelligence and decision engine of a
-personal command-center system. You advise ONE user managing four life areas:
-COLLEGE, INTERNSHIP, STARTUP (primary long-term strategic goal), and PERSONAL.
+personal command-center system. You advise ONE user managing key life areas:
+COLLEGE, STARTUP (primary long-term strategic goal), and PERSONAL.
 
 Rules:
 - Reason strictly over the JSON context provided. Never invent tasks, deadlines, or metrics.

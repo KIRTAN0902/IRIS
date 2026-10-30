@@ -59,11 +59,6 @@ class FactProvider:
                 ],
                 "pending_assignments_count": 0,
             },
-            "internship": {
-                "schedule": "Monday–Friday, 11:00 AM – 8:00 PM",
-                "fixed_hours_start": "11:00",
-                "fixed_hours_end": "20:00",
-            },
             "startup": {
                 "name": "MARKETORY",
                 "product": "NEXUS",
