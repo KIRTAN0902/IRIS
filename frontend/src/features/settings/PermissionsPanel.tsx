@@ -14,7 +14,14 @@ import {
 import { Button } from "@/components/ui/Button";
 import { Lamp, Panel } from "@/components/ui/Panel";
 import { checkNotificationAccess, requestNotificationAccess } from "@/features/finance/upiTracker";
-import { openDigitalAssistantSettings, openSystemAppSettings } from "@/lib/appLauncher";
+import { openSystemAppSettings } from "@/lib/appLauncher";
+import {
+  checkAssistantRole,
+  checkOverlayPermission,
+  requestAssistantRole,
+  requestOverlayPermission,
+  triggerAmbientAssistant,
+} from "@/lib/irisAmbient";
 
 type PermissionStatus = "granted" | "denied" | "prompt" | "unknown";
 
@@ -23,6 +30,8 @@ export function PermissionsPanel() {
   const [cameraStatus, setCameraStatus] = useState<PermissionStatus>("unknown");
   const [notificationStatus, setNotificationStatus] = useState<PermissionStatus>("unknown");
   const [upiListenerGranted, setUpiListenerGranted] = useState(false);
+  const [assistantRoleGranted, setAssistantRoleGranted] = useState(false);
+  const [overlayGranted, setOverlayGranted] = useState(false);
   const [actionNotice, setActionNotice] = useState<string | null>(null);
   const [isRequestingAll, setIsRequestingAll] = useState(false);
 
@@ -68,6 +77,12 @@ export function PermissionsPanel() {
     // 4. UPI / Payment Notification Listener
     const hasUpiAccess = await checkNotificationAccess();
     setUpiListenerGranted(hasUpiAccess);
+
+    // 5. Digital Assistant Role & Overlay
+    const hasAssistant = await checkAssistantRole();
+    setAssistantRoleGranted(hasAssistant);
+    const hasOverlay = await checkOverlayPermission();
+    setOverlayGranted(hasOverlay);
   };
 
   useEffect(() => {
@@ -337,54 +352,124 @@ export function PermissionsPanel() {
 
       {/* Advanced System Settings Panel */}
       {isMobile && (
-        <Panel title="Advanced Android System Integration" lamp={<Lamp tone="go" />}>
-          <div className="space-y-3 pt-2 text-[13px]">
-            <p className="text-[12px] text-ink-dim">
-              Configure system-level Android integrations to invoke IRIS with gestures or hardware buttons.
-            </p>
+        <Panel title="Advanced Android System Integration (P4 Ambient JARVIS)" lamp={<Lamp tone="go" />}>
+          <div className="space-y-4 pt-2 text-[13px]">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-ai/5 border border-ai/20 rounded-xl p-3.5">
+              <div>
+                <span className="font-semibold text-ink text-[13px] flex items-center gap-1.5">
+                  <Sparkles size={15} className="text-ai" />
+                  <span>Ambient Voice-First Experience</span>
+                </span>
+                <p className="text-[12px] text-ink-dim mt-0.5">
+                  Summon IRIS instantly from any app (WhatsApp, Chrome, Games) or the home screen without navigating into the app.
+                </p>
+              </div>
+              <Button
+                variant="ai"
+                size="sm"
+                onClick={async () => {
+                  const started = await triggerAmbientAssistant();
+                  if (started) {
+                    setActionNotice("Triggered ambient assistant overlay!");
+                  } else {
+                    setActionNotice("Could not trigger overlay. Verify overlay permission is granted.");
+                  }
+                }}
+                className="shrink-0 text-[12px] flex items-center gap-1.5"
+              >
+                <Sparkles size={13} />
+                <span>Test Ambient Overlay</span>
+              </Button>
+            </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-              {/* Default Assistant */}
-              <div className="rounded-xl border border-ops-line bg-ops-panel p-4 flex flex-col justify-between gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+              {/* 1. Default Assistant */}
+              <div className="rounded-xl border border-ops-line bg-ops-panel p-3.5 flex flex-col justify-between gap-3">
                 <div>
-                  <div className="flex items-center gap-2 text-ink font-semibold">
-                    <Smartphone size={16} className="text-ai" />
-                    <span>Default Digital Assistant</span>
+                  <div className="flex items-center justify-between gap-2 text-ink font-semibold">
+                    <div className="flex items-center gap-2">
+                      <Smartphone size={16} className="text-ai" />
+                      <span>Default Assistant</span>
+                    </div>
+                    {assistantRoleGranted && (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-400 border border-emerald-500/20">
+                        <CheckCircle2 size={10} /> Active
+                      </span>
+                    )}
                   </div>
-                  <p className="text-[12px] text-ink-dim mt-1.5 leading-relaxed">
-                    Set IRIS as your default phone assistant to invoke hands-free voice via power button long-press or corner swipe gestures.
+                  <p className="text-[11px] text-ink-dim mt-1.5 leading-relaxed">
+                    Set IRIS as system default assistant for Power Button long-press and corner swipe gestures.
                   </p>
                 </div>
                 <Button
-                  variant="outline"
+                  variant={assistantRoleGranted ? "ghost" : "outline"}
                   size="sm"
-                  onClick={openDigitalAssistantSettings}
-                  className="w-full justify-center gap-1.5 text-[12px]"
+                  onClick={async () => {
+                    await requestAssistantRole();
+                    await checkPermissions();
+                  }}
+                  className="w-full justify-center gap-1 text-[11px]"
                 >
-                  <span>Set as Default Assistant</span>
-                  <ExternalLink size={12} />
+                  <span>{assistantRoleGranted ? "Reconfigure" : "Set as Assistant"}</span>
+                  <ExternalLink size={11} />
                 </Button>
               </div>
 
-              {/* System App Info */}
-              <div className="rounded-xl border border-ops-line bg-ops-panel p-4 flex flex-col justify-between gap-3">
+              {/* 2. Edge-Glow Overlay Permission */}
+              <div className="rounded-xl border border-ops-line bg-ops-panel p-3.5 flex flex-col justify-between gap-3">
+                <div>
+                  <div className="flex items-center justify-between gap-2 text-ink font-semibold">
+                    <div className="flex items-center gap-2">
+                      <Sparkles size={16} className="text-ai" />
+                      <span>Edge-Glow Overlay</span>
+                    </div>
+                    {overlayGranted ? (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-400 border border-emerald-500/20">
+                        <CheckCircle2 size={10} /> Granted
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-400 border border-amber-500/20">
+                        <AlertCircle size={10} /> Required
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-ink-dim mt-1.5 leading-relaxed">
+                    Allows the luminous Google Assistant-style edge-glow border to render over running apps.
+                  </p>
+                </div>
+                <Button
+                  variant={overlayGranted ? "ghost" : "outline"}
+                  size="sm"
+                  onClick={async () => {
+                    await requestOverlayPermission();
+                    await checkPermissions();
+                  }}
+                  className="w-full justify-center gap-1 text-[11px]"
+                >
+                  <span>{overlayGranted ? "Active" : "Allow Overlay"}</span>
+                  <ExternalLink size={11} />
+                </Button>
+              </div>
+
+              {/* 3. System App Info */}
+              <div className="rounded-xl border border-ops-line bg-ops-panel p-3.5 flex flex-col justify-between gap-3">
                 <div>
                   <div className="flex items-center gap-2 text-ink font-semibold">
                     <ShieldCheck size={16} className="text-ai" />
-                    <span>All Permissions & Battery</span>
+                    <span>Battery & Autolaunch</span>
                   </div>
-                  <p className="text-[12px] text-ink-dim mt-1.5 leading-relaxed">
-                    Open Android's App Info page to toggle background battery optimization (unrestricted) or review all granted permissions.
+                  <p className="text-[11px] text-ink-dim mt-1.5 leading-relaxed">
+                    Set battery to "Don't optimize" and enable "Auto-launch" so Realme UI keeps IRIS available in background.
                   </p>
                 </div>
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={openSystemAppSettings}
-                  className="w-full justify-center gap-1.5 text-[12px]"
+                  className="w-full justify-center gap-1 text-[11px]"
                 >
-                  <span>Open App Info Settings</span>
-                  <ExternalLink size={12} />
+                  <span>App Info Settings</span>
+                  <ExternalLink size={11} />
                 </Button>
               </div>
             </div>

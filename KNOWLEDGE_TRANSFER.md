@@ -2,7 +2,7 @@
 
 > **System Designation**: IRIS (*Intelligent Responsive Information System*)  
 > **Repository**: `C:\kirtan\IRIS`  
-> **Version**: 5.0 (P3 Unified Voice Intelligence & Real-Time Visual Perception: Unified Voice Bridge, Zero-Image-Storage Screen Perception Service, Real-Time Bidirectional Gemini Live Audio WebSocket Dispatched to P1 Supervisor and P2 Universal Device Capability Registry, Visual Change & Stale-Context Detection, Grounded Visual Follow-ups, Zero Regressions across 476 Test Cases)  
+> **Version**: 6.0 (P4 JARVIS-Style Ambient Activation & Always-Available Operating System: Realme GT 7T Native Voice Interaction Service & Translucent Overlay, Glowing Dynamic Edge-to-Edge Visual Border, Real-Time Audio-Amplitude Pulsing State Machine, On-Demand 24kHz Bi-directional Audio Streaming via /api/voice/live, Zero-Surveillance Background Policy, 1x1 Glowing Home Widget & Quick Tile, Zero Regressions across 487 Test Cases)  
 > **Target Audience**: Core Engineers, Systems Architects, and Technical Maintainers  
 
 ---
@@ -16,10 +16,11 @@
 6. [Ephemeral Multimodal Vision Pipeline](#6-ephemeral-multimodal-vision-pipeline)
 7. [Voice Engine & Situational Awareness](#7-voice-engine--situational-awareness)
 8. [Sovereign Mesh Network & Remote Desktop Mirroring](#8-sovereign-mesh-network--remote-desktop-mirroring)
-9. [Comprehensive Tech Stack Breakdown](#9-comprehensive-tech-stack-breakdown)
-10. [Hosting, Environments & Deployment Topologies](#10-hosting-environments--deployment-topologies)
-11. [Codebase Anatomy & Directory Tree](#11-codebase-anatomy--directory-tree)
-12. [Operational Runbook & Developer Cheatsheet](#12-operational-runbook--developer-cheatsheet)
+9. [JARVIS-Style Ambient Activation & Always-Available Operating System (P4)](#9-jarvis-style-ambient-activation--always-available-operating-system-p4)
+10. [Comprehensive Tech Stack Breakdown](#10-comprehensive-tech-stack-breakdown)
+11. [Hosting, Environments & Deployment Topologies](#11-hosting-environments--deployment-topologies)
+12. [Codebase Anatomy & Directory Tree](#12-codebase-anatomy--directory-tree)
+13. [Operational Runbook & Developer Cheatsheet](#13-operational-runbook--developer-cheatsheet)
 
 ---
 
@@ -496,7 +497,75 @@ In asymmetric networks (Vercel serverless cloud + Windows laptop + Android 5G), 
 
 ---
 
-## 9. Comprehensive Tech Stack Breakdown
+## 9. JARVIS-Style Ambient Activation & Always-Available Operating System (P4)
+
+In P4, IRIS completes its evolution from an application-based assistant into a **JARVIS-style ambient personal operating system**. Rather than opening an application, switching tabs, and clicking buttons, IRIS is accessible on-demand from any Android screen (Realme GT 7T) or Windows workspace.
+
+```mermaid
+flowchart TD
+    subgraph TriggerSurfaces ["P4 Activation Surfaces (Realme GT 7T)"]
+        T1["Power Button Long Press<br/>(Realme UI Voice Assistant)"]
+        T2["Bottom-Corner Inward Swipe<br/>(System Navigation Gesture)"]
+        T3["Quick Settings Tile<br/>(IrisQuickTileService)"]
+        T4["1x1 Glowing Home Widget<br/>(IrisWidgetProvider)"]
+        T5["Launcher App Shortcuts<br/>(shortcuts.xml)"]
+    end
+
+    subgraph NativeAndroidSystem ["Native Android Layer (Realme UI / ColorOS)"]
+        VIS["IrisVoiceInteractionService<br/>(ROLE_ASSISTANT)"]
+        VISS["IrisVoiceInteractionSession<br/>(System Window Floating Layer)"]
+        TransAct["AssistantActivity<br/>(AppTheme.Translucent Edge-to-Edge)"]
+        OverlaySvc["IrisAmbientService<br/>(ForegroundServiceType: Microphone)"]
+    end
+
+    subgraph AmbientUIUX ["Luminous Visual & Audio Experience"]
+        EdgeGlow["IrisOverlayView<br/>• Edge-to-Edge Border Glow<br/>• Amplitude-Reactive Pulse<br/>• State Machine (Idle→Listen→Think→Speak)"]
+        VoiceClient["IrisAmbientVoiceManager<br/>• 24kHz Mono 16-bit PCM AudioRecord<br/>• WebSocket Client (irisai.runs-on.dev / Local)<br/>• AudioTrack 24kHz Direct Playback<br/>• Direct Tool Dispatcher (App Launch, Screen)"]
+    end
+
+    subgraph IRISCoreMesh ["IRIS Sovereign Core & Mesh"]
+        VoiceWS["FastAPI /api/voice/live<br/>(Gemini Live / Sovereign Supervisor)"]
+        P1Supervisor["IrisSupervisor<br/>• Goal Breakdown & Re-planning<br/>• Deterministic Fast Paths"]
+        P2Registry["Capability Registry<br/>• UniversalAppTool<br/>• WindowsDeviceExecutor<br/>• AndroidDeviceExecutor"]
+        P3Perception["ScreenPerceptionService<br/>• Ephemeral Capture<br/>• Zero Storage"]
+    end
+
+    TriggerSurfaces --> VIS & TransAct & OverlaySvc
+    VIS --> VISS
+    VISS & TransAct & OverlaySvc --> EdgeGlow & VoiceClient
+    VoiceClient <-->|Bi-directional PCM & Events| VoiceWS
+    VoiceWS <--> P1Supervisor
+    P1Supervisor --> P2Registry & P3Perception
+```
+
+### 1. Realme GT 7T Hardware & OS Integration Feasibility
+- **Default Digital Assistant (`ROLE_ASSISTANT`)**: Registered via `IrisVoiceInteractionService` with `android.permission.BIND_VOICE_INTERACTION`. Setting IRIS as the Default Digital Assistant in Realme UI allows instant zero-overhead activation.
+- **Hardware Power Key Long-Press**: Configured in Realme UI (`Settings > Additional Settings > Power Button > Voice Assistant`) to invoke the system assistant directly.
+- **Bottom-Corner Navigation Swipe**: System-wide gesture navigation corner swipe automatically routes to `IrisVoiceInteractionSession`.
+- **Quick Settings Tile**: `IrisQuickTileService` placed in notification drawer for one-tap system-wide invocation.
+- **1x1 Glowing Home Widget**: `IrisWidgetProvider` for instantaneous one-touch launcher entry.
+- **OEM Back-Tap Notice**: ColorOS/Realme UI restricts back-tap gestures to built-in system apps (Flashlight, Camera) without exposing a public third-party Android API. Simulating back-tap via continuous accelerometer polling causes severe battery drain and is actively terminated by OEM power managers. Therefore, native Power Button, Corner Swipe, and Quick Tile are the certified, zero-drain activation mechanisms.
+
+### 2. Luminous Edge-Glow Visual Engine (`IrisOverlayView.java`)
+- **Google Assistant-Inspired Aesthetics**: Displays a full-perimeter animated luminous glow around display edges without obscuring the underlying application content.
+- **Real-Time Audio Amplitude Modulation**: Real-time microphone RMS amplitude modulates border thickness and glow intensity dynamically during speech (`setAudioAmplitude`).
+- **State Machine**:
+  - `STATE_LISTENING`: Luminous cyan (`#00E5FF`) and electric blue (`#00B0FF`).
+  - `STATE_PROCESSING`: Deep violet (`#7C4DFF`) and pulse wave.
+  - `STATE_EXECUTING`: Warm amber / gold (`#FFB300`) indicating device or workstation execution.
+  - `STATE_SPEAKING`: High-intensity cyan wave synchronized to incoming audio chunks.
+  - `STATE_ERROR`: Crimson (`#FF5252`) indication.
+- **Fluid Dismissal**: Tapping outside or swiping down instantly dismisses the overlay and terminates audio pipelines.
+
+### 3. Audio Streaming, Zero Surveillance & Privacy Architecture (`IrisAmbientVoiceManager.java`)
+- **Zero Background Surveillance**: Microphone hardware is **never** accessed while idle. Audio hardware is opened only on user-initiated activation and immediately stopped and released upon turn completion or dismissal. Fully complies with Android 14/15 `FOREGROUND_SERVICE_MICROPHONE` enforcement.
+- **Audio Pipeline**: 24,000 Hz, 16-bit mono PCM capture and playback.
+- **Direct WebSocket Link**: Streams directly to `/api/voice/live` on the production cloud or local daemon.
+- **Autonomous Local Tool Dispatching**: If the multi-agent supervisor instructs a local mobile action (e.g. `launch_mobile_app` or screen capture), the native manager dispatches directly to `AppLauncherPlugin` or `ScreenPerceptionService` without WebView roundtrips.
+
+---
+
+## 10. Comprehensive Tech Stack Breakdown
 
 ### Frontend (User Interface)
 - **Framework**: React 18.3 Single Page Application (SPA) with TypeScript 5.6.

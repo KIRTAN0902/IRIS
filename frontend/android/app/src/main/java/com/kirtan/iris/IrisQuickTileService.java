@@ -3,6 +3,7 @@ package com.kirtan.iris;
 import android.app.PendingIntent;
 import android.content.Intent;
 import android.os.Build;
+import android.provider.Settings;
 import android.service.quicksettings.TileService;
 import androidx.annotation.RequiresApi;
 
@@ -13,9 +14,16 @@ public class IrisQuickTileService extends TileService {
     public void onClick() {
         super.onClick();
 
-        Intent intent = new Intent(this, MainActivity.class);
+        // Check if we can draw overlays directly
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && Settings.canDrawOverlays(this)) {
+            IrisAmbientService.startAmbient(this);
+            return;
+        }
+
+        // Fallback to AssistantActivity with ambient action
+        Intent intent = new Intent(this, AssistantActivity.class);
+        intent.setAction("com.kirtan.iris.ACTION_AMBIENT_VOICE");
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
-        intent.putExtra("action", "voice");
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             PendingIntent pendingIntent = PendingIntent.getActivity(

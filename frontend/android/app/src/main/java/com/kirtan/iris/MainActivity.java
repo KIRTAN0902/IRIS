@@ -14,6 +14,7 @@ public class MainActivity extends BridgeActivity {
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(PaymentPlugin.class);
         registerPlugin(AppLauncherPlugin.class);
+        registerPlugin(IrisAmbientPlugin.class);
         super.onCreate(savedInstanceState);
         handleVoiceIntent(getIntent());
     }

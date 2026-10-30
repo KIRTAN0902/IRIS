@@ -173,6 +173,65 @@ public class AppLauncherPlugin extends Plugin {
         }
     }
 
+    public static boolean launchAppDirect(Context context, String appQuery) {
+        if (appQuery == null || appQuery.trim().isEmpty() || context == null) return false;
+        String query = appQuery.trim().toLowerCase();
+        PackageManager pm = context.getPackageManager();
+
+        if (query.equals("camera") || query.equals("open camera")) {
+            try {
+                Intent cameraIntent = new Intent(MediaStore.INTENT_ACTION_STILL_IMAGE_CAMERA);
+                cameraIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                context.startActivity(cameraIntent);
+                return true;
+            } catch (Exception ignored) {}
+        }
+
+        if (query.equals("settings") || query.equals("open settings")) {
+            try {
+                Intent settingsIntent = new Intent(Settings.ACTION_SETTINGS);
+                settingsIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                context.startActivity(settingsIntent);
+                return true;
+            } catch (Exception ignored) {}
+        }
+
+        String targetPackage = COMMON_PACKAGES.get(query);
+        if (targetPackage == null) {
+            targetPackage = findPackageByLabelStatic(pm, query);
+        }
+
+        if (targetPackage != null) {
+            try {
+                Intent launchIntent = pm.getLaunchIntentForPackage(targetPackage);
+                if (launchIntent != null) {
+                    launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    context.startActivity(launchIntent);
+                    return true;
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "Direct launch error for " + targetPackage, e);
+            }
+        }
+        return false;
+    }
+
+    private static String findPackageByLabelStatic(PackageManager pm, String query) {
+        try {
+            List<ApplicationInfo> packages = pm.getInstalledApplications(PackageManager.GET_META_DATA);
+            for (ApplicationInfo appInfo : packages) {
+                if ((appInfo.flags & ApplicationInfo.FLAG_SYSTEM) != 0 && (appInfo.flags & ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) == 0) {
+                    continue;
+                }
+                CharSequence label = pm.getApplicationLabel(appInfo);
+                if (label != null && label.toString().toLowerCase().contains(query)) {
+                    return appInfo.packageName;
+                }
+            }
+        } catch (Exception ignored) {}
+        return null;
+    }
+
     @PluginMethod
     public void getInstalledApps(PluginCall call) {
         Context context = getContext();

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="colorPrimary">#0D1117</color>
+    <color name="colorPrimaryDark">#000000</color>
+    <color name="colorAccent">#00E5FF</color>
+    <color name="iris_cyan">#00E5FF</color>
+    <color name="iris_violet">#7C4DFF</color>
+    <color name="iris_electric_blue">#00B0FF</color>
+    <color name="iris_gold">#FFB300</color>
+    <color name="iris_crimson">#FF5252</color>
+    <color name="iris_overlay_scrim">#66000000</color>
+</resources>
