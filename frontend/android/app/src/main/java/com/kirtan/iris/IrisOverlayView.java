@@ -11,7 +11,7 @@ import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.RectF;
 import android.graphics.Shader;
-import android.graphics.SweepShader;
+import android.graphics.SweepGradient;
 import android.os.Build;
 import android.provider.Settings;
 import android.util.AttributeSet;
@@ -258,7 +258,7 @@ public class IrisOverlayView extends View {
 
         // Animated gradient angle based on phase
         float angle = (mAnimationPhase * 360.0f);
-        SweepShader sweepShader = new SweepShader(
+        SweepGradient sweepGradient = new SweepGradient(
             width / 2.0f,
             height / 2.0f,
             new int[]{color1, color2, color3, color4, color1},
@@ -267,8 +267,8 @@ public class IrisOverlayView extends View {
 
         canvas.save();
         canvas.rotate(angle, width / 2.0f, height / 2.0f);
-        mBorderPaint.setShader(sweepShader);
-        mGlowPaint.setShader(sweepShader);
+        mBorderPaint.setShader(sweepGradient);
+        mGlowPaint.setShader(sweepGradient);
         canvas.restore();
 
         // Modulate alpha with audio amplitude during speaking/listening
