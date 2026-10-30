@@ -2,7 +2,7 @@
 
 > **System Designation**: IRIS (*Intelligent Responsive Information System*)  
 > **Repository**: `C:\kirtan\IRIS`  
-> **Version**: 4.0 (P2 Universal Device Intelligence & Capability-Driven Execution: Dynamic Windows Start Menu/Registry Scanner, Dynamic Browser Discovery & Service URL Fallback, Typed Capability Contracts, Sovereign Mesh Transport & Offline Protection, Native Win32 System Control, Android Companion Native Telemetry)  
+> **Version**: 5.0 (P3 Unified Voice Intelligence & Real-Time Visual Perception: Unified Voice Bridge, Zero-Image-Storage Screen Perception Service, Real-Time Bidirectional Gemini Live Audio WebSocket Dispatched to P1 Supervisor and P2 Universal Device Capability Registry, Visual Change & Stale-Context Detection, Grounded Visual Follow-ups, Zero Regressions across 476 Test Cases)  
 > **Target Audience**: Core Engineers, Systems Architects, and Technical Maintainers  
 
 ---
@@ -347,50 +347,90 @@ flowchart TD
 
 ---
 
-## 7. Voice Engine & Situational Awareness
+## 7. Unified Voice Intelligence & Real-Time Screen Perception (P3)
 
-IRIS features dual voice operating modes: **Real-Time Gemini Live Bidirectional WebSocket** and **Turn-Based Conversational Voice**, fully integrated with sovereign workstation and mobile peer controls.
+IRIS unifies voice, text, and visual interactions into a single intelligence, memory, reasoning, permissions, and capability execution pipeline. There is no isolated voice assistant or restricted tool subset: spoken requests, conversational screen queries, and text chat share the identical P1 Supervisor, P2 Universal Device Capability Registry, and situational memory.
 
 ```mermaid
-sequenceDiagram
-    autonumber
-    actor User as Operator (Voice)
-    participant Client as Web / Android / Desktop Client
-    participant LiveWS as /api/voice/live (WebSocket)
-    participant GeminiLive as Gemini 3.8 Live Model
-    participant Mesh as Sovereign Mesh & Device Dispatcher
-    participant Device as Windows Laptop / Android Phone
+flowchart TD
+    subgraph MultiModalInputs ["Multimodal User Inputs"]
+        VoiceStream["Spoken Speech (Gemini Live Audio / STT)"]
+        ChatText["Chat Text Message"]
+        ScreenQuery["Visual Screen Query ('What's on my screen?')"]
+    end
 
-    User->>Client: Speaks: "Hey IRIS, open WhatsApp on my phone"
-    Client->>LiveWS: Streams 24kHz 16-bit PCM Audio Chunks
-    LiveWS->>GeminiLive: Real-Time Audio Frame Stream
-    GeminiLive-->>LiveWS: response.tool_call: launch_mobile_app(app_name="whatsapp")
-    LiveWS->>Mesh: Dispatches Native App Launch Event
-    Mesh->>Device: Triggers Native Android Intent (launchPhoneApp)
-    LiveWS-->>GeminiLive: session.send_tool_response(result="Opened WhatsApp on mobile")
-    GeminiLive-->>LiveWS: Audio PCM Response ("Opening WhatsApp on your phone now")
-    LiveWS-->>Client: 24kHz PCM Audio Stream
-    Client-->>User: Plays Enceladus voice confirmation aloud
+    subgraph NormalizationLayer ["Context & Voice Bridge Layer"]
+        VoiceBridge["UnifiedVoiceBridge<br/>(/api/voice/live WebSocket Dispatcher)"]
+        ScreenService["ScreenPerceptionService<br/>(Cross-Device Hardware Capture & Cache)"]
+    end
+
+    subgraph ReasoningLayer ["P1 Supervisor & Agentic Core"]
+        Supervisor["IrisSupervisor.process()<br/>(Deterministic Fast-Paths & Multi-Agent Routing)"]
+        IrisAgent["IrisAgent.run_turn()<br/>(Gemini 3.1 Flash-Lite + Multi-Agent Swarm)"]
+        ActivePerceptionCache["ActiveVisualPerception Cache<br/>(120s Freshness Window, Zero Disk Storage)"]
+    end
+
+    subgraph ExecutionLayer ["P2 Universal Device Execution Layer"]
+        P2Resolver["DeviceTargetResolver (Laptop vs Phone)"]
+        WinExecutor["WindowsDeviceExecutor (App Discovery, Browser Fallback)"]
+        AndroidExecutor["AndroidDeviceExecutor (Sovereign Mesh Remote Relay)"]
+    end
+
+    VoiceStream --> VoiceBridge
+    ChatText --> Supervisor
+    ScreenQuery --> ScreenService
+
+    VoiceBridge --> Supervisor
+    VoiceBridge --> P2Resolver
+    ScreenService --> ActivePerceptionCache
+    ActivePerceptionCache -.->|Injects Context| Supervisor
+    ActivePerceptionCache -.->|Injects Context| IrisAgent
+
+    Supervisor --> IrisAgent
+    IrisAgent --> P2Resolver
+    P2Resolver --> WinExecutor
+    P2Resolver --> AndroidExecutor
 ```
 
-### 1. Gemini Live Bidirectional WebSocket (`/api/voice/live`)
-- **Model**: `gemini-3.8-live` with `response_modalities=["AUDIO"]` and `Enceladus` voice personality.
-- **Sovereign Tool Calling**: Configured directly in `types.LiveConnectConfig(tools=tools_list)`:
-  - `launch_laptop_app(app_name, directory)`: Launches Windows apps (Terminal, VS Code, Chrome, etc.).
-  - `launch_mobile_app(app_name)`: Broadcasts launch event over WebSocket and pushes mesh relay message to open apps natively on Android.
-  - `execute_terminal_command(command)`: Runs shell/PowerShell commands on the laptop and speaks results.
-  - `get_laptop_status()`: Speaks real-time laptop battery percentage, charging state, and mesh connectivity.
-  - `lock_laptop()`: Engages the Sovereign Privacy Shield on the Windows display.
-  - `create_daily_task(title, area, priority)`: Creates a new task in the database and returns task ID and title.
-  - `get_today_tasks()`: Retrieves all tasks scheduled or due today, categorized into open, in-progress, and completed.
-  - `complete_task(task_id)`: Marks an open task completed in the database.
-- **Real-Time Tool Interception**: `gemini_to_client()` catches `response.tool_call.function_calls`, runs the native action, and sends back `session.send_tool_response(function_responses=...)` so the model audibly confirms execution with zero latency.
+### 1. Unified Voice Bridge (`UnifiedVoiceBridge`)
+- **Zero-Silo Architecture**: Eliminates the previous hardcoded 9-function voice silo. Every voice request is dispatched to the unified P1/P2 infrastructure:
+  - Spoken natural language commands route directly into `IrisSupervisor.process()`.
+  - Application launches route to `UnifiedVoiceBridge.open_application()` with dynamic target resolution and browser fallback (e.g. *"Open Google Drive on my laptop"* launches Chrome or Edge at `https://drive.google.com` if native Drive is not installed).
+  - Workstation controls route to `windows.system.lock` and `windows.system.battery`.
+  - Task commands route to core `task_service`.
+  - Screen perception queries route to `ScreenPerceptionService`.
+- **Gemini Live Bidirectional Streaming (`/api/voice/live`)**:
+  - Full-duplex conversational audio streaming with `gemini-3.8-live` and the `Enceladus` voice.
+  - Dynamically registers typed callable tools via `bridge.get_callable_tools()` into `types.LiveConnectConfig`.
+  - Complete backwards-compatible function interceptor in `gemini_to_client()` ensuring all legacy function names (`launch_laptop_app`, `launch_mobile_app`, `execute_terminal_command`, `get_laptop_status`, `lock_laptop`, `create_daily_task`, `get_today_tasks`, `complete_task`, `inspect_current_screen`) resolve to modern capability executors.
 
-### 2. Turn-Based Conversational Voice (`converse()`)
-- **Speech-to-Text (STT)**: Server-side Groq Whisper / Gemini Transcribe (`gemini-3.5-transcribe`) with fallback to Android/browser Web Speech API (`hi-IN` / `en-IN`).
-- **Text-to-Speech (TTS)**: Server-side Gemini Speech Engine (`gemini-3.8-flash-tts`) with fallback to native OS speech synthesis.
-- **Natural Spoken Normalization (`norm_msg`)**: Strips conversational spoken prefixes (`"hey iris"`, `"can you please"`, `"could you please"`, etc.) before intent matching in `IrisSupervisor`, guaranteeing instant deterministic fast-path execution.
-- **Situational Telemetry Injection**: Real-time workstation status, top priority tasks, remaining free time blocks, and current habits are automatically injected into conversational prompts.
+### 2. Universal Screen Perception (`ScreenPerceptionService`)
+- **Cross-Device Dynamic Capture**:
+  - **Windows Workstation**: Ephemeral GDI hardware buffer capture via native Win32/MSS API.
+  - **Android Companion**: Real-time screen capture via Sovereign Mesh WebSocket and native `AppLauncher.captureScreen` (PixelCopy).
+- **Zero-Image-Storage Guarantee**: Raw screenshots exist strictly in RAM during analysis (`VisionService.analyze_ephemeral_images`) and are immediately purged. No raw image bytes are persisted to disk, the database, conversation logs, or telemetry.
+- **Active Visual Perception Cache (`ActiveVisualPerception`)**:
+  - Holds structured OCR text, UI elements, bounding coordinates, detected domain, and visual summary.
+  - Formatted into `[📷 ACTIVE VISUAL CONTEXT]` and injected into conversational prompts in `IrisSupervisor` and `IrisAgent._build_system_prompt()`.
+- **Visual Freshness & Change Detection**:
+  - Enforces a 120-second validity window. If a follow-up is asked after 120 seconds or after screen contents change, IRIS explicitly advises the user: *"My previous view of your screen is X minutes old and may have changed. Please ask me to inspect your screen again so I can give you an accurate, up-to-date answer."*
+- **Grounded Visual Follow-ups**: Follow-up questions (*"Which button should I click to proceed?"*, *"What does this error mean?"*) use the active visual perception to pinpoint elements accurately without hallucinating fake actions.
+
+### 3. Mandatory Acceptance Test Verification (Tests A through L)
+Full acceptance test suite located at `backend/tests/voice_vision/test_voice_vision_acceptance.py`:
+- **Test A: Voice and Chat Equivalence**: Spoken and chat commands (*"Open WhatsApp on my phone"*) execute through identical target resolution, capability selection, and verification semantics.
+- **Test B: Windows Voice Control**: Spoken *"Open Chrome on my laptop"* executes Windows app launch and returns confirmation.
+- **Test C: Browser Fallback Through Voice**: Spoken *"Open Google Drive on my laptop"* discovers Chrome, opens Drive URL, and confirms cleanly without error.
+- **Test D: Voice Follow-Up Context**: Multi-turn spoken task creation, daily task listing, and task completion verified with real database state changes.
+- **Test E: Android Screen Perception**: Mobile screen captured via WebSocket/PixelCopy, analyzed ephemerally with zero files written to disk.
+- **Test F: Windows Screen Perception**: Windows workstation screen captured via in-memory buffer with zero files written to disk.
+- **Test G: Visual Follow-Up**: Accurately identifies button elements (*"Proceed to Pay"*) from active visual context without fake clicks.
+- **Test H: Visual Change Detection**: Successfully detects stale context (> 120s) and prompts for a fresh look.
+- **Test I: Permission Denial**: Gracefully handles screen capture permission denial or cancellation without hallucination.
+- **Test J: Mesh Disconnection**: Safely reports offline laptop status when unreachable on Sovereign Mesh.
+- **Test K: Multimodal Execution**: Ephemeral screen error capture (*"Connection refused port 5432"*) grounds the turn to provide targeted remediation.
+- **Test L: Gemini Live Tool Dispatch**: Verifies backward-compatible dispatch across all 9 legacy functions.
+- **Regression Safety**: All 476 backend tests pass with 0 regressions.
 
 ---
 

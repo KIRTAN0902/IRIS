@@ -78,6 +78,11 @@ class AgentResponseSchema(BaseModel):
         description="Flag indicating if the response was generated via deterministic fast-path",
     )
 
+    @property
+    def content(self) -> str:
+        """Alias for message to ensure interoperability with ChatMessageOut."""
+        return self.message
+
 
 class ImageAttachment(BaseModel):
     """An ephemeral image payload for vision turns."""

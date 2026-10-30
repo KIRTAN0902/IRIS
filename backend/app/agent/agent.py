@@ -128,6 +128,7 @@ class IrisAgent:
                     return context
             context = build_decision_context(db, user)
             context["user_name"] = user.name.split(" ")[0] if user.name else None
+            context["user_id"] = user.id
             return context
 
         # Fast deterministic path (e.g. "what's my task?", "task done", "gym done")
@@ -571,6 +572,15 @@ HOW YOU OPERATE:
             if attention:
                 extra.append(f"- Needs attention: {json.dumps(attention)}")
             sections.append("\n".join(extra))
+        user_id = context.get("user_id")
+        if user_id:
+            try:
+                from app.services.screen_perception_service import screen_perception_service
+                v_block = screen_perception_service.format_perception_context_for_prompt(user_id)
+                if v_block:
+                    sections.append(v_block)
+            except Exception:
+                pass
         if memory_section:
             sections.append(memory_section)
         return "\n\n".join(sections)

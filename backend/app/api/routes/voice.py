@@ -176,242 +176,11 @@ async def voice_live_websocket(
             f"{situation_text}\n"
         )
 
-        active_screen_capture_futures: list[asyncio.Future[str]] = []
+        from app.ai.voice_bridge import UnifiedVoiceBridge
+        from app.services.screen_perception_service import screen_perception_service
 
-        # Real Sovereign IRIS Tools for Gemini Live Audio
-        async def launch_laptop_app(app_name: str, directory: str = "") -> str:
-            """Launch or open an application on the user's Windows laptop workstation (e.g. terminal, agy, vscode, chrome, explorer, or any installed Windows app)."""
-            import secrets
-            from app.services import mesh_service as ms
-            from app.services import mesh_relay_service as mrs
-
-            with SessionLocal() as db_session:
-                if mrs.is_local_windows_host():
-                    res = ms.launch_windows_app(app_name, directory=directory)
-                    return f"Successfully opened {app_name} on your Windows laptop." if res.get("success") else f"Could not open {app_name}: {res.get('error')}"
-                else:
-                    if not mrs.is_host_laptop_online(db_session, user.id, threshold_seconds=300.0):
-                        return "Your Windows laptop is currently offline or unreachable on the IRIS mesh."
-                    req_id = secrets.token_hex(6)
-                    mrs.push_relay_message(
-                        db=db_session,
-                        user_id=user.id,
-                        sender_device_id="voice_live_agent",
-                        target_device_id=mrs.LAPTOP_HOST_DEVICE_ID,
-                        msg_type="REMOTE_COMMAND",
-                        payload={"command": "LAUNCH_APP", "app": app_name, "directory": directory, "req_id": req_id},
-                    )
-                    # Broadcast to active WebSocket hub peers
-                    try:
-                        hub_msg = ms.MeshMessage(
-                            type="REMOTE_COMMAND",
-                            sender_device="voice_live_agent",
-                            payload={"command": "LAUNCH_APP", "app": app_name, "directory": directory, "req_id": req_id},
-                        )
-                        await ms.hub.broadcast(hub_msg, exclude_sender=False)
-                    except Exception:
-                        pass
-
-                    res = await mrs.wait_for_relay_response(
-                        db=db_session,
-                        user_id=user.id,
-                        req_id=req_id,
-                        timeout_seconds=15.0,
-                    )
-                    if res and res.get("success"):
-                        return f"Successfully opened {app_name} on your Windows laptop."
-                    elif res and res.get("error"):
-                        return f"Laptop reported: {res.get('error')}"
-                    return f"Dispatched launch command for {app_name} to your Windows laptop."
-
-        def launch_mobile_app(app_name: str) -> str:
-            """Launch or open an application on the user's mobile phone (e.g. whatsapp, camera, spotify, phonepe, gpay, gallery)."""
-            from app.services import mesh_relay_service as mrs
-
-            try:
-                loop = asyncio.get_running_loop()
-                loop.create_task(websocket.send_json({"type": "launch_mobile_app", "app": app_name}))
-            except Exception:
-                pass
-
-            with SessionLocal() as db_session:
-                mrs.push_relay_message(
-                    db=db_session,
-                    user_id=user.id,
-                    sender_device_id="voice_live_agent",
-                    target_device_id=None,
-                    msg_type="LAUNCH_APP",
-                    payload={"app": app_name, "target": "mobile"},
-                )
-            return f"Opened {app_name} on your mobile phone."
-
-        async def execute_terminal_command(command: str) -> str:
-            """Run a shell or PowerShell command on the Windows laptop workstation."""
-            import secrets
-            from app.services import mesh_service as ms
-            from app.services import mesh_relay_service as mrs
-
-            with SessionLocal() as db_session:
-                if mrs.is_local_windows_host():
-                    res = ms.execute_terminal_command(command)
-                    out = (res.get("stdout") or res.get("stderr") or "Command completed.").strip()
-                    return f"Output: {out[:500]}"
-                else:
-                    if not mrs.is_host_laptop_online(db_session, user.id, threshold_seconds=300.0):
-                        return "Your Windows laptop is currently offline on the IRIS mesh."
-                    req_id = secrets.token_hex(6)
-                    mrs.push_relay_message(
-                        db=db_session,
-                        user_id=user.id,
-                        sender_device_id="voice_live_agent",
-                        target_device_id=mrs.LAPTOP_HOST_DEVICE_ID,
-                        msg_type="TERMINAL_EXEC",
-                        payload={"req_id": req_id, "command": command, "working_dir": r"C:\kirtan\IRIS", "timeout": 30},
-                    )
-                    res = await mrs.wait_for_relay_response(
-                        db=db_session,
-                        user_id=user.id,
-                        req_id=req_id,
-                        timeout_seconds=15.0,
-                    )
-                    if res:
-                        out = (res.get("stdout") or res.get("stderr") or "Command completed.").strip()
-                        return f"Output from laptop: {out[:500]}"
-                    return f"Command '{command}' sent to laptop, but no output was returned within timeout."
-
-        def get_laptop_status() -> str:
-            """Check the status, battery level, and connectivity of the Windows laptop."""
-            from app.services import mesh_relay_service as mrs
-            with SessionLocal() as db_session:
-                info = mrs.get_laptop_host_info(db_session, user.id, threshold_seconds=300.0)
-                status = "Online and active on IRIS mesh" if info.get("is_online") else "Offline"
-                bat = f"Battery is at {info.get('battery_level')}%" if info.get('battery_level') is not None else ""
-                charging = " (charging)" if info.get('is_charging') else ""
-                return f"Laptop workstation is {status}. {bat}{charging}."
-
-        def lock_laptop() -> str:
-            """Engage the Sovereign Privacy Shield on the Windows laptop display."""
-            from app.services import mesh_service as ms
-            from app.services import mesh_relay_service as mrs
-            with SessionLocal() as db_session:
-                if mrs.is_local_windows_host():
-                    ms.lock_windows_pc(mode="shield")
-                else:
-                    mrs.push_relay_message(
-                        db=db_session,
-                        user_id=user.id,
-                        sender_device_id="voice_live_agent",
-                        target_device_id=mrs.LAPTOP_HOST_DEVICE_ID,
-                        msg_type="REMOTE_COMMAND",
-                        payload={"command": "LOCK_PC", "mode": "shield"},
-                    )
-                return "Sovereign Privacy Shield engaged: Windows laptop display is locked."
-
-        def create_daily_task(title: str, area: str = "PERSONAL", priority: str = "MEDIUM", estimated_minutes: int = 30) -> str:
-            """Create a new daily task or action item in IRIS."""
-            from app.models.enums import LifeArea, TaskPriority
-            from app.schemas.task import TaskCreate
-            from app.services import task_service
-            with SessionLocal() as db_session:
-                area_val = getattr(LifeArea, area.upper(), LifeArea.PERSONAL)
-                pri_val = getattr(TaskPriority, priority.upper(), TaskPriority.MEDIUM)
-                task_in = TaskCreate(
-                    title=title,
-                    area=area_val,
-                    priority=pri_val,
-                    estimated_duration=estimated_minutes,
-                )
-                t = task_service.create_task(db_session, user.id, task_in)
-                return f"Created task #{t.id}: '{t.title}' ({t.area.title()} · {t.priority.title()} priority)."
-
-        def get_today_tasks() -> str:
-            """Retrieve the user's tasks for today, including priority and completion status."""
-            from app.models.task import Task
-            from app.models.enums import TaskStatus
-            from app.utils.datetime import localize_date_boundaries, to_local, utcnow
-            tz_str = user.timezone or "UTC"
-            now_local = to_local(utcnow(), tz_str)
-            today_start_utc, today_end_utc = localize_date_boundaries(now_local.date(), tz_str)
-
-            with SessionLocal() as db_session:
-                open_tasks = (
-                    db_session.query(Task)
-                    .filter(Task.user_id == user.id, Task.status.in_([TaskStatus.TODO.value, TaskStatus.IN_PROGRESS.value]))
-                    .order_by(Task.deadline.asc().nullslast(), Task.priority.desc())
-                    .all()
-                )
-                if not open_tasks:
-                    return f"You have no open tasks scheduled or due for today, {now_local.strftime('%A')}."
-                lines = [f"You have {len(open_tasks)} tasks for today:"]
-                for t in open_tasks[:6]:
-                    dur = f" ({t.estimated_duration}m)" if t.estimated_duration else ""
-                    lines.append(f"- [{t.priority}] {t.title}{dur}")
-                return "\n".join(lines)
-
-        def complete_task(task_title_or_id: str) -> str:
-            """Mark a task as completed by its title or ID."""
-            from app.models.task import Task
-            from app.services import task_service
-            with SessionLocal() as db_session:
-                t = None
-                if task_title_or_id.isdigit():
-                    t = db_session.query(Task).filter(Task.user_id == user.id, Task.id == int(task_title_or_id)).first()
-                if not t:
-                    t = (
-                        db_session.query(Task)
-                        .filter(Task.user_id == user.id, Task.title.ilike(f"%{task_title_or_id}%"))
-                        .first()
-                    )
-                if not t:
-                    return f"Could not find a task matching '{task_title_or_id}'."
-                task_service.complete_task(db_session, user.id, t.id, None)
-                return f"Marked task #{t.id} '{t.title}' as completed."
-
-        async def inspect_current_screen(question: str = "") -> str:
-            """Capture and inspect what is currently displayed on the user's mobile screen to answer questions or provide visual assistance."""
-            try:
-                loop = asyncio.get_running_loop()
-                fut: asyncio.Future[str] = loop.create_future()
-                active_screen_capture_futures.append(fut)
-                await websocket.send_json({
-                    "type": "request_screen_capture",
-                    "question": question,
-                })
-                try:
-                    b64_image = await asyncio.wait_for(fut, timeout=12.0)
-                    if not b64_image:
-                        return "Screen capture was not provided or permission was cancelled."
-
-                    from app.services.vision_service import vision_service
-                    img_bytes, mime = vision_service.decode_base64_image(b64_image)
-                    with SessionLocal() as db_session:
-                        resp, _, _ = await vision_service.process_ephemeral_turn(
-                            db=db_session,
-                            user=user,
-                            images=[(img_bytes, mime)],
-                            prompt=question or "Describe what is currently visible on the screen and extract any important details.",
-                        )
-                        return f"Screen observation: {resp.content[:800]}"
-                finally:
-                    if fut in active_screen_capture_futures:
-                        active_screen_capture_futures.remove(fut)
-            except asyncio.TimeoutError:
-                return "Screen capture request timed out."
-            except Exception as e:
-                logger.warning("Error inspecting screen: %s", e)
-                return f"Could not analyze screen: {e}"
-
-        tools_list = [
-            launch_laptop_app,
-            launch_mobile_app,
-            execute_terminal_command,
-            get_laptop_status,
-            lock_laptop,
-            create_daily_task,
-            get_today_tasks,
-            complete_task,
-            inspect_current_screen,
-        ]
+        bridge = UnifiedVoiceBridge(SessionLocal, user, websocket)
+        tools_list = bridge.get_callable_tools()
 
         live_config = types.LiveConnectConfig(
             response_modalities=["AUDIO"],
@@ -467,9 +236,7 @@ async def voice_live_websocket(
                             await session.send_client_content(turns=[], turn_complete=True)
                         elif p_type == "screen_capture_response":
                             b64 = payload.get("image_base64", "")
-                            for fut in list(active_screen_capture_futures):
-                                if not fut.done():
-                                    fut.set_result(b64)
+                            screen_perception_service.complete_capture_future(b64)
                         elif p_type == "interrupt":
                             pass
                         elif p_type == "ping":
@@ -481,30 +248,11 @@ async def voice_live_websocket(
                         responses = []
                         for fc in response.tool_call.function_calls:
                             logger.info("Gemini Live tool call received: %s with args: %s", fc.name, fc.args)
-                            func_map = {
-                                "launch_laptop_app": launch_laptop_app,
-                                "launch_mobile_app": launch_mobile_app,
-                                "execute_terminal_command": execute_terminal_command,
-                                "get_laptop_status": get_laptop_status,
-                                "lock_laptop": lock_laptop,
-                                "create_daily_task": create_daily_task,
-                                "get_today_tasks": get_today_tasks,
-                                "complete_task": complete_task,
-                                "inspect_current_screen": inspect_current_screen,
-                            }
-                            fn = func_map.get(fc.name)
-                            if fn:
-                                try:
-                                    args = fc.args or {}
-                                    if asyncio.iscoroutinefunction(fn):
-                                        res_val = await fn(**args)
-                                    else:
-                                        res_val = fn(**args)
-                                except Exception as err:
-                                    logger.exception("Error executing Live tool %s: %s", fc.name, err)
-                                    res_val = f"Error executing {fc.name}: {err}"
-                            else:
-                                res_val = f"Tool {fc.name} is not recognized."
+                            try:
+                                res_val = await bridge.dispatch_tool_call(fc.name, fc.args or {})
+                            except Exception as err:
+                                logger.exception("Error executing Live tool %s: %s", fc.name, err)
+                                res_val = f"Error executing {fc.name}: {err}"
                             responses.append(
                                 types.FunctionResponse(
                                     name=fc.name,

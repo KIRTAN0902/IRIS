@@ -1807,6 +1807,85 @@ class IrisSupervisor:
             all_actions,
         )
 
+    @classmethod
+    async def process(
+        cls,
+        db: Session,
+        user: User,
+        user_message: str,
+        conversation_id: int | None = None,
+        voice: bool = False,
+        skip_fast_path: bool = False,
+        extra_metadata: dict[str, Any] | None = None,
+    ) -> tuple[AgentResponseSchema, list[dict[str, Any]]]:
+        """Unified entry point for reasoning & executing user requests across all channels.
+
+        Guarantees that voice, visual perception, and text chat share the exact same
+        intelligence, capability registry, memory, and execution infrastructure.
+        """
+        from app.agent.agent import default_agent
+        from app.services.screen_perception_service import screen_perception_service
+
+        # 1. Check for screen perception intent if explicitly requested
+        clean_msg = user_message.lower().strip()
+        screen_patterns = [
+            "what is on my screen",
+            "what's on my screen",
+            "look at my screen",
+            "inspect my screen",
+            "examine my screen",
+            "describe my screen",
+            "read my screen",
+            "see my screen",
+        ]
+        if any(p in clean_msg for p in screen_patterns):
+            success, msg, vision_res = await screen_perception_service.capture_and_analyze(
+                db=db,
+                user=user,
+                question=user_message,
+            )
+            raw_text = getattr(vision_res, "extracted_text_or_code", None) or getattr(vision_res, "ocr_text", "")
+            resp = AgentResponseSchema(
+                thought="Captured and analyzed current screen display.",
+                actions=[],
+                message=vision_res.summary if (success and vision_res) else msg,
+                evidence=[raw_text[:200]] if raw_text else [],
+            )
+            return resp, []
+
+        # 2. Check for active visual context to ground follow-up questions
+        visual_ctx = screen_perception_service.format_perception_context_for_prompt(user.id)
+        effective_message = user_message
+        if visual_ctx and "[📷 ACTIVE VISUAL CONTEXT]" not in user_message:
+            followup_indicators = [
+                "button", "click", "tap", "screen", "error", "select", "this", "that", "where", "icon", "press",
+            ]
+            if any(ind in clean_msg for ind in followup_indicators):
+                effective_message = f"{visual_ctx}\n\nUser request regarding visible screen:\n{user_message}"
+
+        # 3. Route through default_agent for unified reasoning, tools, and execution
+        msg_out, _ = await default_agent.run_turn(
+            db=db,
+            user=user,
+            user_message=effective_message,
+            conversation_id=conversation_id,
+            voice=voice,
+            skip_fast_path=skip_fast_path,
+            persisted_user_message=user_message,
+            extra_metadata=extra_metadata,
+        )
+
+        resp = AgentResponseSchema(
+            thought="",
+            actions=[],
+            message=msg_out.content,
+            actions_summary=[a.get("summary", "") for a in msg_out.actions_taken if a.get("summary")],
+            evidence=msg_out.evidence,
+            recommended_action=msg_out.recommended_action,
+            fast_path=msg_out.fast_path,
+        )
+        return resp, msg_out.actions_taken
+
 
 _supervisor_instance: IrisSupervisor | None = None
 

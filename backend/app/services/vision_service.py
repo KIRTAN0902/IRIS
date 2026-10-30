@@ -96,6 +96,11 @@ class VisionExtractionResult(BaseModel):
     provider: str = ""
     model: str = ""
 
+    @property
+    def ocr_text(self) -> str:
+        """Convenience alias for extracted_text_or_code."""
+        return self.extracted_text_or_code
+
     @field_validator("summary", mode="before")
     @classmethod
     def _clean_summary(cls, value: Any) -> str:
