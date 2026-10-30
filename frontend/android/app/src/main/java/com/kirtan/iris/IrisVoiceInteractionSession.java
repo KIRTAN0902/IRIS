@@ -16,7 +16,7 @@ public class IrisVoiceInteractionSession extends VoiceInteractionSession {
 
     private static final String TAG = "IRIS_AssistSession";
 
-    private IrisOverlayView mOverlayView;
+    private IrisVisualContainer mVisualContainer;
     private IrisAmbientVoiceManager mVoiceManager;
     private String mForegroundPackage = "";
 
@@ -27,13 +27,6 @@ public class IrisVoiceInteractionSession extends VoiceInteractionSession {
     @Override
     public void onCreate() {
         super.onCreate();
-        mOverlayView = new IrisOverlayView(getContext());
-        mVoiceManager = new IrisAmbientVoiceManager(getContext(), mOverlayView);
-
-        mOverlayView.setOnDismissListener(() -> {
-            mVoiceManager.stopSession();
-            hide();
-        });
     }
 
     @Override
@@ -43,10 +36,59 @@ public class IrisVoiceInteractionSession extends VoiceInteractionSession {
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.MATCH_PARENT
         ));
-        container.addView(mOverlayView, new FrameLayout.LayoutParams(
-            FrameLayout.LayoutParams.MATCH_PARENT,
-            FrameLayout.LayoutParams.MATCH_PARENT
-        ));
+
+        android.content.SharedPreferences prefs = getContext().getSharedPreferences(IrisApplication.PREFS_NAME, Context.MODE_PRIVATE);
+        boolean preferSphere = prefs.getBoolean(IrisApplication.KEY_PREFER_SPHERE, true);
+
+        if (preferSphere) {
+            IrisSphereView sphere = new IrisSphereView(getContext());
+            int sphereSize = (int) (88 * getContext().getResources().getDisplayMetrics().density);
+            FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(sphereSize, sphereSize);
+            lp.gravity = Gravity.TOP | Gravity.END;
+            lp.topMargin = (int) (getContext().getResources().getDisplayMetrics().heightPixels * 0.28f);
+            lp.rightMargin = 24;
+            sphere.setLayoutParams(lp);
+            sphere.setOnSphereInteractionListener(new IrisSphereView.OnSphereInteractionListener() {
+                @Override
+                public void onSphereTapped() {
+                    if (mVoiceManager != null) {
+                        if (sphere.getState() == IrisVisualContainer.STATE_SPEAKING) {
+                            sphere.setState(IrisVisualContainer.STATE_LISTENING);
+                        } else if (sphere.getState() == IrisVisualContainer.STATE_IDLE) {
+                            mVoiceManager.startSession(null);
+                        }
+                    }
+                }
+
+                @Override
+                public void onSphereDismissed() {
+                    if (mVoiceManager != null) {
+                        mVoiceManager.stopSession();
+                    }
+                    hide();
+                }
+
+                @Override
+                public void onSphereMoved(int x, int y) {}
+            });
+            mVisualContainer = sphere;
+            container.addView(sphere);
+        } else {
+            IrisOverlayView overlay = new IrisOverlayView(getContext());
+            overlay.setOnDismissListener(() -> {
+                if (mVoiceManager != null) {
+                    mVoiceManager.stopSession();
+                }
+                hide();
+            });
+            mVisualContainer = overlay;
+            container.addView(overlay, new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            ));
+        }
+
+        mVoiceManager = new IrisAmbientVoiceManager(getContext(), mVisualContainer);
         return container;
     }
 

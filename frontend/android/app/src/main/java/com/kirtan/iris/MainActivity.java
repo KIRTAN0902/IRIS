@@ -24,12 +24,13 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(IrisAmbientPlugin.class);
         super.onCreate(savedInstanceState);
 
-        // Check if intent explicitly requested ambient sphere mode
-        if (shouldDelegateToSphere(getIntent())) {
-            Log.i(TAG, "Delegating activation directly to IrisSphereService without opening full app.");
+        // Check if launch was triggered via gesture, lockscreen, or assistant invocation
+        if (IrisApplication.isScreenOffGestureLaunch(getIntent(), this)) {
+            Log.i(TAG, "Screen-off gesture / assist trigger detected. Starting IrisSphereService without opening full application.");
             IrisSphereService.startSphere(this);
             moveTaskToBack(true);
             finish();
+            overridePendingTransition(0, 0);
             return;
         }
 
@@ -46,43 +47,13 @@ public class MainActivity extends BridgeActivity {
     @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
-        if (shouldDelegateToSphere(intent)) {
+        if (IrisApplication.isScreenOffGestureLaunch(intent, this)) {
             Log.i(TAG, "New intent delegated to IrisSphereService.");
             IrisSphereService.startSphere(this);
             moveTaskToBack(true);
             return;
         }
         handleVoiceIntent(intent);
-    }
-
-    private boolean shouldDelegateToSphere(Intent intent) {
-        if (intent == null) return false;
-
-        String action = intent.getAction();
-
-        // 1. Normal app launcher clicks from home screen MUST ALWAYS open the dashboard!
-        if (Intent.ACTION_MAIN.equals(action) && intent.hasCategory(Intent.CATEGORY_LAUNCHER)) {
-            return false;
-        }
-
-        // 2. Explicit sphere actions
-        if ("com.kirtan.iris.ACTION_SPHERE".equals(action)) {
-            return true;
-        }
-
-        if (intent.getBooleanExtra("open_sphere", false)) {
-            return true;
-        }
-
-        // 3. Ambient voice or assist intent delegation if user prefers sphere mode
-        if ("com.kirtan.iris.ACTION_AMBIENT_VOICE".equals(action) ||
-            Intent.ACTION_ASSIST.equals(action) ||
-            "android.intent.action.VOICE_COMMAND".equals(action)) {
-            SharedPreferences prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
-            return prefs.getBoolean(KEY_PREFER_SPHERE, false);
-        }
-
-        return false;
     }
 
     private void handleVoiceIntent(Intent intent) {

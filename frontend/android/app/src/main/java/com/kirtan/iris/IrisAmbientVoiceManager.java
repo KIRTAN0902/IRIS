@@ -68,7 +68,21 @@ public class IrisAmbientVoiceManager {
             return;
         }
 
-        String targetUrl = (wsUrl != null && !wsUrl.trim().isEmpty()) ? wsUrl : DEFAULT_WS_URL;
+        String targetUrl = wsUrl;
+        if (targetUrl == null || targetUrl.trim().isEmpty()) {
+            android.content.SharedPreferences prefs = mContext.getSharedPreferences("iris_payment_prefs", Context.MODE_PRIVATE);
+            String customServer = prefs.getString("server_url", null);
+            if (customServer != null && !customServer.trim().isEmpty()) {
+                String clean = customServer.trim();
+                if (clean.endsWith("/")) clean = clean.substring(0, clean.length() - 1);
+                if (clean.startsWith("http://")) clean = "ws://" + clean.substring(7);
+                else if (clean.startsWith("https://")) clean = "wss://" + clean.substring(8);
+                else if (!clean.startsWith("ws://") && !clean.startsWith("wss://")) clean = "wss://" + clean;
+                targetUrl = clean + "/api/voice/live";
+            } else {
+                targetUrl = DEFAULT_WS_URL;
+            }
+        }
         Log.i(TAG, "Starting ambient voice session with endpoint: " + targetUrl);
 
         if (mVisualContainer != null) {

@@ -51,7 +51,7 @@ public class IrisSphereView extends View implements IrisVisualContainer {
 
     private int mState = STATE_ACTIVATING;
     private float mAudioAmplitude = 0.0f;
-    private float mScale = 0.0f;
+    private float mScale = 1.0f;
     private float mPulsePhase = 0.0f;
     private float mRotationAngle = 0.0f;
 
@@ -437,6 +437,12 @@ public class IrisSphereView extends View implements IrisVisualContainer {
 
     private float dpToPx(float dp) {
         return dp * getResources().getDisplayMetrics().density;
+    }
+
+    @Override
+    protected void onAttachedToWindow() {
+        super.onAttachedToWindow();
+        animateEntrance();
     }
 
     @Override

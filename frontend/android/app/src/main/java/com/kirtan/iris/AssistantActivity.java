@@ -15,6 +15,19 @@ public class AssistantActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
+        android.content.SharedPreferences prefs = getSharedPreferences(IrisApplication.PREFS_NAME, MODE_PRIVATE);
+        boolean preferSphere = prefs.getBoolean(IrisApplication.KEY_PREFER_SPHERE, true);
+
+        if (preferSphere) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && android.provider.Settings.canDrawOverlays(this)) {
+                IrisSphereService.startSphere(this);
+                moveTaskToBack(true);
+                finish();
+                overridePendingTransition(0, 0);
+                return;
+            }
+        }
+
         // Make window translucent, edge-to-edge, and borderless
         if (getWindow() != null) {
             getWindow().addFlags(
