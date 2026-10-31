@@ -4,11 +4,9 @@ import {
   Bell,
   Camera,
   CheckCircle2,
-  CircleDot,
   CreditCard,
   ExternalLink,
   Mic,
-  Radio,
   ShieldCheck,
   Smartphone,
   Sparkles,
@@ -20,13 +18,13 @@ import { openSystemAppSettings } from "@/lib/appLauncher";
 import {
   checkAssistantRole,
   checkOverlayPermission,
-  getPreferSphereMode,
+  getAssistantCapabilities,
+  openAssistantSettings,
+  refreshHotwordStatus,
   requestAssistantRole,
   requestOverlayPermission,
-  setPreferSphereMode,
-  stopFloatingSphere,
   triggerAmbientAssistant,
-  triggerFloatingSphere,
+  type AssistantCapabilities,
 } from "@/lib/irisAmbient";
 
 type PermissionStatus = "granted" | "denied" | "prompt" | "unknown";
@@ -38,7 +36,7 @@ export function PermissionsPanel() {
   const [upiListenerGranted, setUpiListenerGranted] = useState(false);
   const [assistantRoleGranted, setAssistantRoleGranted] = useState(false);
   const [overlayGranted, setOverlayGranted] = useState(false);
-  const [preferSphere, setPreferSphere] = useState(false);
+  const [capabilities, setCapabilities] = useState<AssistantCapabilities | null>(null);
   const [actionNotice, setActionNotice] = useState<string | null>(null);
   const [isRequestingAll, setIsRequestingAll] = useState(false);
 
@@ -90,8 +88,7 @@ export function PermissionsPanel() {
     setAssistantRoleGranted(hasAssistant);
     const hasOverlay = await checkOverlayPermission();
     setOverlayGranted(hasOverlay);
-    const spherePref = await getPreferSphereMode();
-    setPreferSphere(spherePref);
+    setCapabilities(await getAssistantCapabilities());
   };
 
   useEffect(() => {
@@ -163,37 +160,19 @@ export function PermissionsPanel() {
     }
   };
 
-  const handleToggleSphere = async () => {
-    const nextVal = !preferSphere;
-    const ok = await setPreferSphereMode(nextVal);
-    if (ok) {
-      setPreferSphere(nextVal);
-      setActionNotice(
-        nextVal
-          ? "Ambient activations and gestures will now launch the compact Floating Voice Sphere."
-          : "Gestures will launch the standard full-screen IRIS dashboard."
-      );
-    }
+  const handleTestAssistant = async () => {
+    const started = await triggerAmbientAssistant();
+    setActionNotice(
+      started
+        ? "Native IRIS session launched. Speak normally; the microphone closes when the session ends."
+        : "Could not start the native assistant session. Check the microphone permission."
+    );
   };
 
-  const handleTestSphere = async () => {
-    if (!overlayGranted) {
-      setActionNotice("Overlay permission required. Tap 'Allow Overlay' first.");
-      await requestOverlayPermission();
-      await checkPermissions();
-      return;
-    }
-    const started = await triggerFloatingSphere();
-    if (started) {
-      setActionNotice("Floating IRIS Sphere launched! Speak to it or tap to dismiss.");
-    } else {
-      setActionNotice("Could not launch Floating Sphere. Please verify overlay permission.");
-    }
-  };
-
-  const handleStopSphere = async () => {
-    await stopFloatingSphere();
-    setActionNotice("Floating Sphere dismissed.");
+  const handleHotwordRefresh = async () => {
+    await refreshHotwordStatus();
+    await checkPermissions();
+    setActionNotice("Asked Android for the current hardware hotword capability.");
   };
 
   const grantedCount =
@@ -392,186 +371,142 @@ export function PermissionsPanel() {
         </div>
       </Panel>
 
-      {/* Advanced System Settings Panel */}
+      {/* Native Android assistant integration */}
       {isMobile && (
-        <Panel title="Advanced Android System Integration (P4 Ambient JARVIS)" lamp={<Lamp tone="go" />}>
+        <Panel title="Native Android Assistant" lamp={<Lamp tone={assistantRoleGranted ? "go" : "caution"} />}>
           <div className="space-y-4 pt-2 text-[13px]">
-            {/* Primary Ambient Entry: Floating Voice Sphere */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-gradient-to-r from-ai/10 via-ai/5 to-transparent border border-ai/30 rounded-xl p-4">
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
                   <div className="p-1.5 rounded-full bg-ai/20 text-ai">
-                    <CircleDot size={18} className="animate-pulse" />
+                    <Sparkles size={18} />
                   </div>
-                  <h4 className="font-semibold text-ink text-[14px]">
-                    Floating IRIS Voice Sphere (Realme GT 7T Experience)
-                  </h4>
+                  <h4 className="font-semibold text-ink text-[14px]">System-level IRIS assistant</h4>
                   <span className="inline-flex items-center gap-1 rounded-full bg-ai/15 px-2 py-0.5 text-[10px] font-semibold text-ai border border-ai/25">
-                    Recommended
+                    Native
                   </span>
                 </div>
                 <p className="text-[12px] text-ink-dim max-w-xl">
-                  Replaces full-app activation with a compact 68dp holographic voice orb above any running app (WhatsApp, Chrome, Games) with instant listening on unlock or gesture.
+                  IRIS runs as Android's digital assistant: a native voice session appears over the current app or lock
+                  screen, without opening the full dashboard. Reasoning, tools, memory, vision and Gemini Live stay on
+                  the existing IRIS backend.
                 </p>
-                <div className="flex items-center gap-2 pt-1 text-[11px] text-ink-faint">
-                  <span>Target Launcher:</span>
-                  <code className="text-ai bg-ops-panel px-1.5 py-0.5 rounded border border-ops-line">
-                    IRIS Voice Sphere
-                  </code>
-                  <span>• Overlay Status:</span>
-                  <span className={overlayGranted ? "text-emerald-400 font-medium" : "text-amber-400 font-medium"}>
-                    {overlayGranted ? "Granted" : "Permission Needed"}
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pt-1 text-[11px] text-ink-faint">
+                  <span>
+                    Language:{" "}
+                    <span className="text-ai font-medium">{capabilities?.language ?? "en-IN"}</span>
+                  </span>
+                  <span>
+                    Microphone:{" "}
+                    <span className={capabilities?.microphone ? "text-emerald-400 font-medium" : "text-amber-400 font-medium"}>
+                      {capabilities?.microphone ? "Granted" : "Needed"}
+                    </span>
+                  </span>
+                  <span>
+                    Screen perception:{" "}
+                    <span className={capabilities?.screenPerception ? "text-emerald-400 font-medium" : "text-amber-400 font-medium"}>
+                      {capabilities?.screenPerception ? "OS assist screenshot" : "Unavailable"}
+                    </span>
                   </span>
                 </div>
               </div>
 
               <div className="flex flex-wrap sm:flex-col items-stretch sm:items-end gap-2 shrink-0">
                 <Button
-                  variant={preferSphere ? "ai" : "outline"}
-                  size="sm"
-                  onClick={handleToggleSphere}
-                  className="text-[12px] flex items-center justify-center gap-1.5"
-                >
-                  <Radio size={13} />
-                  <span>{preferSphere ? "Sphere Mode: Active" : "Sphere Mode: Inactive"}</span>
-                </Button>
-                <div className="flex items-center gap-1.5">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleTestSphere}
-                    className="text-[11px] flex items-center gap-1"
-                  >
-                    <CircleDot size={12} className="text-ai" />
-                    <span>Launch Sphere</span>
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={handleStopSphere}
-                    className="text-[11px] text-ink-faint hover:text-ink"
-                  >
-                    <span>Dismiss</span>
-                  </Button>
-                </div>
-              </div>
-            </div>
-
-            {/* Realme GT 7T Gesture Guide Card */}
-            <div className="rounded-xl border border-ops-line bg-ops-panel/60 p-3.5 text-[12px] space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="font-medium text-ink flex items-center gap-1.5">
-                  <Smartphone size={14} className="text-ai" />
-                  <span>Realme GT 7T Setup Guide (Screen-Off Gestures)</span>
-                </span>
-                <span className="text-[10px] text-ink-faint">ColorOS / Realme UI 5.0+</span>
-              </div>
-              <ol className="list-decimal list-inside space-y-1 text-ink-dim text-[11px]">
-                <li>Open phone <strong className="text-ink">Settings</strong> → <strong className="text-ink">Special features</strong> → <strong className="text-ink">Gestures & motions</strong> → <strong className="text-ink">Screen-off gestures</strong>.</li>
-                <li>Tap <strong className="text-ink">Draw M</strong> (or <strong className="text-ink">Draw W</strong>) → Select <strong className="text-ink">Open an app</strong>.</li>
-                <li>Choose <strong className="text-ai">IRIS Voice Sphere</strong> (not the main IRIS dashboard).</li>
-                <li>Now drawing the gesture on your screen instantly brings up the floating sphere with immediate microphone listening!</li>
-              </ol>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
-              {/* 1. Default Assistant */}
-              <div className="rounded-xl border border-ops-line bg-ops-panel p-3.5 flex flex-col justify-between gap-3">
-                <div>
-                  <div className="flex items-center justify-between gap-2 text-ink font-semibold">
-                    <div className="flex items-center gap-2">
-                      <Smartphone size={16} className="text-ai" />
-                      <span>Default Assistant</span>
-                    </div>
-                    {assistantRoleGranted && (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-400 border border-emerald-500/20">
-                        <CheckCircle2 size={10} /> Active
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-[11px] text-ink-dim mt-1.5 leading-relaxed">
-                    Set IRIS as system default assistant for Power Button long-press and corner swipe gestures.
-                  </p>
-                </div>
-                <Button
-                  variant={assistantRoleGranted ? "ghost" : "outline"}
+                  variant={assistantRoleGranted ? "ghost" : "ai"}
                   size="sm"
                   onClick={async () => {
                     await requestAssistantRole();
                     await checkPermissions();
                   }}
-                  className="w-full justify-center gap-1 text-[11px]"
+                  className="text-[12px] justify-center gap-1.5"
                 >
-                  <span>{assistantRoleGranted ? "Reconfigure" : "Set as Assistant"}</span>
-                  <ExternalLink size={11} />
+                  <ShieldCheck size={13} />
+                  <span>{assistantRoleGranted ? "Assistant: Active" : "Set as Assistant"}</span>
                 </Button>
-              </div>
-
-              {/* 2. Edge-Glow Overlay Permission */}
-              <div className="rounded-xl border border-ops-line bg-ops-panel p-3.5 flex flex-col justify-between gap-3">
-                <div>
-                  <div className="flex items-center justify-between gap-2 text-ink font-semibold">
-                    <div className="flex items-center gap-2">
-                      <Sparkles size={16} className="text-ai" />
-                      <span>Edge-Glow Overlay</span>
-                    </div>
-                    {overlayGranted ? (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-400 border border-emerald-500/20">
-                        <CheckCircle2 size={10} /> Granted
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-400 border border-amber-500/20">
-                        <AlertCircle size={10} /> Required
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-[11px] text-ink-dim mt-1.5 leading-relaxed">
-                    Allows the luminous Google Assistant-style edge-glow border to render over running apps.
-                  </p>
-                </div>
                 <div className="flex items-center gap-1.5">
                   <Button
-                    variant={overlayGranted ? "ghost" : "outline"}
+                    variant="outline"
                     size="sm"
-                    onClick={async () => {
-                      await requestOverlayPermission();
-                      await checkPermissions();
-                    }}
-                    className="flex-1 justify-center gap-1 text-[11px]"
+                    onClick={handleTestAssistant}
+                    className="text-[11px] flex items-center gap-1"
                   >
-                    <span>{overlayGranted ? "Active" : "Allow Overlay"}</span>
-                    <ExternalLink size={11} />
+                    <Mic size={12} className="text-ai" />
+                    <span>Test Session</span>
                   </Button>
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={async () => {
-                      const ok = await triggerAmbientAssistant();
-                      if (!ok) {
-                        setActionNotice("Could not start Edge-Glow overlay. Ensure overlay permission is granted.");
-                      } else {
-                        setActionNotice("Ambient Edge-Glow overlay launched.");
-                      }
+                      await openAssistantSettings();
+                      await checkPermissions();
                     }}
-                    className="justify-center gap-1 text-[11px]"
+                    className="text-[11px] flex items-center gap-1"
                   >
-                    <Sparkles size={11} className="text-ai" />
-                    <span>Test</span>
+                    <span>Native Setup</span>
+                    <ExternalLink size={11} />
                   </Button>
                 </div>
               </div>
+            </div>
 
-              {/* 3. System App Info */}
-              <div className="rounded-xl border border-ops-line bg-ops-panel p-3.5 flex flex-col justify-between gap-3">
-                <div>
-                  <div className="flex items-center gap-2 text-ink font-semibold">
-                    <ShieldCheck size={16} className="text-ai" />
-                    <span>Battery & Autolaunch</span>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="rounded-xl border border-ops-line bg-ops-panel p-3.5 space-y-2">
+                <div className="flex items-center justify-between gap-2 text-ink font-semibold">
+                  <div className="flex items-center gap-2">
+                    <Smartphone size={16} className="text-ai" />
+                    <span>Hey IRIS hotword</span>
                   </div>
-                  <p className="text-[11px] text-ink-dim mt-1.5 leading-relaxed">
-                    Set battery to "Don't optimize" and enable "Auto-launch" so Realme UI keeps IRIS available in background.
-                  </p>
+                  <span
+                    className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium border ${
+                      capabilities?.hotwordState === 2
+                        ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                        : "bg-amber-500/10 text-amber-400 border-amber-500/20"
+                    }`}
+                  >
+                    {capabilities?.hotwordState === 2 ? "Hardware active" : "Device dependent"}
+                  </span>
                 </div>
+                <p className="text-[11px] text-ink-dim leading-relaxed">
+                  {capabilities?.hotwordLabel ?? "Not evaluated"} — {capabilities?.hotwordDetail ?? "Select IRIS as the assistant to let Android report the real DSP capability."}
+                </p>
+                <Button variant="outline" size="sm" onClick={handleHotwordRefresh} className="w-full justify-center text-[11px]">
+                  Re-check hardware
+                </Button>
+              </div>
+
+              <div className="rounded-xl border border-ops-line bg-ops-panel p-3.5 space-y-2">
+                <div className="flex items-center gap-2 text-ink font-semibold">
+                  <Sparkles size={16} className="text-ai" />
+                  <span>Fallback session</span>
+                </div>
+                <p className="text-[11px] text-ink-dim leading-relaxed">
+                  Overlay permission is only for the translucent native session used when IRIS is not the selected
+                  assistant. There is no permanent floating sphere, background microphone, sensor polling or wake lock.
+                </p>
+                <Button
+                  variant={overlayGranted ? "ghost" : "outline"}
+                  size="sm"
+                  onClick={async () => {
+                    await requestOverlayPermission();
+                    await checkPermissions();
+                  }}
+                  className="w-full justify-center gap-1 text-[11px]"
+                >
+                  <span>{overlayGranted ? "Overlay granted" : "Allow overlay"}</span>
+                  <ExternalLink size={11} />
+                </Button>
+              </div>
+
+              <div className="rounded-xl border border-ops-line bg-ops-panel p-3.5 space-y-2">
+                <div className="flex items-center gap-2 text-ink font-semibold">
+                  <ShieldCheck size={16} className="text-ai" />
+                  <span>Battery & autolaunch</span>
+                </div>
+                <p className="text-[11px] text-ink-dim leading-relaxed">
+                  realme UI may freeze background services. Exempt IRIS from battery optimisation and allow auto-launch
+                  so Android can rebind the assistant service.
+                </p>
                 <Button
                   variant="outline"
                   size="sm"
@@ -582,6 +517,34 @@ export function PermissionsPanel() {
                   <ExternalLink size={11} />
                 </Button>
               </div>
+            </div>
+
+            <div className="rounded-xl border border-ops-line bg-ops-panel/60 p-3.5 text-[12px] space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="font-medium text-ink flex items-center gap-1.5">
+                  <Smartphone size={14} className="text-ai" />
+                  <span>Realme GT 7T activation guide</span>
+                </span>
+                <span className="text-[10px] text-ink-faint">realme UI 6 / Android 15</span>
+              </div>
+              <ol className="list-decimal list-inside space-y-1 text-ink-dim text-[11px]">
+                <li>
+                  Set <strong className="text-ink">IRIS</strong> as the digital assistant in Android Settings → Apps →
+                  Default apps → Digital assistant app.
+                </li>
+                <li>
+                  Enable the system assistant gesture (power-button long press or corner swipe). This is the reliable
+                  pathway on realme UI.
+                </li>
+                <li>
+                  Optional: add the <strong className="text-ink">Ask IRIS</strong> Quick Settings tile or home-screen
+                  widget.
+                </li>
+                <li>
+                  realme UI does not expose screen-off gesture events to third-party apps; drawing M/W cannot be wired
+                  to IRIS without an OEM API.
+                </li>
+              </ol>
             </div>
           </div>
         </Panel>

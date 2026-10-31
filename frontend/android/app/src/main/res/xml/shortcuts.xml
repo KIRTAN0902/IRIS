@@ -1,39 +1,27 @@
 <?xml version="1.0" encoding="utf-8"?>
 <shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
     <shortcut
-        android:shortcutId="floating_sphere"
+        android:shortcutId="assistant"
         android:enabled="true"
         android:icon="@mipmap/ic_launcher"
-        android:shortcutShortLabel="@string/shortcut_sphere_short"
-        android:shortcutLongLabel="@string/shortcut_sphere_long">
+        android:shortcutShortLabel="@string/shortcut_assistant_short"
+        android:shortcutLongLabel="@string/shortcut_assistant_long">
         <intent
-            android:action="com.kirtan.iris.ACTION_SPHERE"
+            android:action="com.kirtan.iris.assistant.ACTION_WAKE"
             android:targetPackage="com.kirtan.iris"
-            android:targetClass="com.kirtan.iris.IrisSphereActivity" />
+            android:targetClass="com.kirtan.iris.assistant.AssistantEntryActivity" />
         <categories android:name="android.shortcut.conversation" />
     </shortcut>
     <shortcut
-        android:shortcutId="ambient_voice"
+        android:shortcutId="assistant_settings"
         android:enabled="true"
         android:icon="@mipmap/ic_launcher"
-        android:shortcutShortLabel="@string/shortcut_voice_short"
-        android:shortcutLongLabel="@string/shortcut_voice_long">
+        android:shortcutShortLabel="@string/shortcut_settings_short"
+        android:shortcutLongLabel="@string/shortcut_settings_long">
         <intent
-            android:action="com.kirtan.iris.ACTION_AMBIENT_VOICE"
+            android:action="android.intent.action.MAIN"
             android:targetPackage="com.kirtan.iris"
-            android:targetClass="com.kirtan.iris.AssistantActivity" />
-        <categories android:name="android.shortcut.conversation" />
-    </shortcut>
-    <shortcut
-        android:shortcutId="ambient_screen"
-        android:enabled="true"
-        android:icon="@mipmap/ic_launcher"
-        android:shortcutShortLabel="@string/shortcut_screen_short"
-        android:shortcutLongLabel="@string/shortcut_screen_long">
-        <intent
-            android:action="com.kirtan.iris.ACTION_AMBIENT_SCREEN"
-            android:targetPackage="com.kirtan.iris"
-            android:targetClass="com.kirtan.iris.AssistantActivity" />
+            android:targetClass="com.kirtan.iris.assistant.AssistantSettingsActivity" />
         <categories android:name="android.shortcut.conversation" />
     </shortcut>
 </shortcuts>

@@ -27,6 +27,53 @@ router = APIRouter(prefix="/voice", tags=["Voice"])
 # Stays under Vercel's 4.5 MB request limit; about 4 minutes of Opus audio.
 MAX_AUDIO_BYTES = 4 * 1024 * 1024
 
+SUPPORTED_LIVE_LANGUAGES = ("en-IN", "en-US", "en-GB")
+SUPPORTED_LIVE_VOICES = (
+    "Puck",
+    "Charon",
+    "Kore",
+    "Fenrir",
+    "Aoede",
+    "Leda",
+    "Orus",
+    "Zephyr",
+)
+
+
+def _normalise_language(raw: str | None) -> str:
+    """Keep live speech in a supported English variant; default to English (India)."""
+    tag = (raw or "").strip().replace("_", "-")
+    for candidate in SUPPORTED_LIVE_LANGUAGES:
+        if tag.lower() == candidate.lower():
+            return candidate
+    configured = (settings.ai_voice_language or "").strip().replace("_", "-")
+    for candidate in SUPPORTED_LIVE_LANGUAGES:
+        if configured.lower() == candidate.lower():
+            return candidate
+    return "en-IN"
+
+
+def _normalise_voice(raw: str | None) -> str:
+    name = (raw or "").strip()
+    for candidate in SUPPORTED_LIVE_VOICES:
+        if name.lower() == candidate.lower():
+            return candidate
+    configured = (settings.ai_tts_voice or "").strip()
+    for candidate in SUPPORTED_LIVE_VOICES:
+        if configured.lower() == candidate.lower():
+            return candidate
+    return "Puck"
+
+
+def _live_language(websocket: WebSocket) -> str:
+    return _normalise_language(
+        websocket.query_params.get("language") or websocket.headers.get("x-iris-language")
+    )
+
+
+def _live_voice(websocket: WebSocket) -> str:
+    return _normalise_voice(websocket.query_params.get("voice") or websocket.headers.get("x-iris-voice"))
+
 
 class VoiceUnavailableError(AppError):
     status_code = 503
@@ -56,7 +103,9 @@ def voice_status(_: User = Depends(current_user)) -> dict:
         "live": {
             "enabled": voice.is_live_enabled(),
             "model": settings.ai_live_model,
-            "voice": settings.ai_tts_voice,
+            "voice": _normalise_voice(settings.ai_tts_voice),
+            "language": _normalise_language(settings.ai_voice_language),
+            "supported_languages": list(SUPPORTED_LIVE_LANGUAGES),
         },
     }
 
@@ -145,6 +194,10 @@ async def voice_live_websocket(
     try:
         from google.genai import types
 
+        language = _live_language(websocket)
+        voice_name = _live_voice(websocket)
+        language_label = "English (India)" if language == "en-IN" else f"English ({language})"
+
         user_name = "Kirtan"
         situation_text = ""
         pm_text = ""
@@ -169,6 +222,9 @@ async def voice_live_websocket(
         system_instruction = (
             f"You are IRIS, an intelligent, sovereign personal AI companion and desktop workstation orchestrator.\n"
             f"You are conversing directly with {user_name}.\n"
+            f"Your spoken language is {language_label}. Always reply in English, in clear, natural Indian English when the language is en-IN.\n"
+            "Never answer in Spanish or any other language, even if an earlier turn, a tool result or the user's message is in another language.\n"
+            "Only switch language if the user explicitly and unambiguously asks you to.\n"
             "Speak with a natural, concise, intelligent, and warm tone suitable for real-time speech.\n"
             "Keep your responses direct, conversational, and grounded in the user's real situation, tasks, and schedule below.\n"
             "When the user asks you to open or launch an application, create a daily task, check today's tasks, complete a task, run a command, check status, lock the laptop, or look at/inspect their mobile screen, ALWAYS use your registered tools to execute the action immediately.\n\n"
@@ -185,9 +241,10 @@ async def voice_live_websocket(
         live_config = types.LiveConnectConfig(
             response_modalities=["AUDIO"],
             speech_config=types.SpeechConfig(
+                language_code=language,
                 voice_config=types.VoiceConfig(
-                    prebuilt_voice_config=types.PrebuiltVoiceConfig(voice_name=settings.ai_tts_voice or "Enceladus")
-                )
+                    prebuilt_voice_config=types.PrebuiltVoiceConfig(voice_name=voice_name)
+                ),
             ),
             system_instruction=types.Content(parts=[types.Part.from_text(text=system_instruction)]),
             tools=tools_list,
@@ -197,7 +254,8 @@ async def voice_live_websocket(
         await websocket.send_json({
             "type": "ready",
             "model": model_name,
-            "voice": settings.ai_tts_voice or "Enceladus",
+            "voice": voice_name,
+            "language": language,
             "sample_rate": 24000,
         })
 

@@ -26,6 +26,17 @@ logger = get_logger("iris.ai.voice")
 
 GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta"
 
+SUPPORTED_VOICE_LANGUAGES = ("en-IN", "en-US", "en-GB")
+
+
+def normalise_voice_language(raw: str | None) -> str:
+    """Spoken replies default to English (India) and never silently become Spanish."""
+    tag = (raw or "").strip().replace("_", "-")
+    for candidate in SUPPORTED_VOICE_LANGUAGES:
+        if tag.lower() == candidate.lower():
+            return candidate
+    return "en-IN"
+
 
 class VoiceError(Exception):
     """A voice provider failed; ``rate_limited`` means try again later."""
@@ -174,11 +185,12 @@ class GeminiTextToSpeech(TextToSpeech):
     provider = "gemini"
     stream_rate = 24000
 
-    def __init__(self, model: str, voice: str, api_key: str) -> None:
+    def __init__(self, model: str, voice: str, api_key: str, language: str | None = None) -> None:
         # "a,b": try b when a is rate-limited (free tiers have small per-minute quotas).
         self.models = [m.strip() for m in model.split(",") if m.strip()]
         self.model = self.models[0]
         self.voice = voice
+        self.language = normalise_voice_language(language or settings.ai_voice_language)
         self._key = api_key
 
     @staticmethod
@@ -225,14 +237,16 @@ class GeminiTextToSpeech(TextToSpeech):
             config = types.LiveConnectConfig(
                 response_modalities=["AUDIO"],
                 speech_config=types.SpeechConfig(
+                    language_code=self.language,
                     voice_config=types.VoiceConfig(
                         prebuilt_voice_config=types.PrebuiltVoiceConfig(voice_name=self.voice)
-                    )
+                    ),
                 ),
             )
             prompt = (
-                "Read the following text aloud with natural conversational intonation. "
-                "Do not add any preamble or commentary, speak only the text:\n\n"
+                "Read the following text aloud in English with natural conversational intonation. "
+                "Do not translate it, do not answer in Spanish, and do not add any preamble or "
+                "commentary. Speak only the text:\n\n"
                 f"{text}"
             )
             async with client.aio.live.connect(model=model, config=config) as session:
@@ -281,7 +295,10 @@ class GeminiTextToSpeech(TextToSpeech):
             "contents": [{"parts": [{"text": text}]}],
             "generationConfig": {
                 "responseModalities": ["AUDIO"],
-                "speechConfig": {"voiceConfig": {"prebuiltVoiceConfig": {"voiceName": self.voice}}},
+                "speechConfig": {
+                    "languageCode": self.language,
+                    "voiceConfig": {"prebuiltVoiceConfig": {"voiceName": self.voice}},
+                },
             },
         }
 
@@ -408,7 +425,12 @@ def get_text_to_speech() -> TextToSpeech | None:
     """The configured text-to-speech provider, or None when disabled/unconfigured."""
     name = (settings.ai_tts_provider or "none").lower()
     if name == "gemini" and _gemini_key():
-        return GeminiTextToSpeech(settings.ai_tts_model, settings.ai_tts_voice, _gemini_key())
+        return GeminiTextToSpeech(
+            settings.ai_tts_model,
+            settings.ai_tts_voice,
+            _gemini_key(),
+            settings.ai_voice_language,
+        )
     if name == "openai_compatible" and settings.ai_voice_base_url:
         return OpenAICompatibleTextToSpeech(
             settings.ai_tts_model, settings.ai_tts_voice, settings.ai_voice_base_url, settings.ai_voice_api_key

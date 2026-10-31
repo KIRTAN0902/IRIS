@@ -259,7 +259,7 @@ async def test_h_background_availability(db: Session, test_user: User):
 # Test I: Manifest & Native Component Integrity
 # -----------------------------------------------------------------------------
 def test_i_android_manifest_components():
-    """Test I: Verifies all P4 ambient components exist in AndroidManifest.xml."""
+    """Test I: Verifies all native system assistant components exist in AndroidManifest.xml."""
     import os
     manifest_path = os.path.join(
         "C:\\kirtan\\IRIS\\frontend\\android\\app\\src\\main\\AndroidManifest.xml"
@@ -274,26 +274,21 @@ def test_i_android_manifest_components():
     assert "android.permission.BIND_VOICE_INTERACTION" in content
 
     # 2. Translucent Assistant Activity
-    assert "AssistantActivity" in content
+    assert "AssistantEntryActivity" in content
     assert "AppTheme.Translucent" in content
 
-    # 3. Ambient Foreground Service with microphone type
-    assert "IrisAmbientService" in content
-    assert 'foregroundServiceType="microphone"' in content
+    # 3. Quick Settings Tile
+    assert "AssistantTileService" in content
 
-    # 4. Quick Settings Tile
-    assert "IrisQuickTileService" in content
-
-    # 5. Home Screen 1x1 Widget
+    # 4. Home Screen 1x1 Widget
     assert "IrisWidgetProvider" in content
 
-    # 6. Launcher Shortcuts
+    # 5. Launcher Shortcuts
     assert "android.app.shortcuts" in content
 
-    # 7. Permissions
+    # 6. Permissions
     assert "android.permission.SYSTEM_ALERT_WINDOW" in content
     assert "android.permission.RECORD_AUDIO" in content
-    assert "android.permission.FOREGROUND_SERVICE_MICROPHONE" in content
 
 
 # -----------------------------------------------------------------------------
@@ -302,26 +297,27 @@ def test_i_android_manifest_components():
 def test_j_zero_surveillance_and_battery_guarantee():
     """Test J: Confirms no background mic recording occurs when ambient session is idle."""
     import os
-    voice_manager_path = os.path.join(
-        "C:\\kirtan\\IRIS\\frontend\\android\\app\\src\\main\\java\\com\\kirtan\\iris\\IrisAmbientVoiceManager.java"
+    audio_engine_path = os.path.join(
+        "C:\\kirtan\\IRIS\\frontend\\android\\app\\src\\main\\java\\com\\kirtan\\iris\\assistant\\voice\\AudioEngine.kt"
     )
-    assert os.path.exists(voice_manager_path)
-    with open(voice_manager_path, "r", encoding="utf-8") as f:
+    assert os.path.exists(audio_engine_path)
+    with open(audio_engine_path, "r", encoding="utf-8") as f:
         content = f.read()
 
-    # AudioRecord must be explicitly stopped and released on stopSession
-    assert "mAudioRecord.stop()" in content
-    assert "mAudioRecord.release()" in content
-    assert "mIsRecording.set(false)" in content
+    # AudioRecord must be explicitly stopped and released on stop
+    assert "record?.stop()" in content
+    assert "record?.release()" in content
+    assert "recording.set(false)" in content
 
     # Zero background looping
     overlay_path = os.path.join(
-        "C:\\kirtan\\IRIS\\frontend\\android\\app\\src\\main\\java\\com\\kirtan\\iris\\IrisOverlayView.java"
+        "C:\\kirtan\\IRIS\\frontend\\android\\app\\src\\main\\java\\com\\kirtan\\iris\\assistant\\ui\\AssistantOverlay.kt"
     )
+    assert os.path.exists(overlay_path)
     with open(overlay_path, "r", encoding="utf-8") as f:
         overlay_content = f.read()
-    assert "STATE_IDLE" in overlay_content
-    assert "mPhaseAnimator.cancel()" in overlay_content
+    assert "AssistantState.STANDBY" in overlay_content
+    assert "AssistantState.DISMISSING" in overlay_content
 
 
 # -----------------------------------------------------------------------------

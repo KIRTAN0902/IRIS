@@ -250,6 +250,7 @@ def test_voice_status_includes_live(client, monkeypatch):
     monkeypatch.setattr(voice, "is_live_enabled", lambda: True)
     monkeypatch.setattr(settings, "ai_live_model", "gemini-3.8-live")
     monkeypatch.setattr(settings, "ai_tts_voice", "Kore")
+    monkeypatch.setattr(settings, "ai_voice_language", "en-IN")
 
     r = client.get("/api/voice/status")
     assert r.status_code == 200
@@ -258,6 +259,41 @@ def test_voice_status_includes_live(client, monkeypatch):
     assert body["live"]["enabled"] is True
     assert body["live"]["model"] == "gemini-3.8-live"
     assert body["live"]["voice"] == "Kore"
+    assert body["live"]["language"] == "en-IN"
+
+
+def test_live_language_defaults_to_english_india():
+    from app.api.routes.voice import _normalise_language
+
+    assert _normalise_language(None) == "en-IN"
+    assert _normalise_language("") == "en-IN"
+    assert _normalise_language("es-ES") == "en-IN"
+    assert _normalise_language("en_US") == "en-US"
+    assert _normalise_language("en-GB") == "en-GB"
+
+
+def test_live_voice_ignores_unknown_names(monkeypatch):
+    from app.api.routes.voice import _normalise_voice
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "ai_tts_voice", "Puck")
+    assert _normalise_voice("Kore") == "Kore"
+    assert _normalise_voice("not-a-voice") == "Puck"
+    assert _normalise_voice(None) == "Puck"
+
+
+async def test_gemini_tts_sends_english_language_code(monkeypatch):
+    captured: list = []
+    payload = {"candidates": [{"content": {"parts": [
+        {"inlineData": {"mimeType": "audio/wav", "data": base64.b64encode(b"RIFFok").decode()}}]}}]}
+    monkeypatch.setattr(voice, "_post", _fake_post(payload, captured))
+    tts = voice.GeminiTextToSpeech("tts", "Kore", "k", "en-IN")
+    await tts.synthesize("hello")
+    speech = captured[0][1]["json"]["generationConfig"]["speechConfig"]
+    assert speech["languageCode"] == "en-IN"
+
+    tts_es = voice.GeminiTextToSpeech("tts", "Kore", "k", "es-ES")
+    assert tts_es.language == "en-IN"
 
 
 def test_voice_live_websocket_disabled_rejects(client, monkeypatch):

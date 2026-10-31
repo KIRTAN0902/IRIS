@@ -77,6 +77,9 @@ class Settings(BaseSettings):
     ai_tts_voice: str = "Puck"
     ai_live_model: str = "gemini-3.8-live"
     ai_live_enabled: bool = True
+    # Spoken replies stay in English (India) unless the client explicitly
+    # requests another supported English variant.
+    ai_voice_language: str = "en-IN"
     # For openai_compatible voice providers (or to override the Gemini key).
     ai_voice_base_url: str | None = None
     ai_voice_api_key: str | None = None

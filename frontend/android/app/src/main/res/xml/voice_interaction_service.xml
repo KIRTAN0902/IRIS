@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <voice-interaction-service xmlns:android="http://schemas.android.com/apk/res/android"
-    android:sessionService="com.kirtan.iris.IrisVoiceInteractionSessionService"
+    android:sessionService="com.kirtan.iris.assistant.IrisVoiceInteractionSessionService"
+    android:settingsActivity="com.kirtan.iris.assistant.AssistantSettingsActivity"
     android:supportsAssist="true"
+    android:supportsLaunchVoiceAssistFromKeyguard="true"
     android:supportsLocalInteraction="true" />

@@ -4,11 +4,11 @@
     <string name="title_activity_main">IRIS</string>
     <string name="package_name">com.kirtan.iris</string>
     <string name="custom_url_scheme">com.kirtan.iris</string>
-    <string name="shortcut_sphere_short">Sphere</string>
-    <string name="shortcut_sphere_long">IRIS Voice Sphere</string>
-    <string name="shortcut_voice_short">Voice</string>
-    <string name="shortcut_voice_long">Ambient Voice Assistant</string>
-    <string name="shortcut_screen_short">Screen</string>
-    <string name="shortcut_screen_long">Inspect Screen</string>
+    <string name="assistant_label">IRIS Assistant</string>
+    <string name="assistant_settings_label">IRIS Assistant Settings</string>
+    <string name="shortcut_assistant_short">Ask IRIS</string>
+    <string name="shortcut_assistant_long">Start the IRIS assistant session</string>
+    <string name="shortcut_settings_short">Assistant</string>
+    <string name="shortcut_settings_long">IRIS assistant setup and diagnostics</string>
     <string name="widget_label">IRIS Assistant</string>
 </resources>

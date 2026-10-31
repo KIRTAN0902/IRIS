@@ -1,19 +1,21 @@
 package com.kirtan.iris;
 
-import android.content.Context;
 import android.content.Intent;
-import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
+
 import com.getcapacitor.BridgeActivity;
 
+/**
+ * The full IRIS dashboard. It is intentionally not part of assistant
+ * activation: the launcher icon always opens this activity, and the assistant
+ * session is hosted by Android's VoiceInteractionService.
+ */
 public class MainActivity extends BridgeActivity {
 
     private static final String TAG = "IRIS_MainActivity";
-    private static final String PREFS_NAME = "iris_settings";
-    private static final String KEY_PREFER_SPHERE = "prefer_floating_sphere";
 
     public static volatile boolean sPendingVoiceLaunch = false;
 
@@ -24,17 +26,6 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(IrisAmbientPlugin.class);
         super.onCreate(savedInstanceState);
 
-        // Check if launch was triggered via gesture, lockscreen, or assistant invocation
-        if (IrisApplication.isScreenOffGestureLaunch(getIntent(), this)) {
-            Log.i(TAG, "Screen-off gesture / assist trigger detected. Starting IrisSphereService without opening full application.");
-            IrisSphereService.startSphere(this);
-            moveTaskToBack(true);
-            finish();
-            overridePendingTransition(0, 0);
-            return;
-        }
-
-        // Request microphone permission on first app launch if not yet granted
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
             if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
                 requestPermissions(new String[]{android.Manifest.permission.RECORD_AUDIO}, 101);
@@ -47,17 +38,13 @@ public class MainActivity extends BridgeActivity {
     @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
-        if (IrisApplication.isScreenOffGestureLaunch(intent, this)) {
-            Log.i(TAG, "New intent delegated to IrisSphereService.");
-            IrisSphereService.startSphere(this);
-            moveTaskToBack(true);
-            return;
-        }
+        setIntent(intent);
         handleVoiceIntent(intent);
     }
 
     private void handleVoiceIntent(Intent intent) {
         if (intent != null && "voice".equals(intent.getStringExtra("action"))) {
+            Log.i(TAG, "In-app voice shortcut requested");
             sPendingVoiceLaunch = true;
             scheduleVoiceDispatches();
         }

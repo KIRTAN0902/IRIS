@@ -11,25 +11,106 @@
         android:usesCleartextTraffic="true"
         android:theme="@style/AppTheme">
 
+        <!-- Normal full application. Never opened by assistant activation. -->
         <activity
-            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode|navigation|density"
             android:name=".MainActivity"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode|navigation|density"
+            android:exported="true"
             android:label="@string/title_activity_main"
-            android:theme="@style/AppTheme.NoActionBarLaunch"
             android:launchMode="singleTask"
-            android:exported="true">
+            android:theme="@style/AppTheme.NoActionBarLaunch">
 
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
-            <!-- Launcher Shortcuts (Long press on icon) -->
             <meta-data
                 android:name="android.app.shortcuts"
                 android:resource="@xml/shortcuts" />
-
         </activity>
+
+        <!-- Native assistant surface used when IRIS is not the selected system assistant. -->
+        <activity
+            android:name=".assistant.AssistantEntryActivity"
+            android:excludeFromRecents="true"
+            android:exported="true"
+            android:label="@string/assistant_label"
+            android:launchMode="singleTask"
+            android:showWhenLocked="true"
+            android:theme="@style/AppTheme.Translucent"
+            android:turnScreenOn="true">
+            <intent-filter>
+                <action android:name="android.intent.action.ASSIST" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VOICE_COMMAND" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="com.kirtan.iris.assistant.ACTION_WAKE" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="com.kirtan.iris.ACTION_AMBIENT_VOICE" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="com.kirtan.iris.ACTION_SPHERE" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
+        <!-- Native assistant diagnostics / system setup. -->
+        <activity
+            android:name=".assistant.AssistantSettingsActivity"
+            android:exported="true"
+            android:label="@string/assistant_settings_label"
+            android:launchMode="singleTop"
+            android:theme="@style/AppTheme.NoActionBar" />
+
+        <!-- Android digital assistant: makes IRIS selectable in Settings. -->
+        <service
+            android:name=".assistant.IrisVoiceInteractionService"
+            android:exported="true"
+            android:label="@string/assistant_label"
+            android:permission="android.permission.BIND_VOICE_INTERACTION">
+            <meta-data
+                android:name="android.voice_interaction"
+                android:resource="@xml/voice_interaction_service" />
+            <intent-filter>
+                <action android:name="android.service.voice.VoiceInteractionService" />
+            </intent-filter>
+        </service>
+
+        <service
+            android:name=".assistant.IrisVoiceInteractionSessionService"
+            android:exported="true"
+            android:permission="android.permission.BIND_VOICE_INTERACTION" />
+
+        <!-- Quick Settings fallback tile. -->
+        <service
+            android:name=".assistant.AssistantTileService"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher"
+            android:label="@string/assistant_label"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+
+        <!-- Background Payment Notification Listener (GPay / PhonePe / Paytm / SMS) -->
+        <service
+            android:name=".PaymentNotificationListener"
+            android:exported="true"
+            android:label="IRIS Payment Listener"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
 
         <provider
             android:name="androidx.core.content.FileProvider"
@@ -41,123 +122,11 @@
                 android:resource="@xml/file_paths" />
         </provider>
 
-        <!-- Background Payment Notification Listener (GPay / PhonePe / Paytm / SMS) -->
-        <service
-            android:name=".PaymentNotificationListener"
-            android:label="IRIS Payment Listener"
-            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.service.notification.NotificationListenerService" />
-            </intent-filter>
-        </service>
-
-        <!-- Quick Settings Tile ("IRIS Voice") -->
-        <service
-            android:name=".IrisQuickTileService"
-            android:label="IRIS Voice"
-            android:icon="@mipmap/ic_launcher"
-            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.service.quicksettings.action.QS_TILE" />
-            </intent-filter>
-        </service>
-
-        <!-- Ambient Foreground Service (Overlay & Audio Pipeline) -->
-        <service
-            android:name=".IrisAmbientService"
-            android:label="IRIS Ambient Service"
-            android:foregroundServiceType="microphone"
-            android:exported="false" />
-
-        <!-- Floating Sphere Foreground Service -->
-        <service
-            android:name=".IrisSphereService"
-            android:label="IRIS Voice Sphere"
-            android:foregroundServiceType="specialUse|microphone"
-            android:exported="false">
-            <property
-                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="Floating voice assistant sphere overlay" />
-        </service>
-
-        <!-- Floating Sphere Native Launcher Activity (Screen-off gestures / Shortcuts) -->
-        <activity
-            android:name=".IrisSphereActivity"
-            android:label="IRIS Voice Sphere"
-            android:theme="@style/AppTheme.Translucent"
-            android:launchMode="singleTask"
-            android:excludeFromRecents="true"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.intent.action.ASSIST" />
-                <category android:name="android.intent.category.DEFAULT" />
-            </intent-filter>
-            <intent-filter>
-                <action android:name="android.intent.action.VOICE_COMMAND" />
-                <category android:name="android.intent.category.DEFAULT" />
-            </intent-filter>
-            <intent-filter>
-                <action android:name="com.kirtan.iris.ACTION_SPHERE" />
-                <category android:name="android.intent.category.DEFAULT" />
-            </intent-filter>
-            <intent-filter>
-                <action android:name="com.kirtan.iris.ACTION_AMBIENT_VOICE" />
-                <category android:name="android.intent.category.DEFAULT" />
-            </intent-filter>
-        </activity>
-
-        <!-- Android System Digital Assistant Service -->
-        <service
-            android:name=".IrisVoiceInteractionService"
-            android:label="IRIS"
-            android:permission="android.permission.BIND_VOICE_INTERACTION"
-            android:exported="true">
-            <meta-data
-                android:name="android.voice_interaction"
-                android:resource="@xml/voice_interaction_service" />
-            <intent-filter>
-                <action android:name="android.service.voice.VoiceInteractionService" />
-            </intent-filter>
-        </service>
-
-        <service
-            android:name=".IrisVoiceInteractionSessionService"
-            android:permission="android.permission.BIND_VOICE_INTERACTION"
-            android:exported="true" />
-
-        <!-- Translucent Ambient Assistant Activity (Power button / Gesture corner swipe) -->
-        <activity
-            android:name=".AssistantActivity"
-            android:label="IRIS Assistant"
-            android:theme="@style/AppTheme.Translucent"
-            android:launchMode="singleTask"
-            android:excludeFromRecents="true"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.intent.action.ASSIST" />
-                <category android:name="android.intent.category.DEFAULT" />
-            </intent-filter>
-            <intent-filter>
-                <action android:name="android.intent.action.VOICE_COMMAND" />
-                <category android:name="android.intent.category.DEFAULT" />
-            </intent-filter>
-            <intent-filter>
-                <action android:name="com.kirtan.iris.ACTION_AMBIENT_VOICE" />
-                <category android:name="android.intent.category.DEFAULT" />
-            </intent-filter>
-            <intent-filter>
-                <action android:name="com.kirtan.iris.ACTION_AMBIENT_SCREEN" />
-                <category android:name="android.intent.category.DEFAULT" />
-            </intent-filter>
-        </activity>
-
         <!-- 1x1 Home-Screen Widget Provider -->
         <receiver
             android:name=".IrisWidgetProvider"
-            android:label="@string/widget_label"
-            android:exported="true">
+            android:exported="true"
+            android:label="@string/widget_label">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
             </intent-filter>
@@ -178,9 +147,7 @@
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
 </manifest>

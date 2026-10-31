@@ -15,6 +15,8 @@ import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
+import com.kirtan.iris.assistant.AssistantBridge;
+import com.kirtan.iris.assistant.CapabilityDetector;
 
 @CapacitorPlugin(name = "IrisAmbient")
 public class IrisAmbientPlugin extends Plugin {
@@ -25,60 +27,25 @@ public class IrisAmbientPlugin extends Plugin {
 
     @PluginMethod
     public void isAssistantRoleGranted(PluginCall call) {
-        Context context = getContext();
-        boolean isAssistant = false;
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            RoleManager roleManager = (RoleManager) context.getSystemService(Context.ROLE_SERVICE);
-            if (roleManager != null) {
-                isAssistant = roleManager.isRoleHeld(RoleManager.ROLE_ASSISTANT);
-            }
-        }
         JSObject ret = new JSObject();
-        ret.put("granted", isAssistant);
+        ret.put("granted", CapabilityDetector.isDefaultAssistant(getContext()));
         call.resolve(ret);
     }
 
     @PluginMethod
     public void requestAssistantRole(PluginCall call) {
         Context context = getContext();
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            RoleManager roleManager = (RoleManager) context.getSystemService(Context.ROLE_SERVICE);
-            if (roleManager != null && roleManager.isRoleAvailable(RoleManager.ROLE_ASSISTANT)) {
-                Intent intent = roleManager.createRequestRoleIntent(RoleManager.ROLE_ASSISTANT);
-                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                context.startActivity(intent);
-                JSObject ret = new JSObject();
-                ret.put("success", true);
-                ret.put("method", "role_manager");
-                call.resolve(ret);
-                return;
-            }
-        }
-
-        // Fallback to Voice Input settings
-        try {
-            Intent intent = new Intent(Settings.ACTION_VOICE_INPUT_SETTINGS);
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            context.startActivity(intent);
-            JSObject ret = new JSObject();
-            ret.put("success", true);
-            ret.put("method", "voice_input_settings");
-            call.resolve(ret);
-        } catch (Exception e) {
-            Log.e(TAG, "Failed to open assistant settings: " + e.getMessage());
-            call.reject("Could not open assistant settings: " + e.getMessage());
-        }
+        boolean opened = CapabilityDetector.requestAssistantRole(context);
+        JSObject ret = new JSObject();
+        ret.put("success", opened);
+        ret.put("method", opened ? "role_manager" : "settings");
+        call.resolve(ret);
     }
 
     @PluginMethod
     public void hasOverlayPermission(PluginCall call) {
-        Context context = getContext();
-        boolean canDraw = true;
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            canDraw = Settings.canDrawOverlays(context);
-        }
         JSObject ret = new JSObject();
-        ret.put("granted", canDraw);
+        ret.put("granted", CapabilityDetector.canDrawOverlays(getContext()));
         call.resolve(ret);
     }
 
@@ -106,51 +73,30 @@ public class IrisAmbientPlugin extends Plugin {
         call.resolve(ret);
     }
 
+    /** Launches the native assistant session, never the full application. */
     @PluginMethod
     public void triggerAmbientSession(PluginCall call) {
-        Context context = getContext();
-        try {
-            Intent intent = new Intent(context, AssistantActivity.class);
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            context.startActivity(intent);
-            JSObject ret = new JSObject();
-            ret.put("success", true);
-            call.resolve(ret);
-        } catch (Exception e) {
-            call.reject("Failed to trigger ambient session: " + e.getMessage());
-        }
+        AssistantBridge.launchAssistant(getContext());
+        JSObject ret = new JSObject();
+        ret.put("success", true);
+        call.resolve(ret);
     }
 
+    /** Legacy alias kept for older dashboard bundles. */
     @PluginMethod
     public void triggerFloatingSphere(PluginCall call) {
-        Context context = getContext();
-        try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && Settings.canDrawOverlays(context)) {
-                IrisSphereService.startSphere(context);
-            } else {
-                Intent intent = new Intent(context, IrisSphereActivity.class);
-                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                context.startActivity(intent);
-            }
-            JSObject ret = new JSObject();
-            ret.put("success", true);
-            call.resolve(ret);
-        } catch (Exception e) {
-            call.reject("Failed to trigger floating sphere: " + e.getMessage());
-        }
+        AssistantBridge.launchAssistant(getContext());
+        JSObject ret = new JSObject();
+        ret.put("success", true);
+        call.resolve(ret);
     }
 
+    /** The native assistant has no persistent floating overlay to stop. */
     @PluginMethod
     public void stopFloatingSphere(PluginCall call) {
-        Context context = getContext();
-        try {
-            IrisSphereService.stopSphere(context);
-            JSObject ret = new JSObject();
-            ret.put("success", true);
-            call.resolve(ret);
-        } catch (Exception e) {
-            call.reject("Failed to stop floating sphere: " + e.getMessage());
-        }
+        JSObject ret = new JSObject();
+        ret.put("success", true);
+        call.resolve(ret);
     }
 
     @PluginMethod
@@ -167,16 +113,41 @@ public class IrisAmbientPlugin extends Plugin {
     @PluginMethod
     public void getPreferSphereMode(PluginCall call) {
         SharedPreferences prefs = getContext().getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
-        boolean enabled = prefs.getBoolean(KEY_PREFER_SPHERE, false);
         JSObject ret = new JSObject();
-        ret.put("preferSphereMode", enabled);
+        ret.put("preferSphereMode", prefs.getBoolean(KEY_PREFER_SPHERE, false));
+        call.resolve(ret);
+    }
+
+    @PluginMethod
+    public void openAssistantSettings(PluginCall call) {
+        AssistantBridge.openSettings(getContext());
+        JSObject ret = new JSObject();
+        ret.put("success", true);
+        call.resolve(ret);
+    }
+
+    @PluginMethod
+    public void getAssistantCapabilities(PluginCall call) {
+        try {
+            JSObject ret = new JSObject();
+            ret.put("capabilities", new org.json.JSONObject(AssistantBridge.capabilitiesJson(getContext())));
+            call.resolve(ret);
+        } catch (Exception e) {
+            call.reject("Could not read assistant capabilities: " + e.getMessage());
+        }
+    }
+
+    @PluginMethod
+    public void refreshHotword(PluginCall call) {
+        AssistantBridge.refreshHotword();
+        JSObject ret = new JSObject();
+        ret.put("success", true);
         call.resolve(ret);
     }
 
     @PluginMethod
     public void captureScreenNative(PluginCall call) {
-        Context context = getContext();
-        IrisScreenCaptureManager.captureCurrentDisplay(context, new IrisScreenCaptureManager.CaptureCallback() {
+        IrisScreenCaptureManager.captureCurrentDisplay(getContext(), new IrisScreenCaptureManager.CaptureCallback() {
             @Override
             public void onSuccess(Bitmap bitmap, String base64Jpeg) {
                 JSObject ret = new JSObject();
