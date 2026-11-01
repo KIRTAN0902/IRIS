@@ -30,6 +30,7 @@ import {
   SquareTerminal,
   Target,
   Wallet,
+  UsersRound,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -177,6 +178,13 @@ export const MORE_NAV_ITEMS: NavItem[] = [
     route: "/projects",
     glyph: "⌁",
     icon: FolderTree,
+  },
+  {
+    id: "coworkers",
+    name: "Coworkers",
+    route: "/coworkers",
+    glyph: "✦",
+    icon: UsersRound,
   },
   SETTINGS_NAV_ITEM,
 ];

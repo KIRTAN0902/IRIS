@@ -23,6 +23,8 @@ async def lifespan(app: FastAPI):
         db = SessionLocal()
         try:
             get_current_user(db)
+            from app.coworkers.execution import recover_interrupted_tasks
+            recover_interrupted_tasks(db)
         finally:
             db.close()
     except Exception as exc:
@@ -34,15 +36,22 @@ async def lifespan(app: FastAPI):
     import os
 
     from app.services.agy_bridge import agy_manager
+    from app.coding.headless import headless_manager
     from app.services.mesh_relay_service import relay_daemon
+    from app.coding.persistence import persist_headless_loop, persist_headless_sessions
 
     agy_manager.start(asyncio.get_running_loop())
+    session_persistence_task = asyncio.create_task(persist_headless_loop())
     if not os.environ.get("VERCEL") and not os.environ.get("AWS_LAMBDA_FUNCTION_NAME"):
         await relay_daemon.start()
 
     yield
 
+    session_persistence_task.cancel()
+    await asyncio.gather(session_persistence_task, return_exceptions=True)
+    await asyncio.to_thread(persist_headless_sessions)
     await agy_manager.shutdown()
+    headless_manager.shutdown()
     if not os.environ.get("VERCEL") and not os.environ.get("AWS_LAMBDA_FUNCTION_NAME"):
         await relay_daemon.stop()
 
@@ -94,6 +103,8 @@ def create_app() -> FastAPI:
         assistant,
         chat,
         coding,
+        coding_execution,
+        coworkers,
         diary,
         drive,
         email,
@@ -109,6 +120,7 @@ def create_app() -> FastAPI:
         schedule,
         startup,
         tasks,
+        ui_orchestrator,
         users,
         vision,
         voice,
@@ -134,6 +146,10 @@ def create_app() -> FastAPI:
     app.include_router(email.router, prefix=api)
     app.include_router(drive.router, prefix=api)
     app.include_router(coding.router, prefix=api)
+    app.include_router(coding_execution.router, prefix=api)
+    app.include_router(coding_execution.task_router, prefix=api)
+    app.include_router(coworkers.router, prefix=api)
+    app.include_router(ui_orchestrator.router, prefix=api)
     app.include_router(mesh.router, prefix=api)
     app.include_router(agy.router, prefix=api)
     app.include_router(vision.router, prefix=api)

@@ -137,16 +137,16 @@ async def test_agent_logs_and_pays_through_tools(db, user, today):
         user,
         {
             "transactions": [
-                {"amount": 100, "category": "Groceries", "merchant": "Shreeji Store", "date": "8 Oct 2026"},
-                {"amount": 50, "category": "Food & Dining", "title": "chai", "occurred_on": "2026-10-09"},
+                    {"amount": 100, "category": "Groceries", "merchant": "Shreeji Store", "date": today.replace(day=8).isoformat()},
+                    {"amount": 50, "category": "Food & Dining", "title": "chai", "occurred_on": today.replace(day=9).isoformat()},
             ]
         },
     )
     assert res.success, res.error
     assert "Logged 2 transaction(s)" in res.summary
-    assert res.data[0]["occurred_on"] == "2026-10-08"
+    assert res.data[0]["occurred_on"] == today.replace(day=8).isoformat()
     assert res.data[0]["note"] == "Shreeji Store"
-    assert res.data[1]["occurred_on"] == "2026-10-09"
+    assert res.data[1]["occurred_on"] == today.replace(day=9).isoformat()
     assert res.data[1]["note"] == "chai"
 
     res = await registry.execute(

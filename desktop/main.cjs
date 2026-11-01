@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Tray, Menu, globalShortcut, ipcMain, shell, Notification, protocol, net } = require('electron');
+const { app, BrowserWindow, Tray, Menu, globalShortcut, ipcMain, shell, Notification, protocol, net, dialog } = require('electron');
 const path = require('path');
 const http = require('http');
 const { spawn } = require('child_process');
@@ -344,6 +344,11 @@ ipcMain.on('window-maximize', () => {
 
 ipcMain.on('window-close', () => {
   if (mainWindow) mainWindow.hide();
+});
+
+ipcMain.handle('coding-select-directory', async () => {
+  const result = await dialog.showOpenDialog(mainWindow, { properties: ['openDirectory', 'createDirectory'] });
+  return result.canceled ? null : result.filePaths[0] || null;
 });
 
 app.whenReady().then(() => {

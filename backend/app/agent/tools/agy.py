@@ -10,12 +10,42 @@ import asyncio
 from typing import Any
 
 from pydantic import BaseModel, Field
+from pathlib import Path
 from sqlalchemy.orm import Session
 
 from app.agent.schemas import ToolResult
 from app.agent.tools.base import Tool
 from app.models.user import User
 from app.services.agy_bridge import AgyError, agy_manager
+
+
+def _project_for_target(db: Session, user: User, target: str | None, *, write: bool = False):
+    from app.models.coding_project import CodingProject
+
+    rows=db.query(CodingProject).filter_by(user_id=user.id,active=True).all()
+    needle=(target or "").strip().casefold()
+    if needle:
+        try:
+            path=Path(target).expanduser()
+            matches=[p for p in rows if path.is_absolute() and Path(p.directory).resolve()==path.resolve()]
+        except (OSError,RuntimeError):
+            matches=[]
+        if not matches:
+            matches=[p for p in rows if needle in [p.name.casefold(),*(a.casefold() for a in (p.aliases or []))]]
+    else:
+        matches=[p for p in rows if p.is_active]
+    if len(matches)!=1:raise AgyError("Select one registered coding project before using Antigravity")
+    project=matches[0]
+    if not project.read_access or (write and (not project.write_access or not project.command_access)):
+        raise AgyError("The selected project does not grant the required Antigravity permissions")
+    return project
+
+
+def _authorized_session(db: Session, user: User, session_key: str | None, *, write: bool = False):
+    session=agy_manager.find_session(session_key or agy_manager.current_session_key)
+    if session is None:raise AgyError("No active Antigravity session")
+    _project_for_target(db,user,session.directory,write=write)
+    return session
 
 
 class AgyAttachParams(BaseModel):
@@ -53,10 +83,12 @@ class AgyAttachDirectoryTool(Tool):
 
     async def run(self, db: Session, user: User, **kwargs: Any) -> ToolResult:
         try:
+            project=_project_for_target(db,user,kwargs["directory"],write=True)
             session = await asyncio.to_thread(
                 agy_manager.spawn_or_attach,
-                kwargs["directory"],
-                kwargs.get("alias"),
+                project.directory,
+                kwargs.get("alias") or project.name,
+                governed=True,
             )
         except AgyError as exc:
             return ToolResult(
@@ -76,33 +108,18 @@ class AgyAttachDirectoryTool(Tool):
 class AgyExecutePromptTool(Tool):
     name = "agy_execute_prompt"
     description = (
-        "Send a coding instruction to the attached Antigravity CLI session and let it "
-        "edit files, run tests, and report a git diff. Does not open a new window."
+        "Legacy operation. Do not send coding prompts directly; create a reviewable coding task "
+        "through Coding Projects and wait for the user's approval."
     )
     parameters_schema = AgyPromptParams
     read_only = False
 
     async def run(self, db: Session, user: User, **kwargs: Any) -> ToolResult:
-        key = kwargs.get("session_key") or agy_manager.current_session_key
-        try:
-            if agy_manager.find_session(key) is None:
-                session = await asyncio.to_thread(agy_manager.spawn_or_attach, None, None)
-                key = session.key
-            result = await asyncio.to_thread(
-                agy_manager.send_prompt, key, kwargs["instruction"]
-            )
-        except AgyError as exc:
-            return ToolResult(
-                tool_name=self.name,
-                success=False,
-                error=str(exc),
-                summary=f"Antigravity prompt failed: {exc}",
-            )
         return ToolResult(
             tool_name=self.name,
-            success=True,
-            data=result,
-            summary=f"Sent prompt to Antigravity session '{key}'. It is now working.",
+            success=False,
+            error="A reviewed coding brief must be approved before IRIS sends a coding task to Antigravity.",
+            summary="Prompt not sent. Prepare and approve the task in Coding Projects.",
         )
 
 
@@ -121,6 +138,7 @@ class AgyRunSlashCommandTool(Tool):
         if not command.startswith("/"):
             command = f"/{command}"
         try:
+            _authorized_session(db,user,key,write=True)
             result = await asyncio.to_thread(agy_manager.send_raw_input, key, command)
         except AgyError as exc:
             return ToolResult(
@@ -147,15 +165,14 @@ class AgySessionStatusTool(Tool):
     read_only = True
 
     async def run(self, db: Session, user: User, **kwargs: Any) -> ToolResult:
-        session = agy_manager.find_session(
-            kwargs.get("session_key") or agy_manager.current_session_key
-        )
-        if session is None:
+        try:
+            session=_authorized_session(db,user,kwargs.get("session_key"),write=False)
+        except AgyError:
             return ToolResult(
                 tool_name=self.name,
                 success=False,
-                error="No active Antigravity session.",
-                summary="No active Antigravity session.",
+                error="No active authorized Antigravity session.",
+                summary="No active authorized Antigravity session.",
             )
         data = {
             **session.to_dict(),

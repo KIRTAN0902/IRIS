@@ -60,7 +60,7 @@ def _now_iso() -> str:
     return datetime.now(UTC).isoformat()
 
 
-def _command_argv() -> list[str]:
+def _command_argv(resume: bool = False, governed: bool = False) -> list[str]:
     raw = (settings.agy_cli_command or "agy").strip()
     try:
         argv = shlex.split(raw, posix=False)
@@ -71,6 +71,16 @@ def _command_argv() -> list[str]:
     resolved = shutil.which(argv[0])
     if resolved:
         argv[0] = resolved
+    if resume and "--continue" not in argv and "-c" not in argv:
+        argv.append("--continue")
+    if governed and "--settings" not in argv:
+        argv.extend(["--settings", json.dumps({
+            "toolPermission": "request-review",
+            "enableTerminalSandbox": True,
+            "allowNonWorkspaceAccess": False,
+        })])
+    if governed and "--sandbox" not in argv:
+        argv.append("--sandbox")
     return argv
 
 
@@ -282,7 +292,7 @@ class AgySessionManager:
 
     # -- spawning ----------------------------------------------------------
 
-    def spawn_or_attach(self, directory: str | None = None, alias: str | None = None) -> AgySession:
+    def spawn_or_attach(self, directory: str | None = None, alias: str | None = None, *, resume: bool = False, governed: bool = False) -> AgySession:
         resolved, resolved_alias = self.resolve_directory(directory or alias)
         key = (alias or resolved_alias).strip().lower().replace(" ", "_")
         with self._lock:
@@ -297,7 +307,7 @@ class AgySessionManager:
             self.current_session_key = key
 
         try:
-            self._start_process(session)
+            self._start_process(session, resume=resume, governed=governed)
         except Exception as exc:
             with self._lock:
                 self.active_sessions.pop(key, None)
@@ -308,8 +318,8 @@ class AgySessionManager:
         session.reader_task = self._schedule(self._reader_loop(session))
         return session
 
-    def _start_process(self, session: AgySession) -> None:
-        argv = _command_argv()
+    def _start_process(self, session: AgySession, resume: bool = False, governed: bool = False) -> None:
+        argv = _command_argv(resume=resume, governed=governed)
         if os.name == "nt":
             try:
                 from winpty import PtyProcess

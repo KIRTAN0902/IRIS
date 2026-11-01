@@ -22,9 +22,11 @@ async def launch_task(
     req: LaunchCodingTaskRequest,
     user: User = Depends(current_user),
 ):
-    """Launch an autonomous coding task in the background."""
-    task = acs.launch_coding_task(instruction=req.instruction, workspace=req.workspace)
-    return task.model_dump(mode="json")
+    """Deprecated unsafe entry point; use the reviewed coding execution workflow."""
+    raise HTTPException(
+        status_code=410,
+        detail={"code":"APPROVAL_REQUIRED","message":"Direct coding task launch is disabled. Register a workspace and create/approve a brief at /api/coding/execution/tasks."},
+    )
 
 
 @router.get("/tasks")

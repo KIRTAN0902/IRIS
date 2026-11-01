@@ -16,7 +16,7 @@ import type { RankedTasksResponse } from "@/api/endpoints";
 import type { ChatMessageOut, TaskOut } from "@/types/api";
 import { useVoiceConversation, type VoicePhase } from "@/features/home/voice";
 import { IrisSphere } from "@/features/home/IrisSphere";
-import { TodayDashboard } from "@/features/home/TodayDashboard";
+import { OrchestratedDashboard } from "@/features/home/OrchestratedDashboard";
 import { launchPhoneApp } from "@/lib/appLauncher";
 import { captureCurrentScreen } from "@/lib/screenCapture";
 
@@ -290,7 +290,7 @@ function Conversation({
     return (
       <div className="flex flex-1 flex-col">
         <div className="flex-1">
-          <TodayDashboard />
+          <OrchestratedDashboard />
         </div>
         <div
           className="sticky z-20 relative bg-gradient-to-t from-ops-ground from-75% to-transparent pb-3 pt-5 md:bottom-0"

@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld('irisDesktop', {
   maximize: () => ipcRenderer.send('window-maximize'),
   close: () => ipcRenderer.send('window-close'),
   openExternal: (url) => shell.openExternal(url),
+  selectProjectDirectory: () => ipcRenderer.invoke('coding-select-directory'),
   onOpenAgyDrawer: (callback) => {
     const handler = () => callback();
     ipcRenderer.on('open-agy-drawer', handler);

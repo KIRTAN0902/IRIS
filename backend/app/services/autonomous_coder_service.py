@@ -1,7 +1,7 @@
-"""Autonomous Coding Service using Google Antigravity SDK.
+"""Deprecated pre-controller SDK runner.
 
-Allows IRIS to run background autonomous coding tasks (writing code, running tests,
-and editing repositories) triggered remotely from your phone or web dashboard.
+Retained temporarily for compatibility research. Public launch APIs no longer call
+this in-memory, alias-based runner; use the reviewed adapter workflow instead.
 """
 
 from __future__ import annotations

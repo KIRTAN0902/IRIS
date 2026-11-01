@@ -18,6 +18,7 @@ import { FocusPage } from "@/features/focus/FocusPage";
 import { SettingsPage } from "@/features/settings/SettingsPage";
 import { ContinuityPage } from "@/features/continuity/ContinuityPage";
 import { AgyTerminalDeck } from "@/features/agy/AgyTerminalDeck";
+import { CoworkersPage } from "@/features/coworkers/CoworkersPage";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -41,6 +42,7 @@ export function App() {
             <Route path="goals" element={<GoalsPage />} />
             <Route path="schedule" element={<SchedulePage />} />
             <Route path="projects" element={<ProjectsPage />} />
+            <Route path="coworkers" element={<CoworkersPage />} />
             <Route path="diary" element={<DiaryPage />} />
             <Route path="finance" element={<FinancePage />} />
             <Route path="gym" element={<WorkoutsPage />} />

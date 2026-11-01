@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 
 
 def test_coding_api_endpoints(client: TestClient):
-    # 1. Launch coding task
+    # Direct launch is intentionally disabled because it bypasses brief approval.
     res = client.post(
         "/api/coding/tasks",
         json={
@@ -14,18 +14,4 @@ def test_coding_api_endpoints(client: TestClient):
             "workspace": "iris",
         },
     )
-    assert res.status_code == 202
-    data = res.json()
-    task_id = data["task_id"]
-    assert task_id is not None
-    assert data["status"] in ("QUEUED", "RUNNING")
-
-    # 2. Get task by ID
-    res = client.get(f"/api/coding/tasks/{task_id}")
-    assert res.status_code == 200
-    assert res.json()["task_id"] == task_id
-
-    # 3. List tasks
-    res = client.get("/api/coding/tasks")
-    assert res.status_code == 200
-    assert any(t["task_id"] == task_id for t in res.json())
+    assert res.status_code == 410

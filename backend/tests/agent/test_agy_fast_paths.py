@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 from datetime import timedelta
+from pathlib import Path
 
 import pytest
 
 from app.agent.agent import default_agent
 from app.agent.supervisor import get_iris_supervisor
 from app.models.finance import FinanceTransaction
+from app.models.coding_project import CodingProject
 from app.models.user import User
 from app.models.time_block import TimeBlock
 from app.services.agy_bridge import AgySession, agy_manager
@@ -16,10 +18,17 @@ from app.services.memory_service import memory_service
 from app.utils.datetime import utcnow
 
 
-def test_native_slash_runs_without_spawning_antigravity(db, user_id, monkeypatch):
-    session = AgySession(key="iris", directory=r"C:\kirtan\IRIS", alias="iris")
+def _register_coding_workspace(db, user_id, directory, name="Workspace", alias=None, active=True):
+    row=CodingProject(user_id=user_id,name=name,directory=str(directory),aliases=[alias or name.casefold()],
+        read_access=True,write_access=True,command_access=True,is_active=active)
+    db.add(row);db.commit();return row
+
+
+def test_native_slash_runs_without_spawning_antigravity(db, user_id, monkeypatch, tmp_path):
+    session = AgySession(key="iris", directory=str(tmp_path), alias="iris")
     session.state = "IDLE"
     session.buffer.append("models: gemini-3.1-pro")
+    _register_coding_workspace(db,user_id,tmp_path,"IRIS","iris")
 
     monkeypatch.setattr(agy_manager, "spawn_or_attach", lambda *args, **kwargs: session)
     monkeypatch.setattr(
@@ -39,9 +48,10 @@ def test_native_slash_runs_without_spawning_antigravity(db, user_id, monkeypatch
     assert actions[0]["fast_path"] is True
 
 
-def test_agy_prompt_fast_path_uses_current_session(db, user_id, monkeypatch):
-    session = AgySession(key="iris", directory=r"C:\kirtan\IRIS", alias="iris")
+def test_agy_prompt_fast_path_requires_reviewed_task(db, user_id, monkeypatch, tmp_path):
+    session = AgySession(key="iris", directory=str(tmp_path), alias="iris")
     session.state = "IDLE"
+    _register_coding_workspace(db,user_id,tmp_path,"IRIS","iris")
     sent: list[tuple[str, str]] = []
 
     monkeypatch.setattr(agy_manager, "spawn_or_attach", lambda *args, **kwargs: session)
@@ -58,8 +68,8 @@ def test_agy_prompt_fast_path_uses_current_session(db, user_id, monkeypatch):
 
     assert response is not None
     assert response.fast_path is True
-    assert sent == [("iris", "fix the failing auth test")]
-    assert "iris" in response.message
+    assert sent == []
+    assert "reviewed brief" in response.message.lower()
 
 
 def test_expense_fast_path_writes_transaction(db, user_id):
@@ -115,15 +125,21 @@ def test_operator_context_is_sliced(db, user_id):
     assert "open_tasks" not in context
 
 
-def test_bare_attach_workspace_fast_path(db, user_id, monkeypatch):
+def test_bare_attach_workspace_fast_path(db, user_id, monkeypatch, tmp_path):
     attached = []
 
-    def fake_spawn_or_attach(directory=None, key=None):
-        target = directory or "iris"
-        alias = target.lower()
+    paths={}
+    for alias in ("notebook","iris","marketory","nexus"):
+        workspace=tmp_path/alias;workspace.mkdir()
+        _register_coding_workspace(db,user_id,workspace,alias.capitalize(),alias,active=False)
+        paths[alias]=workspace
+
+    def fake_spawn_or_attach(directory=None, key=None, **kwargs):
+        target = directory or paths["iris"]
+        alias = Path(target).name.lower()
         session = AgySession(
             key=alias,
-            directory=rf"C:\kirtan\{alias.capitalize()}",
+            directory=str(target),
             alias=alias,
         )
         session.state = "IDLE"
@@ -155,9 +171,10 @@ def test_bare_attach_workspace_fast_path(db, user_id, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_fast_path_skips_memory_extraction(db, user_id, monkeypatch):
-    session = AgySession(key="notebook", directory=r"C:\kirtan\Notebook", alias="notebook")
+async def test_fast_path_skips_memory_extraction(db, user_id, monkeypatch, tmp_path):
+    session = AgySession(key="notebook", directory=str(tmp_path), alias="notebook")
     session.state = "IDLE"
+    _register_coding_workspace(db,user_id,tmp_path,"Notebook","notebook")
     monkeypatch.setattr(agy_manager, "spawn_or_attach", lambda *args, **kwargs: session)
 
     calls = []

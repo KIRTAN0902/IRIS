@@ -4,6 +4,11 @@ from __future__ import annotations
 
 from app.services.agy_bridge import AgySession, agy_manager
 
+def _register(client):
+    response=client.post("/api/coding/projects",json={"name":"IRIS","directory":r"C:\kirtan\IRIS","aliases":["iris"]})
+    assert response.status_code==201
+    client.patch(f"/api/coding/projects/{response.json()['id']}",json={"write_access":True,"command_access":True})
+
 
 def _session() -> AgySession:
     session = AgySession(key="iris", directory=r"C:\kirtan\IRIS", alias="iris")
@@ -13,6 +18,7 @@ def _session() -> AgySession:
 
 
 def test_agy_workspaces_and_sessions(client):
+    _register(client)
     workspaces = client.get("/api/agy/workspaces")
     assert workspaces.status_code == 200
     aliases = {item["alias"] for item in workspaces.json()["workspaces"]}
@@ -24,6 +30,7 @@ def test_agy_workspaces_and_sessions(client):
 
 
 def test_agy_attach_and_status(client, monkeypatch):
+    _register(client)
     session = _session()
     monkeypatch.setattr(agy_manager, "spawn_or_attach", lambda *args, **kwargs: session)
     monkeypatch.setattr(agy_manager, "find_session", lambda key: session)
@@ -39,6 +46,9 @@ def test_agy_attach_and_status(client, monkeypatch):
 
 
 def test_agy_input_routes_commands(client, monkeypatch):
+    _register(client)
+    session=_session()
+    monkeypatch.setattr(agy_manager,"find_session",lambda key:session)
     sent: dict[str, str] = {}
 
     def raw(key, payload):

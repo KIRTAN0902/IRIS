@@ -57,6 +57,48 @@ class IrisSupervisor:
     def __init__(self) -> None:
         pass
 
+    def recommend_coworker(self, db: Session, user: User, instruction: str,
+                           required_capabilities: list[str] | None = None) -> dict[str, Any] | None:
+        """Select an available configured worker; IRIS Supervisor retains routing authority."""
+        from app.models.coworker import Coworker, CoworkerTask
+
+        required = set(required_capabilities or [])
+        candidates = db.query(Coworker).filter_by(user_id=user.id, availability=True).all()
+        scored: list[tuple[int, Coworker]] = []
+        words = set(re.findall(r"[a-z]{4,}", instruction.lower()))
+        role_terms = {
+            "analyst": {"data", "analyse", "analyze", "numbers", "compare", "comparison", "metrics", "dataset"},
+            "researcher": {"research", "sources", "evidence", "references", "investigate", "findings"},
+            "writer": {"write", "draft", "documentation", "prose", "report", "wording"},
+            "developer": {"code", "coding", "implement", "debug", "software", "feature", "tests"},
+            "project manager": {"plan", "planning", "coordinate", "dependencies", "sequence", "schedule"},
+        }
+        for coworker in candidates:
+            if coworker.status in {"working", "waiting_approval", "waiting_input", "paused", "stopped"}:
+                continue
+            available = set(coworker.allowed_capabilities or [])
+            if not required.issubset(available):
+                continue
+            profile = " ".join([coworker.role, coworker.specialisation, coworker.description,
+                                *(coworker.responsibilities or [])]).lower()
+            overlap = len(words.intersection(set(re.findall(r"[a-z]{4,}", profile))))
+            for role, terms in role_terms.items():
+                if role in coworker.role.lower(): overlap += len(words.intersection(terms))
+            active = db.query(CoworkerTask).filter_by(user_id=user.id, coworker_id=coworker.id).filter(
+                CoworkerTask.status.in_(["queued", "running", "waiting_approval", "waiting_input", "paused"])
+            ).count()
+            scored.append((overlap * 10 - active, coworker))
+        if not scored:
+            return None
+        scored.sort(key=lambda pair: (-pair[0], pair[1].name.lower()))
+        score, chosen = scored[0]
+        ambiguous = len(scored) > 1 and scored[1][0] == score
+        return {"coworker_id": chosen.id, "name": chosen.name, "role": chosen.role,
+                "specialisation": chosen.specialisation, "score": score,
+                "requires_user_choice": ambiguous,
+                "alternatives": [{"coworker_id": c.id, "name": c.name, "role": c.role}
+                                 for _, c in scored[:5]]}
+
     # --- 1. Deterministic Fast-Path Interceptor -------------------------------
 
     def try_fast_path(
@@ -1086,17 +1128,44 @@ class IrisSupervisor:
             actions or [],
         )
 
-    def _ensure_agy_session(self):
+    def _coding_project(self, db: Session, user: User, target: str | None, *, write: bool = False):
+        from pathlib import Path
+        from app.models.coding_project import CodingProject
+
+        projects = db.query(CodingProject).filter_by(user_id=user.id, active=True).all()
+        needle = (target or "").strip().casefold()
+        if needle:
+            path_match = None
+            try:
+                candidate = Path(target).expanduser()
+                if candidate.is_absolute():
+                    resolved = str(candidate.resolve()).casefold()
+                    path_match = [p for p in projects if str(Path(p.directory).resolve()).casefold() == resolved]
+            except (OSError, RuntimeError):
+                path_match = []
+            matches = path_match or [p for p in projects if needle in [p.name.casefold(), *(a.casefold() for a in (p.aliases or []))]]
+        else:
+            matches = [p for p in projects if p.is_active]
+        if len(matches) != 1:
+            raise AgyError("Select one registered active coding project before using Antigravity")
+        project = matches[0]
+        if not project.read_access or (write and (not project.write_access or not project.command_access)):
+            raise AgyError("The selected project does not grant the required Antigravity permissions")
+        return project
+
+    def _ensure_agy_session(self, db: Session, user: User):
         session = agy_manager.find_session(agy_manager.current_session_key)
         if session is not None and session.alive:
+            self._coding_project(db, user, session.directory, write=True)
             return session
-        return agy_manager.spawn_or_attach(None, None)
+        project = self._coding_project(db, user, None, write=True)
+        return agy_manager.spawn_or_attach(project.directory, project.name, governed=True)
 
     def _fast_agy_slash(
         self, db: Session, user: User, command: str
     ) -> tuple[AgentResponseSchema, list[dict[str, Any]]]:
         try:
-            session = self._ensure_agy_session()
+            session = self._ensure_agy_session(db, user)
             agy_manager.send_raw_input(session.key, command)
         except AgyError as exc:
             return self._agy_response(
@@ -1133,7 +1202,8 @@ class IrisSupervisor:
                 re.IGNORECASE | re.DOTALL,
             )
             if target:
-                session = agy_manager.spawn_or_attach(target.group(1).strip(), None)
+                project = self._coding_project(db, user, target.group(1).strip(), write=True)
+                session = agy_manager.spawn_or_attach(project.directory, project.name, governed=True)
                 return self._agy_response(
                     f"🔗 Attached to Antigravity session **{session.alias}** in `{session.directory}`.",
                     f"Attached to {session.alias}",
@@ -1151,7 +1221,7 @@ class IrisSupervisor:
                         }
                     ],
                 )
-            session = self._ensure_agy_session()
+            session = self._ensure_agy_session(db, user)
             if not rest:
                 return self._agy_response(
                     f"🔗 Antigravity session **{session.alias}** is ready in `{session.directory}`. "
@@ -1173,7 +1243,12 @@ class IrisSupervisor:
                 )
             if rest.startswith("/"):
                 return self._fast_agy_slash(db, user, rest.split()[0].lower())
-            agy_manager.send_prompt(session.key, rest)
+            return self._agy_response(
+                "I did not send that coding instruction. IRIS requires a reviewed brief before starting coding work. Open Coding Projects, select the registered workspace, and review the brief there.",
+                "Coding brief review required",
+                [f"Selected workspace: {session.directory}"],
+                [{"tool_name":"agy_execute_prompt","success":False,"summary":"Prompt not sent; reviewed coding brief required"}],
+            )
             return self._agy_response(
                 f"⚡ Sent to Antigravity in **{session.alias}**: `{rest[:240]}`\n"
                 "It is working now; I will report the git summary when it settles.",

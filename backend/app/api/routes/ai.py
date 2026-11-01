@@ -264,9 +264,48 @@ async def ask_iris(
 
     answer_text: str | None = None
     source = "DETERMINISTIC"
+    q_lower = data.question.lower().strip()
+    coding_action: dict[str, Any] | None = None
+
+    # Route explicit coding requests about registered workspaces into the
+    # reviewed task lifecycle. This drafts only; approval remains a separate
+    # user action in the Coding Projects UI.
+    import re
+    coding_request = re.match(
+        r"^(?:(?:hey\s+)?iris[,! ]+)?(?:please\s+)?(?:can you\s+|could you\s+|would you\s+)?(?:please\s+)?(?:add|build|create|debug|fix|implement|modify|refactor|remove|update|upgrade|write|code)\b",
+        q_lower,
+    )
+    coding_terms = {"feature", "bug", "code", "coding", "repository", "repo", "software", "website", "application", "app", "api", "ui", "interface", "test", "tests", "project", "compile", "crash", "error", "login", "dashboard"}
+    from app.models.coding_project import CodingProject
+    projects = db.query(CodingProject).filter_by(user_id=user.id, active=True).all() if coding_request else []
+    matches = [p for p in projects if any(value and re.search(rf"(?<![\w]){re.escape(value.casefold())}(?![\w])", q_lower) for value in [p.name, *(p.aliases or [])])]
+    if coding_request and (matches or any(term in re.findall(r"[a-z0-9_+-]+", q_lower) for term in coding_terms)):
+        if len(matches) > 1:
+            coding_action = {"status": "ambiguous", "projects": [{"id": p.id, "name": p.name} for p in matches]}
+            answer_text = "I found multiple registered projects mentioned in your request. Choose the workspace in Coding Projects, then prepare the brief for review."
+        elif not matches:
+            coding_action = {"status": "project_required"}
+            answer_text = "I can prepare this coding task after you select or register its workspace. Open Coding Projects, choose the project, and prepare the brief for review."
+        else:
+            from app.coding.contracts import TaskBrief
+            from app.api.routes.coding_execution import TaskCreate, create_task
+            project = matches[0]
+            brief = TaskBrief(
+                objective=data.question, project_id=project.id, agent_id="antigravity-cli",
+                architecture="Inspect the selected repository and follow its existing architecture.",
+                constraints=["Modify only the selected registered workspace."],
+                implementation=data.question,
+                expected_behavior="Satisfy the requested coding change without unrelated modifications.",
+                acceptance_criteria=["Requested change is implemented", "Relevant existing checks are reported accurately"],
+                tests=["Run relevant project checks when permitted and report exact commands and outcomes."],
+                restrictions=["Do not expose credentials.", "Do not broaden workspace permissions.", "Preserve existing user changes."],
+            )
+            draft = create_task(TaskCreate(project_id=project.id, agent_id="antigravity-cli", instruction=data.question, brief=brief), user, db)
+            coding_action = {"status": "drafted", "task_id": draft["id"], "project_id": project.id, "project_name": project.name}
+            answer_text = f"I resolved **{project.name}** and prepared a coding brief. Review and edit it in Coding Projects before approving execution."
+            source = "DETERMINISTIC"
 
     # Fast intent handling for desktop control and file surfing
-    q_lower = data.question.lower().strip()
     is_agy_cli = (
         ("antigravity" in q_lower or "agy" in q_lower) and any(w in q_lower for w in ["cli", "terminal", "console", "resume", "continue", "-c", "--continue"])
     ) or any(q_lower.startswith(w) for w in ["open agy", "launch agy", "start agy", "agy -c", "agy --continue"]) or q_lower == "agy"
@@ -277,7 +316,9 @@ async def ask_iris(
         or q_lower in ["antigravity", "open antigravity", "launch antigravity"]
     )
 
-    if is_agy_cli:
+    if answer_text is not None:
+        pass  # Explicit coding request already routed to the reviewed draft flow.
+    elif is_agy_cli:
         from app.services import mesh_service as ms
         target_dir, prompt_text, should_resume = ms.parse_antigravity_cli_intent(data.question, default_dir=r"C:\kirtan\IRIS")
         res = ms.launch_windows_app("antigravity_cli", directory=target_dir, prompt=prompt_text, resume=should_resume)
@@ -491,6 +532,7 @@ async def ask_iris(
         "answer": answer_text,
         "follow_ups": [],
         "conversation_id": conversation.id,
+        "coding_action": coding_action,
         **_ai_meta(source),
     }
 

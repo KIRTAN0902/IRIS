@@ -182,6 +182,32 @@ def test_ask_persists_conversation(client, db, user_id):
     assert roles.count("ASSISTANT") == 2
 
 
+def test_ask_routes_named_coding_project_to_reviewable_draft(client,tmp_path):
+    workspace=tmp_path/"forge";workspace.mkdir()
+    project=client.post("/api/coding/projects",json={"name":"Forge","directory":str(workspace),"aliases":["forge-app"]})
+    assert project.status_code==201
+    response=client.post("/api/ai/ask",json={"question":"Add dark mode to Forge"})
+    assert response.status_code==200,response.text
+    action=response.json()["coding_action"]
+    assert action["status"]=="drafted"
+    task=client.get("/api/coding/execution/tasks").json()[0]
+    assert task["id"]==action["task_id"]
+    assert task["status"]=="awaiting_approval"
+    assert task["approval_state"]=="pending"
+    assert "review" in response.json()["answer"].lower()
+
+
+def test_ask_does_not_guess_between_project_alias_matches(client,tmp_path):
+    for name in ("Forge One","Forge Two"):
+        workspace=tmp_path/name;workspace.mkdir()
+        client.post("/api/coding/projects",json={"name":name,"directory":str(workspace),"aliases":["forge"]})
+    response=client.post("/api/ai/ask",json={"question":"Fix the login bug in Forge"})
+    assert response.status_code==200
+    assert response.json()["coding_action"]["status"]=="ambiguous"
+    assert len(response.json()["coding_action"]["projects"])==2
+    assert client.get("/api/coding/execution/tasks").json()==[]
+
+
 def test_ask_with_mocked_ai(client, monkeypatch):
     _mock_ai(
         monkeypatch,

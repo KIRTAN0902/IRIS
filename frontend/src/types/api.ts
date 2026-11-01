@@ -493,6 +493,7 @@ export interface AskIRISResponse extends AIMeta {
   answer: string;
   follow_ups: string[];
   conversation_id: number;
+  coding_action?: { status: "drafted" | "ambiguous" | "project_required"; task_id?: string; project_id?: number; project_name?: string; projects?: Array<{id:number;name:string}> } | null;
 }
 
 export interface VisualActionableItem {

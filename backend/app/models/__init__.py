@@ -17,12 +17,16 @@ from app.models.mesh_pairing import MeshPairing, MeshRelayMessage
 from app.models.metric import Metric
 from app.models.outreach import OutreachActivity
 from app.models.project import Project
+from app.models.coding_project import CodingProject
+from app.models.coding_task import CodingTaskRecord, CodingSessionRecord
+from app.models.coworker import Coworker, CoworkerTask, CoworkerSession, CoworkerEvent, CoworkerApproval
 from app.models.recurring_schedule import RecurringSchedule
 from app.models.signal import Signal
 from app.models.startup import Startup
 from app.models.task import Task
 from app.models.time_block import TimeBlock
 from app.models.user import User
+from app.models.ui_workspace import UIWorkspaceConfig, UIChangeProposal
 from app.models.workout import Workout, WorkoutExercise, WorkoutLog
 
 __all__ = [
@@ -48,6 +52,14 @@ __all__ = [
     "Metric",
     "OutreachActivity",
     "Project",
+    "CodingProject",
+    "CodingTaskRecord",
+    "CodingSessionRecord",
+    "Coworker",
+    "CoworkerTask",
+    "CoworkerSession",
+    "CoworkerEvent",
+    "CoworkerApproval",
     "SavingsGoal",
     "RecurringSchedule",
     "Signal",
@@ -55,6 +67,8 @@ __all__ = [
     "Task",
     "TimeBlock",
     "User",
+    "UIWorkspaceConfig",
+    "UIChangeProposal",
     "Workout",
     "WorkoutExercise",
     "WorkoutLog",

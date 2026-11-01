@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 from datetime import UTC, datetime, timedelta
 import secrets
+from pathlib import Path
 from typing import Any
 
 from sqlalchemy import and_, or_
@@ -298,9 +299,11 @@ def push_relay_message(
         payload=payload,
     )
     try:
-        asyncio.create_task(ms.hub.broadcast(ws_msg, exclude_sender=True))
+        loop = asyncio.get_running_loop()
     except RuntimeError:
-        pass  # If no running event loop in test/sync context
+        loop = None  # No active WebSocket loop in a synchronous request/test.
+    if loop is not None:
+        loop.create_task(ms.hub.broadcast(ws_msg, exclude_sender=True))
 
     return msg
 
@@ -673,15 +676,32 @@ class LaptopRelayDaemon:
                     )
             elif cmd in {"AGY_ATTACH_DIR", "AGY_SEND_INPUT", "AGY_SLASH_CMD", "AGY_GET_STATUS"}:
                 from app.services.agy_bridge import AgyError, agy_manager
+                from app.models.coding_project import CodingProject
+                from app.models.mesh_pairing import MeshPairing
 
                 req_id = payload.get("req_id")
                 res: dict[str, Any]
                 try:
+                    pairing = db.query(MeshPairing).filter_by(
+                        user_id=1, device_id=sender, is_active=True
+                    ).first()
+                    if not pairing:
+                        raise AgyError("Mesh coding-agent control requires an active paired device")
+                    key = payload.get("session_key") or agy_manager.current_session_key
+                    current_session = agy_manager.find_session(key) if cmd != "AGY_ATTACH_DIR" else None
+                    directory = payload.get("directory") if cmd == "AGY_ATTACH_DIR" else (current_session.directory if current_session else "")
+                    project = db.query(CodingProject).filter_by(user_id=pairing.user_id, active=True).all()
+                    project = next((p for p in project if Path(p.directory).resolve() == Path(directory).resolve()), None)
+                    if not project or not project.read_access:
+                        raise AgyError("Coding-agent access requires a registered project with read access")
+                    if cmd in {"AGY_ATTACH_DIR", "AGY_SEND_INPUT", "AGY_SLASH_CMD"} and (not project.write_access or not project.command_access):
+                        raise AgyError("Coding-agent control requires project write and command permissions")
                     if cmd == "AGY_ATTACH_DIR":
                         session = await asyncio.to_thread(
                             agy_manager.spawn_or_attach,
-                            payload.get("directory"),
+                            project.directory,
                             payload.get("alias"),
+                            governed=True,
                         )
                         res = {"success": True, "session": session.to_dict()}
                     elif cmd == "AGY_SEND_INPUT":

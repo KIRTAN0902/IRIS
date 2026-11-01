@@ -7,6 +7,7 @@ interface IrisDesktopBridge {
   maximize: () => void;
   close: () => void;
   openExternal: (url: string) => void;
+  selectProjectDirectory?: () => Promise<string | null>;
   onOpenAgyDrawer?: (callback: () => void) => () => void;
 }
 

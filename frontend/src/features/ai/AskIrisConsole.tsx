@@ -14,6 +14,7 @@ import { cn } from "@/lib/format";
 import type { VisualContext } from "@/types/api";
 import { launchPhoneApp } from "@/lib/appLauncher";
 import { captureCurrentScreen } from "@/lib/screenCapture";
+import { useNavigate } from "react-router-dom";
 
 const SUGGESTIONS = [
   "What should I do tonight?",
@@ -33,6 +34,7 @@ interface ThreadMessage {
   source?: "AI" | "DETERMINISTIC";
   visualContext?: VisualContext;
   badge?: boolean;
+  codingAction?: { status: "drafted" | "ambiguous" | "project_required"; task_id?: string } | null;
 }
 
 /**
@@ -49,6 +51,7 @@ interface AttachedImage {
 export function AskIrisConsole() {
   const open = useUiStore((s) => s.askOpen);
   const setOpen = useUiStore((s) => s.setAskOpen);
+  const navigate = useNavigate();
   const ask = useAskIRIS();
   const vision = useIngestVision();
   const aiStatusQuery = useAIStatus();
@@ -251,7 +254,7 @@ export function AskIrisConsole() {
       {
         onSuccess: (res) => {
           setConversationId(res.conversation_id);
-          setThread((t) => [...t, { role: "ASSISTANT", content: res.answer, source: res.source }]);
+          setThread((t) => [...t, { role: "ASSISTANT", content: res.answer, source: res.source, codingAction: res.coding_action }]);
           if (res.answer) {
             const match = res.answer.match(/Opening\s+(?:\*\*)?([a-zA-Z0-9_\s]+?)(?:\*\*)?\s+on your phone/i);
             if (match?.[1]) launchPhoneApp(match[1]);
@@ -457,6 +460,20 @@ export function AskIrisConsole() {
                       >
                         {m.content}
                       </p>
+                      {m.codingAction && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setOpen(false);
+                            navigate(m.codingAction?.status === "drafted" && m.codingAction.task_id
+                              ? `/projects?task=${encodeURIComponent(m.codingAction.task_id)}`
+                              : "/projects");
+                          }}
+                        >
+                          {m.codingAction.status === "drafted" ? "Review coding brief" : "Choose a coding project"}
+                        </Button>
+                      )}
                       {m.visualContext && (
                         <details className="border border-ops-line bg-ops-raised/30 px-2 py-1.5">
                           <summary className="cursor-pointer text-[11px] text-ink-faint">

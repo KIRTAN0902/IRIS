@@ -399,6 +399,18 @@ async def mesh_websocket_endpoint(
     token: str | None = Query(None, description="Optional pairing token"),
 ):
     """Real-time bi-directional WebSocket gateway between phone and laptop."""
+    # Mesh may still connect for non-coding device features without a token,
+    # but coding-agent control requires an authenticated paired device.
+    paired_user_id = None
+    if token:
+        from app.core.database import SessionLocal
+        auth_db = SessionLocal()
+        try:
+            pairing = mrs.authenticate_device(auth_db, token)
+            if pairing and pairing.device_id == device_id:
+                paired_user_id = pairing.user_id
+        finally:
+            auth_db.close()
     await ms.hub.connect(device_id=device_id, device_type=device_type, name=name, websocket=websocket)
 
     try:
@@ -561,9 +573,26 @@ async def mesh_websocket_endpoint(
                         from app.services.agy_bridge import AgyError, agy_manager
 
                         try:
+                            if paired_user_id is None:
+                                raise AgyError("Pair this Mesh device before controlling a coding-agent workspace")
+                            from app.models.coding_project import CodingProject
+                            from app.core.database import SessionLocal
+                            auth_db = SessionLocal()
+                            try:
+                                key = payload.get("session_key") or agy_manager.current_session_key
+                                session = agy_manager.find_session(key) if cmd != "AGY_ATTACH_DIR" else None
+                                directory = payload.get("directory") if cmd == "AGY_ATTACH_DIR" else (session.directory if session else "")
+                                project = auth_db.query(CodingProject).filter_by(user_id=paired_user_id, active=True).all()
+                                project = next((p for p in project if Path(p.directory).resolve() == Path(directory).resolve()), None)
+                                if not project or not project.read_access:
+                                    raise AgyError("Coding-agent access requires a registered project with read access")
+                                if cmd in {"AGY_ATTACH_DIR", "AGY_SEND_INPUT", "AGY_SLASH_CMD"} and (not project.write_access or not project.command_access):
+                                    raise AgyError("Coding-agent control requires project write and command permissions")
+                            finally:
+                                auth_db.close()
                             if cmd == "AGY_ATTACH_DIR":
                                 session = agy_manager.spawn_or_attach(
-                                    payload.get("directory"), payload.get("alias")
+                                    project.directory, payload.get("alias"), governed=True
                                 )
                                 result = {"success": True, "session": session.to_dict()}
                             elif cmd == "AGY_SEND_INPUT":
