@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import { useSearchParams } from "react-router-dom";
 import { ArrowUp, Mic, Monitor, Play, Plus, X } from "lucide-react";
 import {
@@ -14,11 +13,10 @@ import { Skeleton } from "@/components/ui/Overlay";
 import { cn, fmtTime, humanDuration, urgencyLabel } from "@/lib/format";
 import type { RankedTasksResponse } from "@/api/endpoints";
 import type { ChatMessageOut, TaskOut } from "@/types/api";
-import { useVoiceConversation, type VoicePhase } from "@/features/home/voice";
+import { useVoiceSession } from "@/features/home/VoiceSession";
 import { IrisSphere } from "@/features/home/IrisSphere";
 import { OrchestratedDashboard } from "@/features/home/OrchestratedDashboard";
 import { launchPhoneApp } from "@/lib/appLauncher";
-import { captureCurrentScreen } from "@/lib/screenCapture";
 
 /**
  * HOME: a new chat by default, showing only "IRIS" and the composer (like
@@ -27,9 +25,13 @@ import { captureCurrentScreen } from "@/lib/screenCapture";
 export function HomePage() {
   const [params, setParams] = useSearchParams();
   const activeId = Number(params.get("c")) || null;
+  const voice = useVoiceSession();
+  useEffect(() => {
+    if (voice.conversationId && !activeId) setParams({ c: String(voice.conversationId) }, { replace: true });
+  }, [activeId, setParams, voice.conversationId]);
 
   return (
-    <div className="mx-auto flex w-full max-w-[720px] flex-1 flex-col">
+    <div className="mx-auto flex w-full max-w-[1180px] flex-1 flex-col">
       <Conversation
         conversationId={activeId}
         onCreated={(id) => setParams({ c: String(id) }, { replace: true })}
@@ -233,7 +235,7 @@ function Conversation({
     }
   };
 
-  const voice = useVoiceConversation(async (text) => (await send(text, true))?.content ?? null);
+  const voice = useVoiceSession();
   const talking = voice.phase !== "off";
 
   // Auto-launch voice mode if launched from Android Assistant (?mode=voice or window.__IRIS_AUTO_VOICE__)
@@ -281,7 +283,6 @@ function Conversation({
           {voice.notice}
         </p>
       )}
-      {talking && <VoiceOverlay voice={voice} />}
     </>
   );
 
@@ -289,13 +290,11 @@ function Conversation({
     // Home: the day at a glance, with IRIS one message away.
     return (
       <div className="flex flex-1 flex-col">
-        <div className="flex-1">
+        <div className="flex-1 pb-48 md:pb-56">
           <OrchestratedDashboard />
         </div>
-        <div
-          className="sticky z-20 relative bg-gradient-to-t from-ops-ground from-75% to-transparent pb-3 pt-5 md:bottom-0"
-          style={{ bottom: "calc(3.5rem + max(env(safe-area-inset-bottom, 0px), var(--safe-bottom, 0px)))" }}
-        >
+        <div className="home-assistant-dock fixed inset-x-0 z-20 mx-auto w-[min(100%-24px,720px)] px-1 pb-2 pt-1">
+          <SphereDock voice={voice} />
           {composer}
         </div>
       </div>
@@ -304,7 +303,7 @@ function Conversation({
 
   return (
     <div className="flex flex-1 flex-col">
-      <div className="flex-1 space-y-8 pb-8">
+      <div className="flex-1 space-y-8 pb-56">
         {conversationId && conv.isLoading ? (
           <div className="space-y-3">
             <Skeleton className="h-4 w-2/3" />
@@ -336,10 +335,8 @@ function Conversation({
         <div ref={endRef} />
       </div>
 
-      <div
-        className="sticky z-20 relative bg-gradient-to-t from-ops-ground from-75% to-transparent pb-3 pt-5 md:bottom-0"
-        style={{ bottom: "calc(3.5rem + max(env(safe-area-inset-bottom, 0px), var(--safe-bottom, 0px)))" }}
-      >
+      <div className="home-assistant-dock fixed inset-x-0 z-20 mx-auto w-[min(100%-24px,720px)] px-1 pb-2 pt-1">
+        <SphereDock voice={voice} />
         {composer}
       </div>
     </div>
@@ -352,7 +349,7 @@ function Composer({
   onSend,
   onVoice,
   disabled,
-  autoFocus = true,
+  autoFocus = false,
   images,
   onAddImages,
   onRemoveImage,
@@ -377,6 +374,7 @@ function Composer({
     e.stopPropagation();
     try {
       setCapturingScreen(true);
+      const { captureCurrentScreen } = await import("@/lib/screenCapture");
       const res = await captureCurrentScreen();
       if (res) {
         onAddImages([res.file]);
@@ -567,104 +565,25 @@ function Composer({
   );
 }
 
-const PHASE_LABEL: Record<VoicePhase, string> = {
-  off: "",
-  starting: "Starting",
-  listening: "Listening",
-  transcribing: "Got it",
-  thinking: "Thinking",
-  speaking: "Speaking",
-};
-
-const PHASE_HINT: Partial<Record<VoicePhase, string>> = {
-  listening: "Tap the sphere when you're done",
-  speaking: "Tap to interrupt",
-};
-
-/** Full-screen voice mode: the IRIS sphere, live captions and an end button. */
-function VoiceOverlay({ voice }: { voice: ReturnType<typeof useVoiceConversation> }) {
-  const sphereSize = () => Math.round(Math.min(window.innerWidth * 0.8, window.innerHeight * 0.45, 380));
-  const [size, setSize] = useState(sphereSize);
-
+function SphereDock({ voice }: { voice: ReturnType<typeof useVoiceSession> }) {
+  const [size, setSize] = useState(112);
   useEffect(() => {
-    const onResize = () => setSize(sphereSize());
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && voice.end();
-    window.addEventListener("resize", onResize);
-    window.addEventListener("keydown", onKey);
-    return () => {
-      window.removeEventListener("resize", onResize);
-      window.removeEventListener("keydown", onKey);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const update = () => setSize(window.innerWidth < 768 ? 92 : 112);
+    update(); window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
   }, []);
-
+  const active = voice.phase !== "off";
+  const label = voice.phase === "off" ? "Ready · tap to talk" : voice.phase === "paused" ? "Paused · tap to resume" : voice.phase;
   const caption = voice.phase === "speaking" ? voice.said : voice.heard;
-  // Portaled to <body>: the composer's sticky container would trap it under the app bars.
-  return createPortal(
-    <div
-      role="dialog"
-      aria-label="Voice conversation with IRIS"
-      className="fixed inset-0 z-50 flex flex-col items-center bg-black px-6"
-      style={{ paddingTop: "max(16px, env(safe-area-inset-top))", paddingBottom: "max(24px, env(safe-area-inset-bottom))" }}
-    >
-      <div className="flex w-full max-w-[720px] items-center justify-between">
-        <span className="neon select-none text-[14px] font-semibold tracking-[0.35em] text-ink">IRIS</span>
-        <button
-          onClick={voice.end}
-          aria-label="End voice conversation"
-          title="End"
-          className="rounded-full p-2 text-ink-faint hover:bg-ops-raised hover:text-ink cursor-pointer"
-        >
-          <X size={20} />
-        </button>
-      </div>
-
-      <div className="flex w-full flex-1 flex-col items-center justify-center">
-        <button
-          onClick={voice.tap}
-          aria-label={voice.phase === "speaking" ? "Interrupt IRIS" : "Done speaking"}
-          className="rounded-full cursor-pointer"
-        >
-          <IrisSphere phase={voice.phase} level={voice.level} size={size} />
-        </button>
-        <p className="mt-6 text-[12px] uppercase tracking-[0.3em] text-ink-dim" role="status">
-          {PHASE_LABEL[voice.phase]}
-        </p>
-        <p className="mt-1 h-4 text-[12px] text-ink-faint">{PHASE_HINT[voice.phase] ?? ""}</p>
-        <p
-          className={cn(
-            "mt-5 min-h-[3.5em] max-w-[560px] text-center text-[17px] leading-relaxed line-clamp-4",
-            voice.phase === "speaking" ? "text-ink" : "italic text-ink-dim",
-          )}
-        >
-          {caption && (voice.phase === "speaking" ? caption : `“${caption}”`)}
-        </p>
-        {voice.notice && <p className="mt-3 max-w-[480px] text-center text-[13px] text-caution">{voice.notice}</p>}
-      </div>
-
-      <div className="flex items-center gap-3">
-        {typeof voice.captureScreen === "function" && (
-          <button
-            type="button"
-            onClick={voice.captureScreen}
-            aria-label="Share current screen with IRIS"
-            title="Inspect screen"
-            className="flex items-center gap-1.5 rounded-full border border-ops-line-bright px-4 py-2 text-[13px] text-ink hover:bg-ops-raised cursor-pointer transition-colors"
-          >
-            <Monitor size={15} />
-            <span>Look at screen</span>
-          </button>
-        )}
-        <button
-          onClick={voice.end}
-          className="rounded-full border border-ops-line-bright px-6 py-2 text-[13px] text-ink hover:bg-ops-raised cursor-pointer"
-        >
-          End conversation
-        </button>
-      </div>
-    </div>,
-    document.body,
-  );
+  return <div className="mb-1 flex flex-col items-center" aria-label="IRIS voice controls">
+    <button type="button" onClick={() => active ? voice.tap() : void voice.start()} aria-label={voice.phase === "off" ? "Start listening to IRIS" : voice.phase === "paused" ? "Resume listening" : voice.phase === "listening" ? "Pause listening" : voice.phase === "speaking" ? "Interrupt IRIS" : `Voice status: ${voice.phase}`} className="group relative rounded-full focus-visible:outline-offset-4">
+      <span className="pointer-events-none absolute inset-2 rounded-full bg-ai/10 blur-xl transition group-hover:bg-ai/20" aria-hidden/>
+      <IrisSphere phase={voice.phase} level={voice.level} size={size}/>
+    </button>
+    <div className="flex h-5 items-center gap-2 text-[11px] text-ink-faint" role="status" aria-live="polite"><span className={cn("capitalize", active && "text-ai font-medium")}>{label}</span>{active && <button onClick={voice.end} className="underline decoration-ops-line-bright underline-offset-2 hover:text-ink" aria-label="End voice session">End</button>}</div>
+    {caption && active && <p className="max-w-full truncate text-xs text-ink-dim">{caption}</p>}
+    {voice.notice && <p className="max-w-full truncate text-xs text-caution" role="status">{voice.notice}</p>}
+  </div>;
 }
 
 function UserNote({

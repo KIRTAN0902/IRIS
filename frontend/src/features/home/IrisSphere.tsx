@@ -59,9 +59,9 @@ function glowSprite(px: number): HTMLCanvasElement {
   c.width = c.height = px;
   const g = c.getContext("2d")!;
   const grad = g.createRadialGradient(px / 2, px / 2, 0, px / 2, px / 2, px / 2);
-  grad.addColorStop(0, "rgba(255,255,255,1)");
-  grad.addColorStop(0.18, "rgba(255,255,255,0.85)");
-  grad.addColorStop(0.45, "rgba(220,230,255,0.22)");
+  grad.addColorStop(0, "rgba(83,75,205,1)");
+  grad.addColorStop(0.18, "rgba(112,105,229,0.85)");
+  grad.addColorStop(0.45, "rgba(172,178,255,0.28)");
   grad.addColorStop(1, "rgba(255,255,255,0)");
   g.fillStyle = grad;
   g.fillRect(0, 0, px, px);
@@ -110,6 +110,7 @@ export function IrisSphere({ phase, level, size }: Props) {
       // pulse while speaking, a slow shimmer while thinking.
       let target = 0.08;
       if (p === "listening") target = Math.min(1, levelRef.current());
+      else if (p === "paused") target = 0.05;
       else if (p === "speaking")
         target = 0.35 + 0.3 * Math.abs(Math.sin(t * 7.3)) * (0.6 + 0.4 * Math.sin(t * 2.1 + 1.3));
       else if (p === "thinking" || p === "transcribing") target = 0.22 + 0.1 * Math.sin(t * 5);
@@ -141,8 +142,8 @@ export function IrisSphere({ phase, level, size }: Props) {
 
       // Halo behind everything.
       const halo = ctx.createRadialGradient(c, c, R * 0.2, c, c, R * 1.5);
-      halo.addColorStop(0, `rgba(255,255,255,${0.07 + shown * 0.08})`);
-      halo.addColorStop(1, "rgba(255,255,255,0)");
+      halo.addColorStop(0, `rgba(102,87,217,${0.07 + shown * 0.08})`);
+      halo.addColorStop(1, "rgba(102,87,217,0)");
       ctx.fillStyle = halo;
       ctx.fillRect(0, 0, size, size);
 
@@ -156,7 +157,7 @@ export function IrisSphere({ phase, level, size }: Props) {
           const pa = projected[a], pb = projected[b];
           const depth = (pa.z + pb.z) / 2; // -1 (back) .. 1 (front)
           const alpha = boost * (0.25 + 0.75 * ((depth + 1) / 2)) * (0.7 + shown * 0.6);
-          ctx.strokeStyle = `rgba(255,255,255,${alpha.toFixed(3)})`;
+          ctx.strokeStyle = `rgba(86,76,194,${alpha.toFixed(3)})`;
           ctx.beginPath();
           ctx.moveTo(pa.x, pa.y);
           ctx.lineTo(pb.x, pb.y);
@@ -167,7 +168,7 @@ export function IrisSphere({ phase, level, size }: Props) {
       // Inner 12-point star and hexagon, turning against the sphere.
       const star = (radius: number, inner: number, points: number, rot: number, alpha: number, w: number) => {
         ctx.lineWidth = w;
-        ctx.strokeStyle = `rgba(255,255,255,${alpha.toFixed(3)})`;
+        ctx.strokeStyle = `rgba(86,76,194,${alpha.toFixed(3)})`;
         ctx.beginPath();
         for (let k = 0; k <= points * 2; k++) {
           const ang = rot + (k * Math.PI) / points - Math.PI / 2;

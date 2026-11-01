@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
-import { ChevronRight, LayoutGrid } from "lucide-react";
+import { CheckSquare, ChevronRight, LayoutGrid } from "lucide-react";
 import { MORE_NAV_ITEMS, PRIMARY_NAV_ITEMS_MOBILE } from "@/modules/registry";
 import { cn } from "@/lib/format";
 
@@ -15,7 +15,7 @@ export function MobileBottomNav() {
   const location = useLocation();
   const [moreOpen, setMoreOpen] = useState(false);
   const tabs = PRIMARY_NAV_ITEMS_MOBILE;
-  const more = MORE_NAV_ITEMS;
+  const more = [{ id: "tasks", name: "Tasks", route: "/tasks", glyph: "☑", icon: CheckSquare }, ...MORE_NAV_ITEMS];
   const onMorePage = more.some((item) => location.pathname.startsWith(item.route));
 
   // Collapse after navigating anywhere.
@@ -29,7 +29,7 @@ export function MobileBottomNav() {
       <div
         id="more-sections"
         className={cn(
-          "fixed inset-x-0 z-40 border-t border-ops-line-bright bg-ops-panel px-4 pt-3 shadow-[0_-12px_32px_rgba(0,0,0,0.6)] transition-transform duration-200 md:hidden",
+          "fixed inset-x-0 z-40 max-h-[70dvh] overflow-y-auto border-t border-ops-line-bright bg-ops-panel px-4 pt-3 shadow-[0_-12px_32px_rgba(18,28,45,0.14)] transition-transform duration-200 md:hidden",
           moreOpen ? "translate-y-0" : "pointer-events-none translate-y-[120%]",
         )}
         style={{ bottom: "calc(56px + max(env(safe-area-inset-bottom, 0px), var(--safe-bottom, 0px)))" }}
@@ -60,7 +60,7 @@ export function MobileBottomNav() {
 
       <nav
         aria-label="Primary Mobile Navigation"
-        className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-ops-line bg-ops-ground/95 backdrop-blur md:hidden"
+        className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-ops-line bg-ops-panel/95 backdrop-blur md:hidden"
         style={{ paddingBottom: "max(env(safe-area-inset-bottom, 0px), var(--safe-bottom, 0px))" }}
       >
         {tabs.map((item) => (

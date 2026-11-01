@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
-import { AgyTerminalDeck } from "@/features/agy/AgyTerminalDeck";
+import { lazy, Suspense, useEffect, useState } from "react";
+
+const AgyTerminalDeck = lazy(() => import("@/features/agy/AgyTerminalDeck").then((m) => ({ default: m.AgyTerminalDeck })));
 
 export function AgyDrawer() {
   const [open, setOpen] = useState(false);
@@ -35,7 +36,7 @@ export function AgyDrawer() {
         className="h-full w-full max-w-[760px] border-l border-ops-line-bright bg-[#080A0F] p-4 shadow-2xl"
         onClick={(event) => event.stopPropagation()}
       >
-        <AgyTerminalDeck variant="drawer" onClose={() => setOpen(false)} />
+        <Suspense fallback={<div className="p-6 text-sm text-ink-faint">Opening Antigravity…</div>}><AgyTerminalDeck variant="drawer" onClose={() => setOpen(false)} /></Suspense>
       </div>
     </div>
   );

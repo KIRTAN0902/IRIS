@@ -1,12 +1,15 @@
-import { useEffect } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
-import { Search } from "lucide-react";
 import { MobileBottomNav } from "@/components/layout/TopStrip";
-import { MobileTopBar, Sidebar } from "@/components/layout/Sidebar";
-import { AskIrisConsole } from "@/features/ai/AskIrisConsole";
+import { Sidebar } from "@/components/layout/Sidebar";
+import { GlobalTopBar } from "@/components/layout/GlobalTopBar";
 import { AgyDrawer } from "@/features/agy/AgyDrawer";
 import { useFocusSessions } from "@/hooks/queries";
 import { useUiStore } from "@/stores";
+import { VoiceSessionProvider } from "@/features/home/VoiceSession";
+import { useUIState } from "@/features/home/useUIOrchestrator";
+
+const AskIrisConsole = lazy(() => import("@/features/ai/AskIrisConsole").then((m) => ({ default: m.AskIrisConsole })));
 
 /**
  * Notes-style shell: a quiet sidebar and one centred reading column.
@@ -16,6 +19,17 @@ export function AppShell() {
   const location = useLocation();
   const navigate = useNavigate();
   const setAskOpen = useUiStore((s) => s.setAskOpen);
+  const askOpen = useUiStore((s) => s.askOpen);
+  const uiState = useUIState();
+
+  useEffect(() => {
+    const preference = uiState.data?.preferences.theme ?? "light";
+    const media = window.matchMedia("(prefers-color-scheme: dark)");
+    const apply = () => document.documentElement.dataset.theme = preference === "system" ? (media.matches ? "dark" : "light") : preference;
+    apply();
+    if (preference === "system") media.addEventListener("change", apply);
+    return () => media.removeEventListener("change", apply);
+  }, [uiState.data?.preferences.theme]);
 
   // Hydrate any running focus session once at boot.
   useFocusSessions();
@@ -44,6 +58,28 @@ export function AppShell() {
   }, []);
 
   useEffect(() => {
+    const viewport = window.visualViewport;
+    if (!viewport) return;
+    const update = () => {
+      const focused = document.activeElement instanceof HTMLTextAreaElement || document.activeElement instanceof HTMLInputElement;
+      const keyboard = focused ? Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop) : 0;
+      document.documentElement.style.setProperty("--keyboard-height", `${keyboard}px`);
+    };
+    viewport.addEventListener("resize", update);
+    viewport.addEventListener("scroll", update);
+    document.addEventListener("focusin", update);
+    document.addEventListener("focusout", update);
+    update();
+    return () => {
+      viewport.removeEventListener("resize", update);
+      viewport.removeEventListener("scroll", update);
+      document.removeEventListener("focusin", update);
+      document.removeEventListener("focusout", update);
+      document.documentElement.style.removeProperty("--keyboard-height");
+    };
+  }, []);
+
+  useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
@@ -51,22 +87,11 @@ export function AppShell() {
       }
     };
     const onAutoVoice = () => {
-      const trigger = (attempts = 15) => {
-        const voiceButton = document.querySelector<HTMLButtonElement>('button[aria-label="Talk to IRIS"]');
-        if (voiceButton) {
-          voiceButton.click();
-        } else if (attempts > 0) {
-          setTimeout(() => trigger(attempts - 1), 200);
-        } else {
-          setAskOpen(true);
-        }
-      };
-
       if (location.pathname !== "/") {
         navigate("/?mode=voice");
-        setTimeout(() => trigger(15), 300);
       } else {
-        trigger(15);
+        const voiceButton = document.querySelector<HTMLButtonElement>('button[aria-label="Talk to IRIS"]');
+        voiceButton?.click();
       }
     };
 
@@ -98,27 +123,19 @@ export function AppShell() {
   }, [location.pathname, navigate, setAskOpen]);
 
   return (
+    <VoiceSessionProvider>
     <div className="flex min-h-dvh bg-ops-ground">
       <Sidebar />
       <div className="flex min-w-0 flex-1 flex-col">
-        <MobileTopBar
-          askTrigger={
-            <button
-              onClick={() => setAskOpen(true)}
-              aria-label="Ask IRIS"
-              className="rounded-md p-1.5 text-ink-faint hover:bg-ops-raised hover:text-ink"
-            >
-              <Search size={16} strokeWidth={1.75} />
-            </button>
-          }
-        />
-        <main className="mx-auto flex w-full min-w-0 max-w-[920px] flex-1 flex-col px-4 pb-28 pt-4 md:px-12 md:pb-10 md:pt-12">
-          <Outlet key={location.pathname} />
+        <GlobalTopBar />
+        <main className="flex w-full min-w-0 flex-1 flex-col overflow-y-auto px-4 pb-28 pt-5 md:px-8 md:pb-10 md:pt-7">
+          <Outlet />
         </main>
       </div>
       <MobileBottomNav />
-      <AskIrisConsole />
+      <Suspense fallback={null}>{askOpen && <AskIrisConsole />}</Suspense>
       <AgyDrawer />
     </div>
+    </VoiceSessionProvider>
   );
 }

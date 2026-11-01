@@ -29,16 +29,18 @@ async def lifespan(app: FastAPI):
             db.close()
     except Exception as exc:
         import logging
-        logging.getLogger(__name__).warning("Could not initialize default user in lifespan: %s", exc)
+        logging.getLogger(__name__).warning(
+            "Could not initialize default user in lifespan: %s", exc
+        )
 
     # Start sovereign laptop relay daemon if on local host (not serverless)
     import asyncio
     import os
 
-    from app.services.agy_bridge import agy_manager
     from app.coding.headless import headless_manager
-    from app.services.mesh_relay_service import relay_daemon
     from app.coding.persistence import persist_headless_loop, persist_headless_sessions
+    from app.services.agy_bridge import agy_manager
+    from app.services.mesh_relay_service import relay_daemon
 
     agy_manager.start(asyncio.get_running_loop())
     session_persistence_task = asyncio.create_task(persist_headless_loop())
@@ -73,6 +75,11 @@ def create_app() -> FastAPI:
     )
 
     cors_origins = list(settings.cors_origins)
+    # Capacitor's bundled Android WebView uses https://localhost as its origin.
+    # Allow only the app-local origins needed to call the configured API host.
+    for app_origin in ["https://localhost", "capacitor://localhost"]:
+        if app_origin not in cors_origins:
+            cors_origins.append(app_origin)
     if settings.is_development:
         for dev_origin in ["http://localhost:5173", "http://127.0.0.1:5173"]:
             if dev_origin not in cors_origins:

@@ -8,7 +8,9 @@
 
 import type { ErrorEnvelope } from "@/types/api";
 
-const BASE = import.meta.env.VITE_API_URL?.replace(/\/+$/, "") || "/api";
+const isCapacitor = typeof window !== "undefined" && Boolean((window as unknown as { Capacitor?: unknown }).Capacitor);
+const DEFAULT_API_BASE = isCapacitor ? "https://irisai.runs-on.dev/api" : "/api";
+const BASE = import.meta.env.VITE_API_URL?.replace(/\/+$/, "") || DEFAULT_API_BASE;
 
 export class ApiError extends Error {
   readonly status: number;

@@ -13,7 +13,6 @@ import { Lamp } from "@/components/ui/Panel";
 import { cn } from "@/lib/format";
 import type { VisualContext } from "@/types/api";
 import { launchPhoneApp } from "@/lib/appLauncher";
-import { captureCurrentScreen } from "@/lib/screenCapture";
 import { useNavigate } from "react-router-dom";
 
 const SUGGESTIONS = [
@@ -75,6 +74,7 @@ export function AskIrisConsole() {
     e.stopPropagation();
     try {
       setCapturingScreen(true);
+      const { captureCurrentScreen } = await import("@/lib/screenCapture");
       const res = await captureCurrentScreen();
       if (res) {
         addImages([res.file]);

@@ -23,6 +23,7 @@ import {
   LayoutGrid,
   ListChecks,
   Mail,
+  MessageSquare,
   Radio,
   Rocket,
   Settings,
@@ -109,24 +110,30 @@ export const PRIMARY_NAV_ITEMS_MOBILE: NavItem[] = [
     icon: Compass,
   },
   {
+    id: "conversations",
+    name: "Chats",
+    route: "/conversations",
+    glyph: "▦",
+    icon: MessageSquare,
+  },
+  {
     id: "schedule",
     name: "Schedule",
     route: "/schedule",
-    glyph: "▦",
+    glyph: "☷",
     icon: CalendarDays,
   },
   {
-    id: "tasks",
-    name: "Tasks",
-    route: "/tasks",
-    glyph: "☷",
-    icon: ListChecks,
+    id: "coworkers",
+    name: "Work",
+    route: "/coworkers",
+    glyph: "✦",
+    icon: UsersRound,
   },
-  LAPTOP_NAV_ITEM,
 ];
 
 /**
- * Desktop sidebar navigation: Home, Phone, Schedule, Tasks (and More).
+ * Desktop workspace navigation: the core nine IRIS destinations.
  */
 export const PRIMARY_NAV_ITEMS_DESKTOP: NavItem[] = [
   {
@@ -136,7 +143,9 @@ export const PRIMARY_NAV_ITEMS_DESKTOP: NavItem[] = [
     glyph: "⌾",
     icon: Compass,
   },
-  PHONE_NAV_ITEM,
+  { id: "conversations", name: "Conversations", route: "/conversations", glyph: "◉", icon: MessageSquare },
+  { id: "coworkers", name: "Coworkers", route: "/coworkers", glyph: "✦", icon: UsersRound },
+  { id: "projects", name: "Projects", route: "/projects", glyph: "⌁", icon: FolderTree },
   {
     id: "schedule",
     name: "Schedule",
@@ -151,11 +160,16 @@ export const PRIMARY_NAV_ITEMS_DESKTOP: NavItem[] = [
     glyph: "☷",
     icon: ListChecks,
   },
+  { id: "devices", name: "Devices & Mesh", route: "/devices", glyph: "◎", icon: Radio },
+  { id: "memory", name: "Memory", route: "/memory", glyph: "◈", icon: BrainCircuit },
+  SETTINGS_NAV_ITEM,
 ];
 
 export const PRIMARY_NAV_ITEMS: NavItem[] = PRIMARY_NAV_ITEMS_DESKTOP;
 
 export const MORE_NAV_ITEMS: NavItem[] = [
+  LAPTOP_NAV_ITEM,
+  PHONE_NAV_ITEM,
   AGY_NAV_ITEM,
   DIARY_NAV_ITEM,
   {
@@ -172,21 +186,6 @@ export const MORE_NAV_ITEMS: NavItem[] = [
     glyph: "₹",
     icon: Wallet,
   },
-  {
-    id: "projects",
-    name: "Projects",
-    route: "/projects",
-    glyph: "⌁",
-    icon: FolderTree,
-  },
-  {
-    id: "coworkers",
-    name: "Coworkers",
-    route: "/coworkers",
-    glyph: "✦",
-    icon: UsersRound,
-  },
-  SETTINGS_NAV_ITEM,
 ];
 
 export const ALL_NAV_ITEMS: NavItem[] = [

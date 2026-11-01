@@ -180,6 +180,7 @@ class PreferencesUpdate(BaseModel):
     density: str | None = None
     interaction_learning: bool | None = None
     week_start: str | None = None
+    theme: str | None = None
 
 
 class ProposalCreate(BaseModel):
@@ -203,6 +204,7 @@ def _get(db: Session, user_id: int, create: bool = True) -> UIWorkspaceConfig:
                 "density": "comfortable",
                 "interaction_learning": False,
                 "week_start": "monday",
+                "theme": "light",
             },
             layouts=deepcopy(DEFAULT_LAYOUT),
             history=[],
@@ -367,6 +369,8 @@ def update_preferences(
         raise HTTPException(422, "Unsupported density")
     if values.get("week_start") not in (None, "monday", "sunday", "saturday"):
         raise HTTPException(422, "Unsupported week start")
+    if values.get("theme") not in (None, "light", "dark", "system"):
+        raise HTTPException(422, "Unsupported theme")
     if values:
         _snapshot(row, "preferences")
         row.preferences = {**(row.preferences or {}), **values}

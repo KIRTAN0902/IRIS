@@ -28,6 +28,7 @@ import { api } from "@/api/client";
 import { cn } from "@/lib/format";
 import type { AIStatusOut } from "@/types/api";
 import { PermissionsPanel } from "@/features/settings/PermissionsPanel";
+import { useUIState, useSaveUIPreferences } from "@/features/home/useUIOrchestrator";
 
 interface PairedDevice {
   id: number;
@@ -54,7 +55,9 @@ interface PairingInvite {
 
 export function SettingsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const currentTab = (searchParams.get("tab") as "mesh" | "permissions" | "ai" | "general") || "mesh";
+  const currentTab = (searchParams.get("tab") as "mesh" | "permissions" | "ai" | "general") || "general";
+  const uiState = useUIState();
+  const saveUiPreferences = useSaveUIPreferences();
 
   // --- Mesh Settings State ---
   const [pairedDevices, setPairedDevices] = useState<PairedDevice[]>([]);
@@ -110,7 +113,6 @@ export function SettingsPage() {
   useEffect(() => {
     loadMeshData();
     loadAiStatus();
-    handleGeneratePhoneCode();
   }, []);
 
   const setTab = (tab: "mesh" | "permissions" | "ai" | "general") => {
@@ -749,20 +751,16 @@ export function SettingsPage() {
       {/* --- Tab 3: General Settings --- */}
       {currentTab === "general" && (
         <div className="space-y-6">
-          <Panel title="System & Environment" lamp={<Lamp tone="go" />}>
+          <Panel title="Appearance">
             <div className="space-y-3 pt-2 text-[13px]">
-              <div className="flex justify-between items-center py-2 border-b border-ops-line">
-                <span className="text-ink-dim">Default Timezone</span>
-                <span className="text-ink font-mono font-medium">Asia/Kolkata (IST)</span>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div><p className="font-medium text-ink">Theme</p><p className="mt-1 text-xs text-ink-faint">Shared across your IRIS devices.</p></div>
+                <select aria-label="Theme" value={uiState.data?.preferences.theme ?? "light"} disabled={!uiState.data || saveUiPreferences.isPending} onChange={(e) => uiState.data && saveUiPreferences.mutate({ version: uiState.data.version, preferences: { theme: e.target.value as "light" | "dark" | "system" } })} className="min-h-11 rounded-xl border border-ops-line-bright bg-ops-void px-3 text-ink">
+                  <option value="light">Light</option><option value="dark">Dark</option><option value="system">Use device setting</option>
+                </select>
               </div>
-              <div className="flex justify-between items-center py-2 border-b border-ops-line">
-                <span className="text-ink-dim">Host Architecture</span>
-                <span className="text-ink font-mono">Vercel Serverless + Supabase PG 17</span>
-              </div>
-              <div className="flex justify-between items-center py-2">
-                <span className="text-ink-dim">Application Version</span>
-                <span className="text-ink font-mono">IRIS 2.0 (Sovereign Continuity)</span>
-              </div>
+              {uiState.isError && <p className="text-caution" role="status">Could not load saved preferences. Reconnect to change this setting.</p>}
+              {saveUiPreferences.isError && <p className="text-critical" role="alert">Theme wasn’t saved. Refresh the preference version and try again.</p>}
             </div>
           </Panel>
         </div>

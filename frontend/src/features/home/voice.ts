@@ -11,7 +11,7 @@ import { launchPhoneApp } from "@/lib/appLauncher";
  * own speech recognition and voice so a conversation never just stops.
  */
 
-export type VoicePhase = "off" | "starting" | "listening" | "transcribing" | "thinking" | "speaking";
+export type VoicePhase = "off" | "starting" | "listening" | "paused" | "transcribing" | "thinking" | "speaking";
 
 /** The phone's fallback recognizer: Hindi also picks up English words. */
 const FALLBACK_LANG = "hi-IN";
@@ -93,6 +93,7 @@ function downsampleTo24k(input: Float32Array, inputRate: number): Float32Array {
 
 interface Session {
   active: boolean;
+  paused: boolean;
   stt: "server" | "browser";
   ttsServer: boolean;
   /** Stream replies as they're generated (falls back to whole clips). */
@@ -189,6 +190,7 @@ export function useVoiceConversation(onUtterance: (text: string) => Promise<stri
       // After that, quiet relative to the user's own voice (not an absolute level,
       // which a fan or traffic can stay above) for SILENCE_MS = they're done.
       const timer = setInterval(() => {
+        if (s.paused) return;
         s.analyser!.getFloatTimeDomainData(samples);
         let sum = 0;
         for (const v of samples) sum += v * v;
@@ -717,6 +719,7 @@ export function useVoiceConversation(onUtterance: (text: string) => Promise<stri
 
     const s: Session = {
       active: true,
+      paused: false,
       stt: "browser",
       ttsServer: false,
       ttsStream: true,
@@ -776,13 +779,21 @@ export function useVoiceConversation(onUtterance: (text: string) => Promise<stri
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [end]);
 
-  /** Tap the orb: finish speaking now, or cut IRIS off and talk. */
+  /** Tap pauses/resumes capture while listening, or interrupts a spoken reply. */
   const tap = useCallback(() => {
     const s = session.current;
     if (!s) return;
-    if (s.interrupt) s.interrupt();
+    if (phase === "listening") {
+      s.paused = true;
+      s.stream?.getAudioTracks().forEach((track) => { track.enabled = false; });
+      setPhase("paused");
+    } else if (phase === "paused") {
+      s.paused = false;
+      s.stream?.getAudioTracks().forEach((track) => { track.enabled = true; });
+      setPhase("listening");
+    } else if (s.interrupt) s.interrupt();
     else s.finish?.();
-  }, []);
+  }, [phase]);
 
   /** Mic loudness for visuals, 0..1. */
   const level = useCallback(() => Math.min(1, Math.max(0, ((session.current?.level ?? 0) - 0.01) * 7)), []);

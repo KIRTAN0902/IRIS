@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       server_url:
-        description: 'Vercel / Live Deployment URL (e.g. https://irisai.runs-on.dev/)'
+        description: 'Optional hosted WebView URL (leave blank to bundle the reviewed frontend)'
         required: false
-        default: 'https://irisai.runs-on.dev/'
+        default: ''
   push:
     branches:
       - main
@@ -60,7 +60,8 @@ jobs:
       - name: Build Web Assets & Sync Capacitor
         working-directory: frontend
         env:
-          CAPACITOR_SERVER_URL: ${{ inputs.server_url || vars.VERCEL_URL || 'https://irisai.runs-on.dev/' }}
+          CAPACITOR_SERVER_URL: ${{ inputs.server_url }}
+          VITE_API_URL: ${{ vars.IRIS_API_URL || 'https://irisai.runs-on.dev/api' }}
         run: |
           npm run build
           npx cap sync android
@@ -85,5 +86,10 @@ jobs:
         run: |
           echo "### 📱 IRIS Android APK Build Complete!" >> $GITHUB_STEP_SUMMARY
           echo "The APK has been compiled and is ready for download." >> $GITHUB_STEP_SUMMARY
-          echo "- **Target URL**: \`${{ inputs.server_url || vars.VERCEL_URL || 'https://irisai.runs-on.dev/' }}\`" >> $GITHUB_STEP_SUMMARY
+          if [ -n "${{ inputs.server_url }}" ]; then
+            echo "- **Frontend source**: hosted WebView at \`${{ inputs.server_url }}\`" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- **Frontend source**: bundled APK assets" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "- **API URL**: \`${{ vars.IRIS_API_URL || 'https://irisai.runs-on.dev/api' }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- **Artifact**: [iris-mobile-app](#artifacts)" >> $GITHUB_STEP_SUMMARY

@@ -1,25 +1,29 @@
+import { lazy, Suspense } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AppShell } from "@/components/layout/AppShell";
 import { HomePage } from "@/features/home/HomePage";
-import { TodayPage } from "@/features/today/TodayPage";
-import { TasksPage } from "@/features/tasks/TasksPage";
-import { GoalsPage } from "@/features/goals/GoalsPage";
-import { SchedulePage } from "@/features/schedule/SchedulePage";
-import { ProjectsPage } from "@/features/projects/ProjectsPage";
-import { DiaryPage } from "@/features/diary/DiaryPage";
-import { FinancePage } from "@/features/finance/FinancePage";
-import { WorkoutsPage } from "@/features/gym/WorkoutsPage";
-import { StartupPage } from "@/features/startup/StartupPage";
-import { AreaLensPage } from "@/features/areas/AreaLensPage";
-import { InsightsPage } from "@/features/insights/InsightsPage";
-import { ModulesPage } from "@/features/modules/ModulesPage";
-import { FocusPage } from "@/features/focus/FocusPage";
-import { SettingsPage } from "@/features/settings/SettingsPage";
-import { ContinuityPage } from "@/features/continuity/ContinuityPage";
-import { AgyTerminalDeck } from "@/features/agy/AgyTerminalDeck";
-import { CoworkersPage } from "@/features/coworkers/CoworkersPage";
 
+const TodayPage = lazy(() => import("@/features/today/TodayPage").then((m) => ({ default: m.TodayPage })));
+const TasksPage = lazy(() => import("@/features/tasks/TasksPage").then((m) => ({ default: m.TasksPage })));
+const GoalsPage = lazy(() => import("@/features/goals/GoalsPage").then((m) => ({ default: m.GoalsPage })));
+const SchedulePage = lazy(() => import("@/features/schedule/SchedulePage").then((m) => ({ default: m.SchedulePage })));
+const ProjectsPage = lazy(() => import("@/features/projects/ProjectsPage").then((m) => ({ default: m.ProjectsPage })));
+const DiaryPage = lazy(() => import("@/features/diary/DiaryPage").then((m) => ({ default: m.DiaryPage })));
+const FinancePage = lazy(() => import("@/features/finance/FinancePage").then((m) => ({ default: m.FinancePage })));
+const WorkoutsPage = lazy(() => import("@/features/gym/WorkoutsPage").then((m) => ({ default: m.WorkoutsPage })));
+const StartupPage = lazy(() => import("@/features/startup/StartupPage").then((m) => ({ default: m.StartupPage })));
+const AreaLensPage = lazy(() => import("@/features/areas/AreaLensPage").then((m) => ({ default: m.AreaLensPage })));
+const InsightsPage = lazy(() => import("@/features/insights/InsightsPage").then((m) => ({ default: m.InsightsPage })));
+const ModulesPage = lazy(() => import("@/features/modules/ModulesPage").then((m) => ({ default: m.ModulesPage })));
+const FocusPage = lazy(() => import("@/features/focus/FocusPage").then((m) => ({ default: m.FocusPage })));
+const SettingsPage = lazy(() => import("@/features/settings/SettingsPage").then((m) => ({ default: m.SettingsPage })));
+const ContinuityPage = lazy(() => import("@/features/continuity/ContinuityPage").then((m) => ({ default: m.ContinuityPage })));
+const AgyTerminalDeck = lazy(() => import("@/features/agy/AgyTerminalDeck").then((m) => ({ default: m.AgyTerminalDeck })));
+const CoworkersPage = lazy(() => import("@/features/coworkers/CoworkersPage").then((m) => ({ default: m.CoworkersPage })));
+const ConversationsPage = lazy(() => import("@/features/chat/ConversationsPage").then((m) => ({ default: m.ConversationsPage })));
+const MemoryPage = lazy(() => import("@/features/home/MemoryPage").then((m) => ({ default: m.MemoryPage })));
+const MeshPage = lazy(() => import("@/features/mesh/MeshPage").then((m) => ({ default: m.MeshPage })));
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
@@ -34,9 +38,10 @@ export function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
-        <Routes>
+        <Suspense fallback={<div className="mx-auto w-full max-w-5xl p-4" role="status">Loading IRIS…</div>}><Routes>
           <Route element={<AppShell />}>
             <Route index element={<HomePage />} />
+            <Route path="conversations" element={<ConversationsPage />} />
             <Route path="today" element={<TodayPage />} />
             <Route path="tasks" element={<TasksPage />} />
             <Route path="goals" element={<GoalsPage />} />
@@ -52,7 +57,9 @@ export function App() {
             <Route path="agy" element={<AgyTerminalDeck />} />
             <Route path="terminal" element={<Navigate to="/agy" replace />} />
             <Route path="settings" element={<SettingsPage />} />
-            <Route path="mesh" element={<Navigate to="/settings?tab=mesh" replace />} />
+            <Route path="memory" element={<MemoryPage />} />
+            <Route path="devices" element={<MeshPage />} />
+            <Route path="mesh" element={<Navigate to="/devices" replace />} />
             <Route path="startup" element={<StartupPage />} />
             <Route path="college" element={<AreaLensPage area="COLLEGE" title="College" />} />
             <Route path="internship" element={<AreaLensPage area="INTERNSHIP" title="Internship" />} />
@@ -60,7 +67,7 @@ export function App() {
             <Route path="modules" element={<ModulesPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>
-        </Routes>
+        </Routes></Suspense>
       </BrowserRouter>
     </QueryClientProvider>
   );

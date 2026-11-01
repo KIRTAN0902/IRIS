@@ -141,10 +141,12 @@ def test_approved_proposal_is_applied_and_preference_changes_are_versioned(clien
             "expected_version": state["version"],
             "density": "compact",
             "interaction_learning": True,
+            "theme": "dark",
         },
     )
     assert preference.status_code == 200
     assert preference.json()["preferences"]["interaction_learning"] is True
+    assert preference.json()["preferences"]["theme"] == "dark"
     assert preference.json()["version"] == state["version"] + 1
     layout = client.get("/api/ui-orchestrator/state").json()["layouts"]["desktop"]
     layout[0], layout[1] = layout[1], layout[0]
@@ -159,3 +161,30 @@ def test_approved_proposal_is_applied_and_preference_changes_are_versioned(clien
         "learned_layout_orders"
     ]
     assert learned[-1]["order"] == [item["id"] for item in layout if item["visible"]]
+
+
+def test_shared_theme_preference_is_validated_and_persisted(client):
+    state = client.get("/api/ui-orchestrator/state").json()
+    assert state["preferences"]["theme"] == "light"
+    saved = client.put(
+        "/api/ui-orchestrator/preferences",
+        json={"expected_version": state["version"], "theme": "system"},
+    )
+    assert saved.status_code == 200
+    assert saved.json()["preferences"]["theme"] == "system"
+    assert client.put(
+        "/api/ui-orchestrator/preferences",
+        json={"expected_version": saved.json()["version"], "theme": "ultraviolet"},
+    ).status_code == 422
+
+
+def test_capacitor_local_origin_can_call_the_backend(client):
+    response = client.options(
+        "/api/health",
+        headers={
+            "Origin": "https://localhost",
+            "Access-Control-Request-Method": "GET",
+        },
+    )
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "https://localhost"

@@ -5,7 +5,7 @@ export interface WidgetLayoutItem { id: string; visible: boolean; size: string; 
 export interface UIProposal { id: string; title: string; reason: string; status: string; layout: { platform: Platform; widgets: WidgetLayoutItem[] } }
 export interface UIState {
   version: number;
-  preferences: { density: "compact" | "comfortable" | "spacious"; interaction_learning: boolean; week_start: string };
+  preferences: { density: "compact" | "comfortable" | "spacious"; interaction_learning: boolean; week_start: string; theme?: "light" | "dark" | "system" };
   layouts: Record<Platform, WidgetLayoutItem[]>;
   history: { version: number; kind: string; created_at: string }[];
   proposals: UIProposal[];

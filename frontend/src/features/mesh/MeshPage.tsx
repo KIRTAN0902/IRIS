@@ -27,6 +27,12 @@ interface MeshDevice {
   connected_at: string;
 }
 
+interface MeshDevicesResponse {
+  devices: MeshDevice[];
+  host_power: HostPower | null;
+  host_online?: boolean;
+}
+
 interface PairedDevice {
   id: number;
   device_id: string;
@@ -58,6 +64,9 @@ interface PairingInvite {
 
 export function MeshPage() {
   const [activeDevices, setActiveDevices] = useState<MeshDevice[]>([]);
+  const [hostOnline, setHostOnline] = useState<boolean | null>(null);
+  const [loadingDevices, setLoadingDevices] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [pairedDevices, setPairedDevices] = useState<PairedDevice[]>([]);
   const [hostPower, setHostPower] = useState<HostPower | null>(null);
   const [clipboard, setClipboard] = useState("");
@@ -89,9 +98,10 @@ export function MeshPage() {
   const loadData = async () => {
     try {
       // 1. Live connected devices & power
-      const devRes = await api.get<{ devices: MeshDevice[]; host_power: HostPower | null }>("/mesh/devices");
+      const devRes = await api.get<MeshDevicesResponse>("/mesh/devices");
       setActiveDevices(devRes.devices);
       setHostPower(devRes.host_power);
+      setHostOnline(Boolean(devRes.host_online));
 
       // 2. Permanently paired sovereign devices
       const pairRes = await api.get<{ paired_devices: PairedDevice[] }>("/mesh/pair/devices");
@@ -104,15 +114,17 @@ export function MeshPage() {
       // 4. File Vault
       const filesRes = await api.get<{ files: VaultFile[] }>("/mesh/files");
       setVaultFiles(filesRes.files || []);
+      setLoadError("");
     } catch {
-      // Network idle fallback
+      setLoadError("Could not load mesh devices. Check the connection and retry.");
+    } finally {
+      setLoadingDevices(false);
     }
   };
 
   useEffect(() => {
     loadData();
-    handleGeneratePhoneCode();
-    const interval = setInterval(loadData, 3500);
+    const interval = setInterval(loadData, 15000);
     return () => clearInterval(interval);
   }, []);
 
@@ -265,11 +277,11 @@ export function MeshPage() {
   const companionUrl = `${window.location.origin}/companion`;
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6">
+    <div className="mx-auto w-full max-w-5xl space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-[28px] font-bold tracking-tight text-ink">IRIS Sovereign Mesh</h1>
+          <h1 className="text-[28px] font-bold tracking-tight text-ink">Devices & Mesh</h1>
           <p className="text-[13px] text-ink-dim">
             Permanent, $0 cross-network device continuity, clipboard, and file drops.
           </p>
@@ -279,8 +291,8 @@ export function MeshPage() {
             <Plus size={14} /> Pair New Phone
           </Button>
           <div className="flex items-center gap-2">
-            <Lamp tone="go" pulse />
-            <span className="text-[12px] font-medium text-ink-dim">Sovereign Relay Active</span>
+            {loadingDevices ? <Lamp tone="caution" pulse /> : <Lamp tone={hostOnline ? "go" : "caution"} />}
+            <span className="text-[12px] font-medium text-ink-dim">{loadingDevices ? "Checking connection" : hostOnline ? "Host online" : "Host offline"}</span>
           </div>
         </div>
       </div>
@@ -291,16 +303,18 @@ export function MeshPage() {
         </div>
       )}
 
+      {loadError && <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-caution/30 bg-caution-dim px-4 py-3 text-sm text-ink-dim" role="alert"><span>{loadError}</span><button onClick={() => void loadData()} className="min-h-10 text-ai underline">Retry</button></div>}
+
       {/* Connected Devices Grid */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         {/* Windows Laptop */}
-        <Panel title="Windows Laptop (Host)" lamp={<Lamp tone="go" />}>
+        <Panel title="Windows Laptop (Host)" lamp={<Lamp tone={hostOnline ? "go" : "caution"} />}>
           <div className="space-y-3 pt-2">
             <div className="flex items-center gap-3">
               <Laptop size={20} className="text-ai" />
               <div>
                 <p className="text-[14px] font-medium text-ink">Primary Workstation</p>
-                <p className="text-[12px] text-ink-faint">Headless / Closed Lid Support</p>
+                <p className="text-[12px] text-ink-faint">{hostOnline === null ? "Connection status unknown" : hostOnline ? "Connected to the IRIS mesh" : "Not currently connected to the mesh"}</p>
               </div>
             </div>
             <div className="rounded-md bg-ops-raised/40 p-2.5 text-[12px] space-y-1">
@@ -308,14 +322,13 @@ export function MeshPage() {
                 <span className="text-ink-dim">Power Status</span>
                 <span className="text-ink font-mono">
                   {hostPower?.percent !== null && hostPower?.percent !== undefined
-                    ? `${hostPower.percent}%`
-                    : "AC Power"}{" "}
-                  ({hostPower?.ac_status || "Plugged In"})
+                    ? `${hostPower.percent}% · ${hostPower.ac_status}`
+                    : hostPower?.ac_status || "Power status unavailable"}
                 </span>
               </div>
               <div className="flex justify-between">
-                <span className="text-ink-dim">Sleep Mode</span>
-                <span className="text-go font-medium">Sleep Disabled (Always Reachable)</span>
+                <span className="text-ink-dim">Active devices</span>
+                <span className="text-ink font-mono">{loadingDevices ? "Checking…" : activeDevices.length}</span>
               </div>
             </div>
             <div className="flex gap-2">

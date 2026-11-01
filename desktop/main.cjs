@@ -163,7 +163,7 @@ function createWindow() {
     minHeight: 620,
     title: 'IRIS',
     icon: ICON_PATH,
-    backgroundColor: '#030712',
+    backgroundColor: '#f7f8fa',
     autoHideMenuBar: true,
     show: false,
     webPreferences: {
