@@ -19,6 +19,7 @@ from app.api.deps import current_user
 from app.core.database import get_db
 from app.models.coding_project import CodingProject
 from app.models.user import User
+from app.core.execution_provider import is_serverless_runtime, require_execution
 from app.services.agy_bridge import AgyError, agy_manager
 
 logger = get_logger("iris.api.agy")
@@ -67,6 +68,7 @@ def _authorized_session(db: Session, user: User, key: str | None, *, write: bool
 
 @router.get("/sessions")
 def list_sessions(user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict[str, Any]:
+    require_execution("coding_agent")
     owned={str(Path(p.directory).resolve()).casefold() for p in db.query(CodingProject).filter_by(user_id=user.id,active=True).all()}
     sessions=[s for s in agy_manager.list_sessions() if str(Path(s["directory"]).resolve()).casefold() in owned]
     return {
@@ -78,11 +80,13 @@ def list_sessions(user: User = Depends(current_user), db: Session = Depends(get_
 
 @router.get("/workspaces")
 def list_workspaces(user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict[str, Any]:
+    require_execution("coding_agent")
     return {"workspaces":[{"alias":(p.aliases or [p.name.lower()])[0],"path":p.directory,"exists":Path(p.directory).is_dir(),"is_git":(Path(p.directory)/".git").exists(),"source":"registry"} for p in db.query(CodingProject).filter_by(user_id=user.id,active=True).all()]}
 
 
 @router.post("/attach")
 def attach(payload: AttachRequest, user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict[str, Any]:
+    require_execution("coding_agent")
     try:
         _workspace_permission(db,user,payload.directory or payload.alias or "",write=True,command=True)
         session = agy_manager.spawn_or_attach(payload.directory, payload.alias, governed=True)
@@ -96,6 +100,7 @@ def attach(payload: AttachRequest, user: User = Depends(current_user), db: Sessi
 
 @router.post("/input")
 def send_input(payload: InputRequest, user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict[str, Any]:
+    require_execution("coding_agent")
     try:
         session=_authorized_session(db,user,payload.session_key,write=True,command=True)
         if payload.input.strip().startswith("/"):
@@ -109,6 +114,7 @@ def send_input(payload: InputRequest, user: User = Depends(current_user), db: Se
 
 @router.post("/slash")
 def send_slash(payload: SlashRequest, user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict[str, Any]:
+    require_execution("coding_agent")
     command = payload.command.strip()
     if not command.startswith("/"):
         command = f"/{command}"
@@ -121,6 +127,7 @@ def send_slash(payload: SlashRequest, user: User = Depends(current_user), db: Se
 
 @router.get("/session/{session_key}")
 def session_status(session_key: str, lines: int = 120, user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict[str, Any]:
+    require_execution("coding_agent")
     session = _authorized_session(db,user,session_key)
     return {
         "session": session.to_dict(),
@@ -132,6 +139,7 @@ def session_status(session_key: str, lines: int = 120, user: User = Depends(curr
 
 @router.delete("/session/{session_key}")
 def close_session(session_key: str, user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict[str, Any]:
+    require_execution("coding_agent")
     session = _authorized_session(db,user,session_key,write=True,command=True)
     agy_manager.close_session(session.key)
     return {"closed": session.key}
@@ -139,6 +147,9 @@ def close_session(session_key: str, user: User = Depends(current_user), db: Sess
 
 @router.websocket("/stream/{session_key}")
 async def stream_session(websocket: WebSocket, session_key: str) -> None:
+    if is_serverless_runtime():
+        await websocket.close(code=1013, reason="Open a persistent IRIS execution host for Agy sessions.")
+        return
     session = agy_manager.find_session(session_key)
     if session is None:
         await websocket.close(code=4404)

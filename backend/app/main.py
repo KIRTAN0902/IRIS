@@ -19,6 +19,14 @@ from app.core.logging import request_id_context, setup_logging
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     setup_logging()
+    from app.core.execution_provider import is_serverless_runtime
+
+    # Function instances can be created and retired for individual requests.
+    # Do not run recovery writes or start process-local managers/loops here.
+    if is_serverless_runtime():
+        yield
+        return
+
     # Ensure the default single-user account exists (v1 auth stub).
     from app.core.database import SessionLocal
     from app.core.security import get_current_user
@@ -39,7 +47,6 @@ async def lifespan(app: FastAPI):
 
     # Start sovereign laptop relay daemon if on local host (not serverless)
     import asyncio
-    import os
 
     from app.coding.headless import headless_manager
     from app.coding.persistence import persist_headless_loop, persist_headless_sessions
@@ -48,8 +55,7 @@ async def lifespan(app: FastAPI):
 
     agy_manager.start(asyncio.get_running_loop())
     session_persistence_task = asyncio.create_task(persist_headless_loop())
-    if not os.environ.get("VERCEL") and not os.environ.get("AWS_LAMBDA_FUNCTION_NAME"):
-        await relay_daemon.start()
+    await relay_daemon.start()
 
     yield
 
@@ -58,8 +64,7 @@ async def lifespan(app: FastAPI):
     await asyncio.to_thread(persist_headless_sessions)
     await agy_manager.shutdown()
     headless_manager.shutdown()
-    if not os.environ.get("VERCEL") and not os.environ.get("AWS_LAMBDA_FUNCTION_NAME"):
-        await relay_daemon.stop()
+    await relay_daemon.stop()
 
 
 def create_app() -> FastAPI:
@@ -91,7 +96,6 @@ def create_app() -> FastAPI:
         app.add_middleware(
             CORSMiddleware,
             allow_origins=cors_origins,
-            allow_origin_regex=r"^https?://.*",
             allow_credentials=True,
             allow_methods=["*"],
             allow_headers=["*"],

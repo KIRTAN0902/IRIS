@@ -16,6 +16,7 @@ from app.models.coworker import Coworker, CoworkerApproval, CoworkerEvent, Cowor
 from app.models.user import User
 from app.coworkers.contracts import coworker_transition, transition
 from app.coworkers.execution import run_coworker_task, _fail_dependents
+from app.core.execution_provider import require_execution
 from app.coworkers.governance import evaluate_capability
 from app.coworkers.templates import TEMPLATES
 from app.coworkers.computer_use import MockLocalComputerUse, run_mock_demo
@@ -267,6 +268,8 @@ def list_tasks(user: User = Depends(current_user), db: Session = Depends(get_db)
 @router.post("/{coworker_id}/tasks", status_code=202)
 def assign_task(coworker_id: str, data: TaskCreate, background: BackgroundTasks,
                 user: User = Depends(current_user), db: Session = Depends(get_db)):
+    if data.run:
+        require_execution("coworker")
     c=_coworker(db,user,coworker_id)
     if not c.availability or c.status in {"assigned","working","waiting_approval","waiting_input","paused"}:
         raise HTTPException(409,"Coworker is currently unavailable")
@@ -301,6 +304,7 @@ def assign_task(coworker_id: str, data: TaskCreate, background: BackgroundTasks,
 @router.post("/tasks/{task_id}/run", status_code=202)
 def run_task(task_id: str, background: BackgroundTasks,
              user: User = Depends(current_user), db: Session = Depends(get_db)):
+    require_execution("coworker")
     task=_task(db,user,task_id)
     if task.status not in {"queued","interrupted","paused"}: raise HTTPException(409,"Task cannot be started from its current state")
     if task.dependencies:
@@ -354,6 +358,8 @@ def reassign_task(task_id: str, data: TaskAssignment,
 @router.post("/tasks/{task_id}/follow-up", status_code=202)
 def follow_up(task_id: str, data: TaskCreate, background: BackgroundTasks,
               user: User = Depends(current_user), db: Session = Depends(get_db)):
+    if data.run:
+        require_execution("coworker")
     parent=_task(db,user,task_id); c=_coworker(db,user,parent.coworker_id)
     if parent.status not in {"completed","failed","cancelled"}: raise HTTPException(409,"Follow-up is only available after the current task stops")
     if c.status in {"assigned","working","waiting_approval","waiting_input","paused"}: raise HTTPException(409,"Coworker has active work")

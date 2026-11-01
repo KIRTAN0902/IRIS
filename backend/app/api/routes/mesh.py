@@ -20,6 +20,7 @@ from fastapi import (
     status,
 )
 from fastapi.responses import FileResponse, HTMLResponse
+from app.core.execution_provider import require_execution
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -789,6 +790,7 @@ async def upload_file_drop(
     sender_device: str = "web_client",
 ):
     """AirDrop equivalent: Upload a file to the File Vault to download on your other device."""
+    require_execution("mesh_files")
     safe_name = Path(file.filename or "file").name
     dest_path = ms.STORAGE_DIR / safe_name
 

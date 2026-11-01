@@ -1,5 +1,6 @@
 {
-  "buildCommand": "cd frontend && npm install && npm run build",
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "cd frontend && npm ci && npm run build",
   "outputDirectory": "frontend/dist",
   "framework": "vite",
   "regions": ["sin1"],
@@ -23,7 +24,19 @@
       "destination": "/api/index.py"
     },
     {
+      "source": "/docs/oauth2-redirect",
+      "destination": "/api/index.py"
+    },
+    {
+      "source": "/redoc",
+      "destination": "/api/index.py"
+    },
+    {
       "source": "/companion",
+      "destination": "/api/index.py"
+    },
+    {
+      "source": "/mesh/companion",
       "destination": "/api/index.py"
     },
     {

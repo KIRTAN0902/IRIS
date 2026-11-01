@@ -47,6 +47,11 @@ def is_serverless_or_transaction_pooler(url: str) -> bool:
     )
 
 
+def is_persistent_database_configured() -> bool:
+    """SQLite is useful locally, but cannot persist across serverless instances."""
+    return not (is_serverless_or_transaction_pooler(resolved_db_url) and is_sqlite_url(resolved_db_url))
+
+
 def _ensure_sqlite_dir(url: str) -> None:
     """Ensure parent directory for SQLite database file exists."""
     if not is_sqlite_url(url):
@@ -114,6 +119,12 @@ SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False
 
 def get_db() -> Generator[Session, None, None]:
     """FastAPI dependency yielding a scoped database session."""
+    if not is_persistent_database_configured():
+        from app.core.errors import DatabaseConfigurationError
+
+        raise DatabaseConfigurationError(
+            "Configure a persistent PostgreSQL DATABASE_URL before serving IRIS from Vercel."
+        )
     db = SessionLocal()
     try:
         yield db

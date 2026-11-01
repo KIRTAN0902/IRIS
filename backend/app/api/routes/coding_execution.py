@@ -12,6 +12,7 @@ from app.models.user import User
 from app.models.coding_project import CodingProject
 from app.models.coding_task import CodingTaskRecord, CodingSessionRecord
 from app.coding.contracts import TaskBrief, TaskStatus, validate_transition
+from app.core.execution_provider import require_execution
 
 router = APIRouter(prefix="/coding", tags=["coding-execution"])
 task_router = APIRouter(prefix="/coding/execution", tags=["coding-execution"])
@@ -125,6 +126,7 @@ def workspace_status(project_id:int,user:User=Depends(current_user),db:Session=D
 
 @router.post("/projects", status_code=201)
 def create_project(data: ProjectCreate, user: User=Depends(current_user), db: Session=Depends(get_db)):
+    require_execution("coding_agent")
     path=Path(data.directory).expanduser()
     if not path.is_absolute() or not path.is_dir(): raise HTTPException(400,"Directory must be an existing absolute directory")
     resolved=str(path.resolve())
@@ -181,6 +183,7 @@ def _task_out(t):
 
 @task_router.post("/tasks/{task_id}/approve")
 def approve_task(task_id:str,data:ApproveTask,user:User=Depends(current_user),db:Session=Depends(get_db)):
+    require_execution("coding_agent")
     t=db.query(CodingTaskRecord).filter_by(id=task_id,user_id=user.id).first()
     if not t: raise HTTPException(404,"Task not found")
     if t.status != TaskStatus.AWAITING_APPROVAL: raise HTTPException(409,"Task is not awaiting approval")
@@ -218,6 +221,7 @@ def approve_task(task_id:str,data:ApproveTask,user:User=Depends(current_user),db
 
 @task_router.post("/tasks/{task_id}/follow-up")
 def follow_up(task_id:str,data:ApproveTask,user:User=Depends(current_user),db:Session=Depends(get_db)):
+    require_execution("coding_agent")
     t=db.query(CodingTaskRecord).filter_by(id=task_id,user_id=user.id).first()
     if not t or not t.session_id: raise HTTPException(404,"Active session not found")
     sess=db.query(CodingSessionRecord).filter_by(id=t.session_id).first()
@@ -261,6 +265,7 @@ def follow_up(task_id:str,data:ApproveTask,user:User=Depends(current_user),db:Se
 
 @task_router.post("/tasks/{task_id}/resume")
 def resume_task(task_id:str,user:User=Depends(current_user),db:Session=Depends(get_db)):
+    require_execution("coding_agent")
     t=db.query(CodingTaskRecord).filter_by(id=task_id,user_id=user.id).first()
     if not t: raise HTTPException(404,"Task not found")
     if t.status not in (TaskStatus.INTERRUPTED.value,TaskStatus.RUNNING.value): raise HTTPException(409,"Task is not resumable")
@@ -293,6 +298,7 @@ def resume_task(task_id:str,user:User=Depends(current_user),db:Session=Depends(g
 
 @task_router.get("/tasks/{task_id}/session")
 def task_session(task_id:str,user:User=Depends(current_user),db:Session=Depends(get_db)):
+    require_execution("coding_agent")
     t=db.query(CodingTaskRecord).filter_by(id=task_id,user_id=user.id).first()
     if not t: raise HTTPException(404,"Task not found")
     if not t.session_id: return {"task":_task_out(t),"session":None}
@@ -353,6 +359,7 @@ def task_session(task_id:str,user:User=Depends(current_user),db:Session=Depends(
 
 @task_router.post("/tasks/{task_id}/stop")
 def stop_task(task_id:str,user:User=Depends(current_user),db:Session=Depends(get_db)):
+    require_execution("coding_agent")
     t=db.query(CodingTaskRecord).filter_by(id=task_id,user_id=user.id).first()
     if not t: raise HTTPException(404,"Task not found")
     if not t.session_id: raise HTTPException(409,"Task has no active session")

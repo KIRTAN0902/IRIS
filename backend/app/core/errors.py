@@ -55,6 +55,20 @@ class AIServiceError(AppError):
     code = "AI_UNAVAILABLE"
 
 
+class ExecutionProviderUnavailableError(AppError):
+    """Execution needs a persistent provider that is not configured here."""
+
+    status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+    code = "EXECUTION_PROVIDER_UNAVAILABLE"
+
+
+class DatabaseConfigurationError(AppError):
+    """A persistence backend suitable for the current runtime is missing."""
+
+    status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+    code = "DATABASE_CONFIGURATION_REQUIRED"
+
+
 def _error_metadata(status_code: int, code: str) -> tuple[str, bool, str | None]:
     code_upper = code.upper()
     if status_code == 422 or code_upper in {"VALIDATION_ERROR", "BAD_REQUEST"}:
