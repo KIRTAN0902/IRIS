@@ -215,13 +215,39 @@ def migrate_data(
             else:
                 rows_to_insert = list(src_rows)
 
-            # Insert into target
+            # Insert or update into target
+            migrated_count = 0
             for row_mapping in rows_to_insert:
                 row_dict = dict(row_mapping)
-                target_session.execute(table.insert().values(row_dict))
+                pk_val = row_dict.get("id")
+                
+                # Check if row already exists in target
+                existing = None
+                if pk_val is not None and "id" in table.c:
+                    existing = target_session.execute(
+                        table.select().where(table.c.id == pk_val)
+                    ).first()
+
+                if existing:
+                    if table_name == "users":
+                        # Update user with rich SQLite facts/preferences
+                        update_values = {
+                            k: v for k, v in row_dict.items()
+                            if k not in ("id", "created_at")
+                        }
+                        target_session.execute(
+                            table.update().where(table.c.id == pk_val).values(update_values)
+                        )
+                        migrated_count += 1
+                    else:
+                        # Row already exists in target; keep target version
+                        continue
+                else:
+                    target_session.execute(table.insert().values(row_dict))
+                    migrated_count += 1
 
             target_session.flush()
-            print(f"  [Table: {table_name:22s}] Migrated {count_src:4d} rows successfully.")
+            print(f"  [Table: {table_name:22s}] Processed {count_src:4d} rows ({migrated_count} inserted/updated).")
             summary.append((table_name, count_src, count_src))
 
         # 4. Commit or rollback
