@@ -1,13 +1,13 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "cd frontend && npm ci && npm run build",
+  "buildCommand": "cd frontend && npm install && npm run build",
   "outputDirectory": "frontend/dist",
   "framework": "vite",
   "regions": ["sin1"],
   "functions": {
     "api/index.py": {
       "maxDuration": 300,
-      "excludeFiles": "{frontend/**,backend/tests/**,backend/scripts/**,**/*.db}"
+      "excludeFiles": "{frontend/**,desktop/**,android/**,docs/**,.forge/**,backend/tests/**,backend/scripts/**,**/*.db,**/*.md}"
     }
   },
   "rewrites": [
