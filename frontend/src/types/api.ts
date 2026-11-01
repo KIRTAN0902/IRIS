@@ -69,7 +69,14 @@ export const OUTREACH_RESULTS: OutreachResult[] = [
 export type Iso = string;
 
 export interface ErrorEnvelope {
-  error: { code: string; message: string };
+  error: {
+    code: string;
+    message: string;
+    category?: string;
+    retryable?: boolean;
+    recovery_action?: string | null;
+    correlation_id?: string;
+  };
 }
 
 // --- Users ---------------------------------------------------------------------

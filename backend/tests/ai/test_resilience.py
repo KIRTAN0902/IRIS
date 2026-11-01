@@ -26,6 +26,7 @@ from app.ai.capabilities import ModelCapabilities
 from app.ai.deadline import RequestDeadline, get_current_deadline, reset_deadline, set_deadline
 from app.ai.health import AIHealthTracker, ai_health
 from app.ai.provider import (
+    AICapabilityError,
     AIConnectionError,
     AIProvider,
     AIProviderError,
@@ -182,6 +183,71 @@ async def test_openai_compatible_aborts_retry_when_deadline_exhausted():
 async def test_turn_level_provider_stickiness():
     """Verify that once a secondary provider generates a tool call, the turn sticks to it."""
     active_turn_backend.set(None)
+
+
+@pytest.mark.asyncio
+async def test_thought_signature_failure_does_not_switch_provider_mid_tool_turn():
+    active_turn_backend.set(None)
+    primary = OpenAICompatibleProvider(
+        name="gemini", base_url="https://example.test/v1", model="gemini-3.1-flash-lite", api_key="key"
+    )
+    sticky = OpenAICompatibleProvider(
+        name="gemini", base_url="https://example.test/v1", model="gemini-3.1-flash-lite", api_key="key"
+    )
+    provider = GeminiProvider(api_key="key", model="gemini-3.1-flash-lite")
+    provider._chat_backend = primary
+    provider._secondary_fallbacks = [primary]
+    sticky.chat = AsyncMock(side_effect=AIConnectionError("temporary failure"))
+    primary.chat = AsyncMock(return_value=ChatResult(content="must not run"))
+    active_turn_backend.set(sticky)
+    messages = [
+        ChatMessage(
+            role="assistant",
+            tool_calls=[ToolCallRequest(
+                id="call-1",
+                name="search",
+                arguments={"q": "test"},
+                extra_content={"google": {"thought_signature": "opaque-signature"}},
+            )],
+        ),
+        ChatMessage(role="tool", tool_call_id="call-1", content="result"),
+    ]
+    try:
+        with pytest.raises(AIConnectionError):
+            await provider.chat(messages, tools=[ToolDefinition("search", "Search")])
+        primary.chat.assert_not_awaited()
+    finally:
+        active_turn_backend.set(None)
+
+
+@pytest.mark.asyncio
+async def test_gemini_skips_fallback_without_required_tool_capability():
+    active_turn_backend.set(None)
+    primary = OpenAICompatibleProvider(
+        name="gemini", base_url="https://example.test/v1", model="gemini-3.1-flash-lite", api_key="key"
+    )
+    fallback = OpenAICompatibleProvider(
+        name="gemini",
+        base_url="https://example.test/v1",
+        model="text-only-fallback",
+        api_key="key",
+        capabilities=ModelCapabilities(native_tools=False),
+    )
+    provider = GeminiProvider(api_key="key", model="gemini-3.1-flash-lite")
+    provider._chat_backend = primary
+    provider._fallback_chat_backend = fallback
+    provider._secondary_fallbacks = []
+    primary.chat = AsyncMock(side_effect=AIConnectionError("primary unavailable"))
+    fallback.chat = AsyncMock(return_value=ChatResult(content="must not run"))
+    try:
+        with pytest.raises(AICapabilityError, match="No configured fallback model supports"):
+            await provider.chat(
+                [ChatMessage(role="user", content="search for this")],
+                tools=[ToolDefinition("search", "Search")],
+            )
+        fallback.chat.assert_not_awaited()
+    finally:
+        active_turn_backend.set(None)
 
     # Primary provider that always fails
     primary_backend = OpenAICompatibleProvider(

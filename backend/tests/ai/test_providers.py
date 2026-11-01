@@ -10,15 +10,19 @@ from pydantic import BaseModel
 
 from app.ai.factory import create_ai_provider, set_ai_provider
 from app.ai.provider import (
+    AICapabilityError,
+    AIRateLimitError,
     AIConfigurationError,
     AIConnectionError,
     AIProvider,
     AIProviderError,
     AISchemaValidationError,
+    ChatMessage,
 )
 from app.ai.providers.gemini import GeminiProvider
 from app.ai.providers.mock import MockProvider
 from app.ai.providers.nvidia import NVIDIA_DEFAULT_MODEL, NvidiaProvider
+from app.ai.providers.openai_compatible import OpenAICompatibleProvider
 from app.intelligence.decision_engine import decide_now
 from app.intelligence.recommendation import DecisionType
 from app.models.enums import LifeArea
@@ -216,7 +220,43 @@ async def test_nvidia_http_500_raises_provider_error():
                 prompt="prompt",
                 schema=SampleSchema,
             )
-        assert "HTTP error 500" in str(exc_info.value)
+        assert "HTTP 500" in str(exc_info.value)
+        assert "Internal Server Error" not in str(exc_info.value)
+        assert exc_info.value.category == "network"
+
+
+@pytest.mark.asyncio
+async def test_rate_limit_error_is_classified_and_response_body_is_not_exposed():
+    provider = OpenAICompatibleProvider(
+        base_url="https://api.example.com/v1",
+        model="test-model",
+        api_key="test-key",
+        max_retries=0,
+    )
+    response = httpx.Response(
+        429,
+        text="private prompt echoed by provider",
+        request=httpx.Request("POST", "https://api.example.com/v1/chat/completions"),
+    )
+    with patch("httpx.AsyncClient.post", new_callable=AsyncMock, return_value=response):
+        with pytest.raises(AIRateLimitError) as exc_info:
+            await provider.chat([ChatMessage(role="user", content="hello")])
+    assert exc_info.value.retryable is True
+    assert exc_info.value.category == "rate_limited"
+    assert "private prompt" not in str(exc_info.value)
+
+
+@pytest.mark.asyncio
+async def test_unknown_model_profile_does_not_receive_image_payload():
+    provider = OpenAICompatibleProvider(
+        base_url="https://api.example.com/v1",
+        model="unknown-text-model",
+        api_key="test-key",
+    )
+    with pytest.raises(AICapabilityError, match="does not confirm image input support"):
+        await provider.chat([
+            ChatMessage(role="user", content="describe this", images=["data:image/png;base64,AAAA"])
+        ])
 
 
 @pytest.mark.asyncio

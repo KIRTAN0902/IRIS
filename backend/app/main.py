@@ -2,14 +2,18 @@
 
 from __future__ import annotations
 
+import logging
+import re
+import time
 from contextlib import asynccontextmanager
+from uuid import uuid4
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
 from app.core.errors import register_exception_handlers
-from app.core.logging import setup_logging
+from app.core.logging import request_id_context, setup_logging
 
 
 @asynccontextmanager
@@ -30,7 +34,7 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         import logging
         logging.getLogger(__name__).warning(
-            "Could not initialize default user in lifespan: %s", exc
+            "startup_database_initialization_failed error_type=%s", type(exc).__name__
         )
 
     # Start sovereign laptop relay daemon if on local host (not serverless)
@@ -102,6 +106,27 @@ def create_app() -> FastAPI:
         )
 
     register_exception_handlers(app)
+
+    @app.middleware("http")
+    async def request_diagnostics(request, call_next):
+        supplied = request.headers.get("X-Request-ID", "")
+        request_id = supplied if re.fullmatch(r"[A-Za-z0-9._-]{1,80}", supplied) else uuid4().hex
+        request.state.correlation_id = request_id
+        token = request_id_context.set(request_id)
+        started = time.perf_counter()
+        try:
+            response = await call_next(request)
+            response.headers["X-Request-ID"] = request_id
+            logging.getLogger("iris.http").info(
+                "request_complete method=%s path=%s status=%s duration_ms=%.1f",
+                request.method,
+                request.url.path,
+                response.status_code,
+                (time.perf_counter() - started) * 1000,
+            )
+            return response
+        finally:
+            request_id_context.reset(token)
 
     from app.api.routes import (
         agy,

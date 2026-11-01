@@ -5,6 +5,8 @@ import pytest
 from app.coworkers.computer_use import run_mock_demo
 from app.coworkers.contracts import coworker_transition, transition
 from app.coworkers.execution import recover_interrupted_tasks
+from app.coworkers.execution import user_safe_task_error
+from app.ai.provider import AIRateLimitError, AIConnectionError
 from app.models.coworker import Coworker, CoworkerApproval, CoworkerEvent, CoworkerTask
 from app.models.coding_project import CodingProject
 
@@ -24,6 +26,20 @@ def test_task_and_coworker_lifecycle_reject_invalid_transitions():
     assert coworker_transition("idle","assigned")=="assigned"
     with pytest.raises(ValueError): transition("completed","running")
     with pytest.raises(ValueError): coworker_transition("idle","completed")
+
+
+def test_execution_failures_have_safe_actionable_task_messages():
+    provider_error = AIRateLimitError(
+        "API_KEY=private-value prompt=private-user-content provider response body"
+    )
+    rate_message = user_safe_task_error(provider_error)
+    assert "rate limited" in rate_message
+    assert "private-value" not in rate_message
+    assert "private-user-content" not in rate_message
+
+    network_message = user_safe_task_error(AIConnectionError("internal URL with credentials"))
+    assert "Check connectivity" in network_message
+    assert "credentials" not in network_message
 
 
 def test_templates_custom_worker_and_task_assignment_are_persisted(client):

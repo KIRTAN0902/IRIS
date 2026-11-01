@@ -105,12 +105,24 @@ def test_supervisor_fast_path_approval(db: Session, test_user: User):
     assert actions[0]["tool_name"] == "approve_command"
 
 
-def test_supervisor_fast_path_open_vscode_repo(db: Session, test_user: User):
+def test_supervisor_fast_path_open_vscode_repo(db: Session, test_user: User, monkeypatch):
+    # This test covers Supervisor intent routing, not whether the CI/dev host
+    # has VS Code installed or permits launching desktop applications.
+    from app.services import mesh_service
+
+    launches = []
+
+    def fake_launch(app_name, **kwargs):
+        launches.append((app_name, kwargs))
+        return {"success": True, "app": "Visual Studio Code", "pid": 12345}
+
+    monkeypatch.setattr(mesh_service, "launch_windows_app", fake_launch)
     sup = IrisSupervisor()
     resp, actions = sup.try_fast_path(db, test_user, {}, "open vs code in my iris repo")
     assert resp is not None
     assert "Opened" in resp.message or "VS Code" in resp.message or "Visual Studio Code" in resp.message
     assert len(actions) == 1
+    assert launches and launches[0][0] == "vscode"
 
 
 def test_supervisor_fast_path_open_downloads(db: Session, test_user: User):

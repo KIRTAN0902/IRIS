@@ -63,6 +63,7 @@ function Conversation({
   const [lastSentImages, setLastSentImages] = useState<string[]>([]);
   const [images, setImages] = useState<AttachedImage[]>([]);
   const [imageError, setImageError] = useState<string | null>(null);
+  const [submissionError, setSubmissionError] = useState<string | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const objectUrlsRef = useRef<Set<string>>(new Set());
   // The conversation this component just created from a new chat: switching to
@@ -96,6 +97,7 @@ function Conversation({
     });
     setImages([]);
     setImageError(null);
+    setSubmissionError(null);
     sendMsg.reset();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversationId]);
@@ -153,6 +155,7 @@ function Conversation({
   const send = async (text?: string, voice = false): Promise<ChatMessageOut | null> => {
     const content = (text ?? input).trim();
     if ((!content && images.length === 0) || sendMsg.isPending) return null;
+    setSubmissionError(null);
 
     const currentImages = [...images];
     let imagePayloads: Array<{ image_base64: string; mime_type: string }> = [];
@@ -196,13 +199,12 @@ function Conversation({
         idRef.current = id;
         onCreated(id);
       } catch {
+        setSubmissionError("A conversation could not be created. Your draft and attachments are still here.");
         return null;
       }
     }
     setLastSent(effectiveContent);
     setLastSentImages(currentImages.map((img) => img.preview));
-    setInput("");
-    setImages([]);
     setImageError(null);
     try {
       const res = await sendMsg.mutateAsync({
@@ -213,6 +215,17 @@ function Conversation({
         mime_type: imagePayloads.length === 1 ? imagePayloads[0]?.mime_type : undefined,
         images: imagePayloads,
       });
+
+      // Keep the draft until IRIS confirms the turn was accepted.
+      // The composer is disabled while sending, so these are still the same files.
+      if (text === undefined) setInput("");
+      currentImages.forEach((img) => {
+        URL.revokeObjectURL(img.preview);
+        objectUrlsRef.current.delete(img.preview);
+      });
+      setImages([]);
+      setLastSent("");
+      setLastSentImages([]);
 
       // If reply triggered launch_mobile_app action, invoke native Android launcher
       if (res && res.actions_taken) {
@@ -231,6 +244,9 @@ function Conversation({
 
       return res;
     } catch {
+      setSubmissionError(
+        "IRIS did not confirm this message. Your draft and attachments are still here. Check the conversation history before resending, because the request may have reached IRIS."
+      );
       return null;
     }
   };
@@ -269,7 +285,7 @@ function Conversation({
     <>
       <Composer
         value={input}
-        onChange={setInput}
+        onChange={(value) => { setInput(value); setSubmissionError(null); sendMsg.reset(); }}
         onSend={() => send()}
         onVoice={voice.start}
         disabled={busy}
@@ -277,6 +293,7 @@ function Conversation({
         onAddImages={addImages}
         onRemoveImage={removeImage}
         imageError={imageError}
+        submissionError={submissionError}
       />
       {voice.notice && !talking && (
         <p className="mt-2 px-4 text-center text-[13px] text-ink-faint" role="status">
@@ -323,13 +340,8 @@ function Conversation({
         )}
 
         {sendMsg.isError && (
-          <p className="text-[13px] text-critical">
-            Couldn't reach IRIS.{" "}
-            {lastSent && (
-              <button onClick={() => send(lastSent)} className="underline cursor-pointer">
-                Try again
-              </button>
-            )}
+          <p className="text-[13px] text-critical" role="alert">
+            {submissionError ?? "IRIS did not confirm this message. Your draft remains in the composer."}
           </p>
         )}
         <div ref={endRef} />
@@ -354,6 +366,7 @@ function Composer({
   onAddImages,
   onRemoveImage,
   imageError,
+  submissionError,
 }: {
   value: string;
   onChange: (v: string) => void;
@@ -365,6 +378,7 @@ function Composer({
   onAddImages: (files: File[]) => void;
   onRemoveImage: (id: string) => void;
   imageError?: string | null;
+  submissionError?: string | null;
 }) {
   const ref = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -464,6 +478,7 @@ function Composer({
                 }}
                 aria-label={`Remove ${img.file.name}`}
                 title="Remove image"
+                disabled={disabled}
                 className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-ink-faint hover:bg-ops-raised hover:text-ink transition-colors cursor-pointer"
               >
                 <X size={13} />
@@ -487,6 +502,9 @@ function Composer({
 
       {imageError && (
         <p className="mb-1.5 px-3 text-[12px] text-caution">{imageError}</p>
+      )}
+      {submissionError && (
+        <p className="mb-1.5 px-3 text-[12px] text-critical" role="alert">{submissionError}</p>
       )}
 
       <div className="flex items-end gap-1.5">
@@ -521,6 +539,7 @@ function Composer({
         <textarea
           ref={ref}
           value={value}
+          disabled={disabled}
           autoFocus={autoFocus}
           onChange={(e) => onChange(e.target.value)}
           onKeyDown={(e) => {

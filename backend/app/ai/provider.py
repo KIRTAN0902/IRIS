@@ -47,26 +47,64 @@ class AIProviderError(Exception):
         *,
         provider: str | None = None,
         cause: Exception | None = None,
+        category: str = "provider_failure",
+        retryable: bool = False,
     ):
         super().__init__(message)
         self.provider = provider
         self.cause = cause
+        self.category = category
+        self.retryable = retryable
 
 
 class AIConfigurationError(AIProviderError):
     """Raised when an AI provider is missing required configuration (e.g. missing API key/URL)."""
 
+    def __init__(self, message: str, **kwargs: Any):
+        kwargs.setdefault("category", "configuration")
+        super().__init__(message, **kwargs)
+
 
 class AIConnectionError(AIProviderError):
     """Raised when connection to the AI provider fails (e.g. network error, timeout)."""
+
+    def __init__(self, message: str, **kwargs: Any):
+        kwargs.setdefault("category", "network")
+        kwargs.setdefault("retryable", True)
+        super().__init__(message, **kwargs)
+
+
+class AIRequestTimeoutError(AIConnectionError):
+    """Raised when the provider request exceeds its available deadline."""
+
+    def __init__(self, message: str, **kwargs: Any):
+        kwargs["category"] = "timeout"
+        super().__init__(message, **kwargs)
+
+
+class AIRateLimitError(AIProviderError):
+    """Provider throttled a request after bounded retry handling."""
+
+    def __init__(self, message: str, **kwargs: Any):
+        kwargs["category"] = "rate_limited"
+        kwargs["retryable"] = True
+        super().__init__(message, **kwargs)
 
 
 class AISchemaValidationError(AIProviderError):
     """Raised when the AI output cannot be parsed into the expected Pydantic schema."""
 
+    def __init__(self, message: str, **kwargs: Any):
+        kwargs.setdefault("category", "invalid_response")
+        super().__init__(message, **kwargs)
+
 
 class AICapabilityError(AIProviderError):
     """Raised when an AI provider is asked to perform a capability it does not support."""
+
+    def __init__(self, message: str, **kwargs: Any):
+        kwargs.setdefault("category", "unsupported_capability")
+        super().__init__(message, **kwargs)
 
 
 # --- Provider-neutral chat primitives ------------------------------------------

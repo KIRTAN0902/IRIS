@@ -18,6 +18,18 @@ from app.core.logging import get_logger
 
 logger = get_logger("iris.devices.windows.browser_discovery")
 
+
+def _path_is_accessible(path: str | Path) -> bool:
+    """Return whether a candidate can be inspected without letting OS ACL/shim
+    errors abort discovery. Windows App Execution Aliases can raise OSError
+    from stat even when Path.exists() is used.
+    """
+    try:
+        return Path(path).is_file()
+    except OSError as exc:
+        logger.debug("Skipping inaccessible browser candidate: %s (%s)", path, type(exc).__name__)
+        return False
+
 # Known online services mapped to their official URLs for browser fallback
 COMMON_SERVICE_URLS: dict[str, str] = {
     "google drive": "https://drive.google.com",
@@ -79,7 +91,7 @@ class WindowsBrowserDiscovery:
                                     with winreg.OpenKey(key, rf"{b_name}\shell\open\command") as cmd_key:
                                         raw_cmd = winreg.QueryValue(cmd_key, "")
                                         exe_path = raw_cmd.strip('"').split('"')[0].strip()
-                                        if Path(exe_path).exists() and exe_path.lower() not in seen_paths:
+                                        if _path_is_accessible(exe_path) and exe_path.lower() not in seen_paths:
                                             seen_paths.add(exe_path.lower())
                                             browsers.append(
                                                 DiscoveredBrowser(
@@ -103,7 +115,7 @@ class WindowsBrowserDiscovery:
         ]
 
         for name, path in standard_checks:
-            if path and Path(path).exists() and path.lower() not in seen_paths:
+            if path and _path_is_accessible(path) and path.lower() not in seen_paths:
                 seen_paths.add(path.lower())
                 browsers.append(DiscoveredBrowser(name=name, executable_path=str(path)))
 
@@ -150,7 +162,7 @@ class WindowsBrowserDiscovery:
             selected_browser = self.get_preferred_browser()
 
         try:
-            if selected_browser.executable_path != "explorer.exe" and Path(selected_browser.executable_path).exists():
+            if selected_browser.executable_path != "explorer.exe" and _path_is_accessible(selected_browser.executable_path):
                 proc = subprocess.Popen([selected_browser.executable_path, clean_url], shell=False)
             else:
                 proc = subprocess.Popen(["cmd.exe", "/c", "start", "", clean_url], shell=False)

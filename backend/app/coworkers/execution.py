@@ -6,10 +6,12 @@ import asyncio
 from datetime import UTC, datetime
 from uuid import uuid4
 from sqlalchemy import update
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.agent.harness import AgentHarness
 from app.agent.registry import create_default_registry
 from app.ai.factory import get_ai_provider
+from app.ai.provider import AIProviderError
 from app.core.database import SessionLocal
 from app.models.coworker import Coworker, CoworkerEvent, CoworkerSession, CoworkerTask
 from app.models.user import User
@@ -18,6 +20,28 @@ from app.models.coding_task import CodingTaskRecord
 from app.coworkers.contracts import transition
 from app.coworkers.governance import GovernedCoworkerRegistry
 from app.coding.contracts import TaskBrief
+from app.core.logging import get_logger
+
+logger = get_logger("iris.coworkers.execution")
+
+
+def user_safe_task_error(exc: Exception) -> str:
+    """Map execution failures to actionable task text without persisting secrets or provider bodies."""
+    if isinstance(exc, AIProviderError):
+        messages = {
+            "configuration": "The selected AI provider is not configured. Review provider settings before retrying.",
+            "network": "The AI provider is unavailable. Check connectivity and task status before retrying.",
+            "timeout": "The AI provider request timed out. Check task status before retrying.",
+            "rate_limited": "The AI provider is rate limited. Wait, then review task status before retrying.",
+            "unsupported_capability": "No configured AI fallback supports this task's required capabilities.",
+            "invalid_response": "The AI provider returned an invalid response. Review task status before retrying.",
+        }
+        return messages.get(exc.category, "The AI provider request failed. Review provider status before retrying.")
+    if isinstance(exc, SQLAlchemyError):
+        return "IRIS could not persist the task result. Check database health before retrying."
+    if isinstance(exc, PermissionError):
+        return "The task was denied by the current workspace or operating-system permissions."
+    return "Task execution failed. Review diagnostics and task status before retrying."
 
 
 def _emit(db, user_id: int, coworker_id: str, task_id: str, kind: str, payload: dict | None = None):
@@ -196,10 +220,13 @@ async def run_coworker_task(task_id: str, user_id: int) -> None:
         for child_id, owner_id in ready:
             asyncio.create_task(run_coworker_task(child_id, owner_id))
     except Exception as exc:  # recovery persists interrupted/failed; no blind retry
+        safe_error = user_safe_task_error(exc)
+        logger.error("coworker_task_failed task_id=%s error_type=%s category=%s",
+                     task_id, type(exc).__name__, getattr(exc, "category", "internal"))
         db.rollback()
         task = db.query(CoworkerTask).filter_by(id=task_id, user_id=user_id).first()
         if task and task.status in {"running", "queued"}:
-            task.status = "failed"; task.error = f"{type(exc).__name__}: {exc}"[:2000]
+            task.status = "failed"; task.error = safe_error
             task.ended_at = datetime.now(UTC)
             coworker = db.query(Coworker).filter_by(id=task.coworker_id, user_id=user_id).first()
             if coworker: coworker.status = "failed"
@@ -208,7 +235,12 @@ async def run_coworker_task(task_id: str, user_id: int) -> None:
                 session.status = "failed"; session.error = task.error; session.ended_at = task.ended_at
             _emit(db, user_id, task.coworker_id, task.id, "task_failed", {"error": task.error})
             _fail_dependents(db,user_id,task.id,task.error)
-            db.commit()
+            try:
+                db.commit()
+            except Exception as persist_exc:
+                db.rollback()
+                logger.error("coworker_failure_state_persist_failed task_id=%s error_type=%s",
+                             task_id, type(persist_exc).__name__)
     finally:
         db.close()
 

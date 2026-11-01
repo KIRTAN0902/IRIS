@@ -16,6 +16,7 @@ from pydantic import BaseModel, ValidationError
 from app.ai.capabilities import ModelCapabilities, resolve_capabilities
 from app.ai.deadline import get_current_deadline
 from app.ai.provider import (
+    AICapabilityError,
     AIConfigurationError,
     AIConnectionError,
     AIProvider,
@@ -177,6 +178,26 @@ class GeminiProvider(AIProvider):
     def capabilities(self) -> ModelCapabilities:
         return self._caps
 
+    @staticmethod
+    def _backend_supports_request(
+        backend: OpenAICompatibleProvider,
+        messages: list[ChatMessage],
+        tools: list[ToolDefinition] | None,
+        max_tokens: int | None,
+    ) -> bool:
+        caps = backend.capabilities
+        if tools and not caps.native_tools:
+            return False
+        if any(message.images for message in messages) and not caps.image_input:
+            return False
+        input_chars = sum(len(message.content or "") for message in messages)
+        input_chars += sum(
+            len(tool.name) + len(tool.description) + len(str(tool.parameters))
+            for tool in (tools or [])
+        )
+        estimated_tokens = input_chars // 4 + (len(messages) * 8)
+        return estimated_tokens + (max_tokens or caps.max_output_tokens) <= caps.context_window
+
     async def chat(
         self,
         messages: list[ChatMessage],
@@ -206,11 +227,23 @@ class GeminiProvider(AIProvider):
                 )
             except AIProviderError as exc:
                 logger.warning(
-                    "Sticky backend %s/%s failed in turn (%s); resetting stickiness and initiating failover",
+                    "Sticky backend %s/%s failed in turn category=%s error_type=%s; resetting stickiness and initiating failover",
                     sticky_backend.name,
                     sticky_backend.model,
-                    exc,
+                    exc.category,
+                    type(exc).__name__,
                 )
+                # Provider-specific thought signatures are part of the model's
+                # tool-call continuation contract. Switching providers here
+                # loses that state and can cause invalid or repeated actions.
+                has_signature = any(
+                    call.extra_content
+                    for message in messages
+                    if message.role == "assistant"
+                    for call in message.tool_calls
+                )
+                if has_signature:
+                    raise
                 active_turn_backend.set(None)
 
         try:
@@ -225,26 +258,29 @@ class GeminiProvider(AIProvider):
             return res
         except AIProviderError as exc:
             last_err: AIProviderError = exc
+            logger.warning(
+                "Gemini primary model %s chat failed category=%s error_type=%s; checking compatible fallbacks",
+                self._model,
+                exc.category,
+                type(exc).__name__,
+            )
+            fallbacks = []
             if self._fallback_chat_backend:
-                logger.warning(
-                    "Gemini primary model %s chat failed (%s); falling back to %s",
-                    self._model,
-                    exc,
-                    self._fallback_model,
-                )
-                try:
-                    res = await self._fallback_chat_backend.chat(
-                        messages,
-                        tools=tools,
-                        response_format=response_format,
-                        temperature=temperature,
-                        max_tokens=max_tokens,
+                fallbacks.append(self._fallback_chat_backend)
+            fallbacks.extend(self._secondary_fallbacks)
+            compatible_fallback_found = False
+            for sec_backend in fallbacks:
+                if not sec_backend.enabled or not self._backend_supports_request(
+                    sec_backend, messages, tools, max_tokens
+                ):
+                    logger.info(
+                        "Gemini fallback skipped as incompatible: model=%s tools=%s image_input=%s",
+                        sec_backend.model,
+                        bool(tools),
+                        any(message.images for message in messages),
                     )
-                    active_turn_backend.set(self._fallback_chat_backend)
-                    return res
-                except AIProviderError as fb_exc:
-                    last_err = fb_exc
-            for sec_backend in self._secondary_fallbacks:
+                    continue
+                compatible_fallback_found = True
                 try:
                     logger.warning(
                         "Gemini fallback chain trying secondary model %s/%s",
@@ -262,6 +298,12 @@ class GeminiProvider(AIProvider):
                     return res
                 except AIProviderError as sec_exc:
                     last_err = sec_exc
+            if fallbacks and not compatible_fallback_found:
+                raise AICapabilityError(
+                    "No configured fallback model supports the tools, image inputs, or context required for this request.",
+                    provider=self.name,
+                    cause=last_err,
+                ) from last_err
             raise last_err
 
     def _get_client(self):
@@ -277,7 +319,7 @@ class GeminiProvider(AIProvider):
                 self._client = genai.Client(api_key=self._api_key)
             except Exception as exc:
                 raise AIConfigurationError(
-                    f"Failed to initialize Google GenAI client: {exc}",
+                    "Failed to initialize Google GenAI client.",
                     provider=self.name,
                     cause=exc,
                 ) from exc
@@ -393,9 +435,9 @@ class GeminiProvider(AIProvider):
                 last_exc = exc
                 if idx < len(models_to_try) - 1:
                     logger.warning(
-                        "Gemini primary model %s failed (%s); trying fallback model %s",
+                        "Gemini model %s failed error_type=%s; trying fallback model %s",
                         model_to_use,
-                        exc,
+                        type(exc).__name__,
                         models_to_try[idx + 1],
                     )
                     continue
@@ -410,7 +452,7 @@ class GeminiProvider(AIProvider):
                 schema=schema,
             )
         except Exception as fallback_exc:
-            logger.warning("Chat backend structured fallback also failed: %s", fallback_exc)
+            logger.warning("Chat backend structured fallback failed: error_type=%s", type(fallback_exc).__name__)
 
         if isinstance(last_exc, TimeoutError):
             logger.warning("AI request timeout: provider=%s, model=%s", self.name, self._model)
@@ -421,15 +463,16 @@ class GeminiProvider(AIProvider):
             ) from last_exc
         if isinstance(last_exc, (json.JSONDecodeError, ValidationError)):
             raise AISchemaValidationError(
-                f"Gemini output failed schema validation: {last_exc}",
+                "Gemini output did not match the expected response schema.",
                 provider=self.name,
                 cause=last_exc,
             ) from last_exc
         if isinstance(last_exc, AIProviderError):
             raise last_exc
-        logger.warning("AI Gemini SDK error: provider=%s, error=%s", self.name, last_exc)
+        logger.warning("AI Gemini SDK error: provider=%s error_type=%s", self.name, type(last_exc).__name__)
         raise AIProviderError(
-            f"Gemini API call failed: {last_exc}",
+            "Gemini API request failed.",
             provider=self.name,
             cause=last_exc,
+            category="provider_failure",
         ) from last_exc

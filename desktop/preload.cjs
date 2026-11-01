@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer, shell } = require('electron');
+const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('irisDesktop', {
   isDesktop: true,
@@ -6,7 +6,7 @@ contextBridge.exposeInMainWorld('irisDesktop', {
   minimize: () => ipcRenderer.send('window-minimize'),
   maximize: () => ipcRenderer.send('window-maximize'),
   close: () => ipcRenderer.send('window-close'),
-  openExternal: (url) => shell.openExternal(url),
+  openExternal: (url) => ipcRenderer.invoke('open-external', String(url)),
   selectProjectDirectory: () => ipcRenderer.invoke('coding-select-directory'),
   onOpenAgyDrawer: (callback) => {
     const handler = () => callback();

@@ -23,6 +23,16 @@ from app.core.logging import get_logger
 
 logger = get_logger(__name__)
 
+
+def _path_is_accessible(path: str | Path, *, directory: bool = False) -> bool:
+    """Probe a path without treating Windows ACL-denied aliases as fatal."""
+    try:
+        candidate = Path(path)
+        return candidate.is_dir() if directory else candidate.exists()
+    except OSError as exc:
+        logger.debug("Skipping inaccessible path candidate: %s (%s)", path, type(exc).__name__)
+        return False
+
 # File Drop Storage Directory (uses /tmp on serverless Vercel)
 if os.environ.get("VERCEL") or os.environ.get("AWS_LAMBDA_FUNCTION_NAME"):
     STORAGE_DIR = Path("/tmp/mesh_vault")
@@ -666,8 +676,8 @@ def launch_windows_app(
         target_dir = str(resolved)
     elif argument and argument.strip():
         candidate_path = resolve_laptop_path(argument.strip())
-        if candidate_path.exists() or any(c in argument for c in [":\\", ":/", "\\", "/"]) or argument.strip().lower() in ["home", "~", "desktop", "downloads", "documents"]:
-            target_dir = str(candidate_path) if candidate_path.exists() else str(user_home)
+        if _path_is_accessible(candidate_path, directory=True) or any(c in argument for c in [":\\", ":/", "\\", "/"]) or argument.strip().lower() in ["home", "~", "desktop", "downloads", "documents"]:
+            target_dir = str(candidate_path) if _path_is_accessible(candidate_path, directory=True) else str(user_home)
         else:
             # If argument is not a path, treat as prompt if none provided
             if not prompt and argument.strip().lower() not in ["resume", "continue", "-c", "--continue"]:
@@ -693,13 +703,13 @@ def launch_windows_app(
         keywords = ["powershell", "terminal", "cascadia", "agy", "antigravity"]
         sys_root = os.environ.get("SystemRoot", r"C:\Windows")
         ps_path = Path(sys_root) / r"System32\WindowsPowerShell\v1.0\powershell.exe"
-        ps_bin = str(ps_path) if ps_path.exists() else "powershell.exe"
+        ps_bin = str(ps_path) if _path_is_accessible(ps_path, directory=False) else "powershell.exe"
 
         # Resolve agy binary
         agy_bin = shutil.which("agy.exe") or shutil.which("agy")
         if not agy_bin:
             cand = user_home / r"AppData\Local\agy\bin\agy.exe"
-            if cand.exists():
+            if _path_is_accessible(cand, directory=False):
                 agy_bin = str(cand)
             else:
                 agy_bin = "agy"
@@ -720,7 +730,7 @@ def launch_windows_app(
         ps_command = f"Set-Location '{target_dir}'; {agy_invocation}"
 
         wt_bin = shutil.which("wt.exe") or shutil.which("wt") or str(user_home / r"AppData\Local\Microsoft\WindowsApps\wt.exe")
-        has_wt = Path(wt_bin).exists() if wt_bin else False
+        has_wt = _path_is_accessible(wt_bin, directory=False) if wt_bin else False
 
         # Launch interactive terminal executing agy in target directory
         if has_wt:
@@ -734,7 +744,7 @@ def launch_windows_app(
         keywords = ["cascadia", "cmd", "powershell", "terminal", "pwsh"]
         sys_root = os.environ.get("SystemRoot", r"C:\Windows")
         ps_path = Path(sys_root) / r"System32\WindowsPowerShell\v1.0\powershell.exe"
-        ps_bin = str(ps_path) if ps_path.exists() else "powershell.exe"
+        ps_bin = str(ps_path) if _path_is_accessible(ps_path, directory=False) else "powershell.exe"
         home_path = str(user_home)
 
         is_specific_dir = False
@@ -751,7 +761,7 @@ def launch_windows_app(
                 target_dest = cand_dir
 
         wt_bin = shutil.which("wt.exe") or shutil.which("wt") or str(user_home / r"AppData\Local\Microsoft\WindowsApps\wt.exe")
-        has_wt = Path(wt_bin).exists() if wt_bin else False
+        has_wt = _path_is_accessible(wt_bin, directory=False) if wt_bin else False
 
         if "cmd" in app_clean and "powershell" not in app_clean and "wt" not in app_clean:
             if is_specific_dir:

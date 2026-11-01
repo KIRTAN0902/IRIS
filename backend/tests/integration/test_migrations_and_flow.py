@@ -94,7 +94,43 @@ def test_full_progress_flow(client, db, user_id):
 
 
 def test_error_envelope_never_exposes_stack(client):
-    r = client.get("/api/tasks/424242")
+    r = client.get("/api/tasks/424242", headers={"X-Request-ID": "milestone-e-check-17"})
     body = r.json()
     assert set(body.keys()) == {"error"}
-    assert set(body["error"].keys()) == {"code", "message"}
+    assert body["error"]["code"] == "TASK_NOT_FOUND"
+    assert body["error"]["category"] == "not_found"
+    assert body["error"]["retryable"] is False
+    assert body["error"]["correlation_id"] == "milestone-e-check-17"
+    assert r.headers["X-Request-ID"] == "milestone-e-check-17"
+    assert "Traceback" not in r.text
+
+
+def test_validation_error_has_correlation_metadata(client):
+    response = client.post("/api/chat/conversations", params={"title": "x" * 256})
+    assert response.status_code == 422
+    error = response.json()["error"]
+    assert error["category"] == "validation"
+    assert error["retryable"] is False
+    assert error["correlation_id"] == response.headers["X-Request-ID"]
+
+
+def test_http_5xx_error_detail_is_not_returned_to_client():
+    from fastapi import FastAPI, HTTPException
+    from fastapi.testclient import TestClient
+
+    from app.core.errors import register_exception_handlers
+
+    isolated_app = FastAPI()
+    register_exception_handlers(isolated_app)
+
+    @isolated_app.get("/provider-error")
+    def provider_error():
+        raise HTTPException(503, detail="secret=private-token provider response body")
+
+    with TestClient(isolated_app) as test_client:
+        response = test_client.get("/provider-error")
+    assert response.status_code == 503
+    assert "private-token" not in response.text
+    assert "provider response body" not in response.text
+    assert response.json()["error"]["category"] == "service_unavailable"
+    assert response.json()["error"]["retryable"] is True

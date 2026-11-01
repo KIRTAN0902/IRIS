@@ -289,22 +289,24 @@ export const useIngestVision = () => {
   });
 };
 
-export const useAIStatus = () =>
+export const useAIStatus = (enabled = true) =>
   useQuery({
     queryKey: qk.aiStatus(),
     queryFn: aiApi.status,
     staleTime: 30_000,
     refetchInterval: 30_000,
+    enabled,
   });
 
 // --- Intelligence Today & Attention ---
 
-export const useTodayState = () =>
+export const useTodayState = (enabled = true) =>
   useQuery({
     queryKey: qk.todayState(),
     queryFn: intelligenceApi.today,
     staleTime: 30_000,
     refetchInterval: 60_000,
+    enabled,
   });
 
 export const useSignals = (params: { domain?: string; min_importance?: number; active_only?: boolean; limit?: number } = {}) =>

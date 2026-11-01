@@ -55,40 +55,103 @@ class AIServiceError(AppError):
     code = "AI_UNAVAILABLE"
 
 
-def error_response(status_code: int, code: str, message: str) -> JSONResponse:
+def _error_metadata(status_code: int, code: str) -> tuple[str, bool, str | None]:
+    code_upper = code.upper()
+    if status_code == 422 or code_upper in {"VALIDATION_ERROR", "BAD_REQUEST"}:
+        return "validation", False, "Correct the highlighted input and retry."
+    if status_code == 401:
+        return "authentication", False, "Sign in again, then retry."
+    if status_code == 403:
+        return "permission_denied", False, "Review the required permission or ask an administrator."
+    if status_code == 404:
+        return "not_found", False, None
+    if status_code == 409:
+        return "conflict", False, "Refresh the affected item and review its current state."
+    if status_code == 429:
+        return "rate_limited", True, "Wait briefly before retrying."
+    if status_code == 502:
+        return "upstream_failure", True, "Check the connected provider and retry."
+    if status_code == 503:
+        return "service_unavailable", True, "Check service status and retry when it is available."
+    if status_code == 504:
+        return "timeout", True, "The operation timed out; check its status before retrying."
+    if status_code >= 500:
+        return "internal", False, "Use the request ID when contacting support."
+    return "request", False, None
+
+
+def error_response(
+    status_code: int,
+    code: str,
+    message: str,
+    *,
+    request_id: str | None = None,
+    category: str | None = None,
+    retryable: bool | None = None,
+    recovery_action: str | None = None,
+) -> JSONResponse:
+    default_category, default_retryable, default_recovery = _error_metadata(status_code, code)
+    error = {
+        "code": code,
+        "message": message,
+        "category": category or default_category,
+        "retryable": default_retryable if retryable is None else retryable,
+        "recovery_action": recovery_action if recovery_action is not None else default_recovery,
+    }
+    if request_id:
+        error["correlation_id"] = request_id
     return JSONResponse(
         status_code=status_code,
-        content={"error": {"code": code, "message": message}},
+        content={"error": error},
+        headers={"X-Request-ID": request_id} if request_id else None,
     )
 
 
 def register_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(AppError)
-    async def _app_error(_: Request, exc: AppError) -> JSONResponse:
-        logger.info("AppError %s: %s", exc.code, exc.message)
-        return error_response(exc.status_code, exc.code, exc.message)
+    async def _app_error(request: Request, exc: AppError) -> JSONResponse:
+        logger.info("application_error code=%s status=%s", exc.code, exc.status_code)
+        return error_response(
+            exc.status_code,
+            exc.code,
+            exc.message,
+            request_id=getattr(request.state, "correlation_id", None),
+        )
 
     @app.exception_handler(RequestValidationError)
-    async def _validation_error(_: Request, exc: RequestValidationError) -> JSONResponse:
+    async def _validation_error(request: Request, exc: RequestValidationError) -> JSONResponse:
         summary = "; ".join(
             f"{'.'.join(str(loc) for loc in err['loc'][1:])}: {err['msg']}"
             for err in exc.errors()[:5]
         )
-        return error_response(422, "VALIDATION_ERROR", summary or "Invalid request.")
+        return error_response(
+            422,
+            "VALIDATION_ERROR",
+            summary or "Invalid request.",
+            request_id=getattr(request.state, "correlation_id", None),
+        )
 
     @app.exception_handler(IntegrityError)
     async def _integrity_error(_: Request, exc: IntegrityError) -> JSONResponse:
-        logger.warning("IntegrityError: %s", exc.orig if hasattr(exc, "orig") else exc)
+        logger.warning("database_integrity_error")
         return error_response(
-            status.HTTP_409_CONFLICT, "CONFLICT", "The request conflicts with existing data."
+            status.HTTP_409_CONFLICT,
+            "CONFLICT",
+            "The request conflicts with existing data.",
+            request_id=getattr(request, "state", None) and getattr(request.state, "correlation_id", None),
         )
 
     @app.exception_handler(NoResultFound)
-    async def _no_result(_: Request, __exc: NoResultFound) -> JSONResponse:
-        return error_response(status.HTTP_404_NOT_FOUND, "NOT_FOUND", "Resource not found.")
+    async def _no_result(request: Request, __exc: NoResultFound) -> JSONResponse:
+        return error_response(
+            status.HTTP_404_NOT_FOUND,
+            "NOT_FOUND",
+            "Resource not found.",
+            request_id=getattr(request.state, "correlation_id", None),
+        )
 
     @app.exception_handler(StarletteHTTPException)
-    async def _http_error(_: Request, exc: StarletteHTTPException) -> JSONResponse:
+    async def _http_error(request: Request, exc: StarletteHTTPException) -> JSONResponse:
         codes = {
             401: "UNAUTHORIZED",
             403: "FORBIDDEN",
@@ -97,7 +160,25 @@ def register_exception_handlers(app: FastAPI) -> None:
             409: "CONFLICT",
         }
         code = codes.get(exc.status_code, "HTTP_ERROR")
-        return error_response(exc.status_code, code, str(exc.detail))
+        # Provider/SQL/server details may include user content, secrets, URLs,
+        # and internal host paths. They belong in server diagnostics only.
+        safe_message = (
+            "An upstream service failed."
+            if exc.status_code == 502
+            else "The service is temporarily unavailable."
+            if exc.status_code == 503
+            else "The operation timed out."
+            if exc.status_code == 504
+            else "An unexpected internal error occurred."
+            if exc.status_code >= 500
+            else str(exc.detail)
+        )
+        return error_response(
+            exc.status_code,
+            code,
+            safe_message,
+            request_id=getattr(request.state, "correlation_id", None),
+        )
 
     @app.exception_handler(Exception)
     async def _unhandled(request: Request, exc: Exception) -> JSONResponse:
@@ -106,4 +187,5 @@ def register_exception_handlers(app: FastAPI) -> None:
             status.HTTP_500_INTERNAL_SERVER_ERROR,
             "INTERNAL_ERROR",
             "An unexpected internal error occurred.",
+            request_id=getattr(request.state, "correlation_id", None),
         )

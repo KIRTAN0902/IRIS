@@ -31,6 +31,9 @@ class ModelCapabilities:
 
     # Native OpenAI-style function/tool calling.
     native_tools: bool = True
+    # Explicitly confirmed support for image inputs. Unknown profiles default
+    # to false so fallback never silently drops or misroutes an image.
+    image_input: bool = False
     # Strongest response_format the endpoint accepts for structured output.
     json_mode: JsonMode = "json_object"
     # Model emits reasoning (<think> blocks or a reasoning_content field).
@@ -211,12 +214,13 @@ MODEL_PROFILES: list[tuple[str, dict[str, Any]]] = [
         },
     ),
     # Non-reasoning frontier/open models.
-    ("gpt-4o*", {"json_mode": "json_schema", "context_window": 128_000}),
-    ("gpt-4.1*", {"json_mode": "json_schema", "context_window": 1_000_000}),
-    ("claude*", {"json_mode": "none", "context_window": 200_000, "max_output_tokens": 8_192}),
-    ("gemini*", {"context_window": 1_000_000, "max_output_tokens": 8_192, "fast_body": {"reasoning_effort": "none"}}),
-    ("*llama-3*", {"context_window": 131_072}),
-    ("*llama-4*", {"context_window": 1_000_000}),
+    ("gpt-4o*", {"json_mode": "json_schema", "image_input": True, "context_window": 128_000}),
+    ("gpt-4.1*", {"json_mode": "json_schema", "image_input": True, "context_window": 1_000_000}),
+    ("claude*", {"json_mode": "none", "image_input": True, "context_window": 200_000, "max_output_tokens": 8_192}),
+    ("gemini*", {"image_input": True, "context_window": 1_000_000, "max_output_tokens": 8_192, "fast_body": {"reasoning_effort": "none"}}),
+    ("*llama-3.2-vision*", {"image_input": True, "context_window": 131_072}),
+    ("*llama-3.3*", {"context_window": 131_072}),
+    ("*llama-4*", {"image_input": True, "context_window": 1_000_000}),
     ("*mistral*", {"context_window": 32_768}),
     ("*mixtral*", {"context_window": 32_768}),
     ("mock*", {"native_tools": False, "json_mode": "none"}),

@@ -24,10 +24,13 @@ import httpx
 from app.ai.capabilities import ModelCapabilities, resolve_capabilities
 from app.ai.deadline import get_current_deadline
 from app.ai.provider import (
+    AIRateLimitError,
     AIConfigurationError,
     AIConnectionError,
+    AICapabilityError,
     AIProvider,
     AIProviderError,
+    AIRequestTimeoutError,
     AISchemaValidationError,
     ChatMessage,
     ChatResult,
@@ -279,45 +282,51 @@ class OpenAICompatibleProvider(AIProvider):
                 async with httpx.AsyncClient(timeout=http_timeout) as http_client:
                     response = await http_client.post(endpoint, headers=headers, json=body)
             except httpx.TimeoutException as exc:
-                raise AIConnectionError(
+                raise AIRequestTimeoutError(
                     f"{self._label} request timed out after {http_timeout.read}s",
                     provider=self._name,
                     cause=exc,
                 ) from exc
             except (httpx.ConnectError, httpx.NetworkError) as exc:
                 if attempt < max_retries and (deadline is None or deadline.has_budget_for_attempt):
-                    attempt += 1
                     delay = _retry_delay(None, attempt)
+                    if not await _wait_for_retry(delay, deadline):
+                        raise AIConnectionError(
+                            f"{self._label} connection failed and the request deadline leaves no safe retry budget",
+                            provider=self._name,
+                            cause=exc,
+                        ) from exc
+                    attempt += 1
                     logger.warning(
-                        "AI connection error, retrying: provider=%s attempt=%d delay=%.2fs error=%s",
+                        "AI connection error, retrying: provider=%s attempt=%d delay=%.2fs error_type=%s",
                         self._name,
                         attempt,
                         delay,
-                        exc,
+                        type(exc).__name__,
                     )
-                    await asyncio.sleep(delay)
                     continue
                 raise AIConnectionError(
-                    f"Failed to connect to {self._label} at {self._base_url}: {exc}",
+                    f"Failed to connect to {self._label}.",
                     provider=self._name,
                     cause=exc,
                 ) from exc
             except Exception as exc:
                 raise AIProviderError(
-                    f"{self._label} request failed unexpectedly: {exc}",
+                    f"{self._label} request failed unexpectedly.",
                     provider=self._name,
                     cause=exc,
+                    category="provider_failure",
                 ) from exc
 
             if response.status_code in _RETRYABLE_STATUS and attempt < max_retries:
-                if deadline is not None and not deadline.has_budget_for_attempt:
+                delay = _retry_delay(response, attempt)
+                if not await _wait_for_retry(delay, deadline):
                     logger.warning(
-                        "AI request status %d retry skipped: deadline budget exhausted (%.2fs remaining)",
+                        "AI request status %d retry skipped: deadline budget insufficient (%.2fs remaining)",
                         response.status_code,
-                        deadline.remaining,
+                        deadline.remaining if deadline is not None else 0.0,
                     )
                     return response
-                delay = _retry_delay(response, attempt)
                 logger.info(
                     "AI request retrying: provider=%s status=%s delay=%.2fs attempt=%d",
                     self._name,
@@ -326,7 +335,6 @@ class OpenAICompatibleProvider(AIProvider):
                     attempt + 1,
                 )
                 attempt += 1
-                await asyncio.sleep(delay)
                 continue
             return response
 
@@ -344,6 +352,12 @@ class OpenAICompatibleProvider(AIProvider):
         if not self.enabled:
             raise AIConfigurationError(
                 f"{self._label} provider is not configured (missing {self._missing_config()})",
+                provider=self._name,
+            )
+
+        if any(message.images for message in messages) and not self.capabilities.image_input:
+            raise AICapabilityError(
+                f"{self._label} model profile does not confirm image input support.",
                 provider=self._name,
             )
 
@@ -368,10 +382,30 @@ class OpenAICompatibleProvider(AIProvider):
             try:
                 response.raise_for_status()
             except httpx.HTTPStatusError as exc:
+                status_code = exc.response.status_code
+                if status_code == 429:
+                    raise AIRateLimitError(
+                        f"{self._label} rate limit persisted after bounded retries.",
+                        provider=self._name,
+                        cause=exc,
+                    ) from exc
+                if status_code in {408, 504}:
+                    raise AIRequestTimeoutError(
+                        f"{self._label} request timed out (HTTP {status_code}).",
+                        provider=self._name,
+                        cause=exc,
+                    ) from exc
+                if status_code >= 500:
+                    raise AIConnectionError(
+                        f"{self._label} returned a temporary HTTP {status_code} response.",
+                        provider=self._name,
+                        cause=exc,
+                    ) from exc
                 raise AIProviderError(
-                    f"{self._label} HTTP error {exc.response.status_code}: {exc.response.text[:300]}",
+                    f"{self._label} rejected the request (HTTP {status_code}).",
                     provider=self._name,
                     cause=exc,
+                    category="provider_rejected",
                 ) from exc
 
             try:
@@ -386,7 +420,13 @@ class OpenAICompatibleProvider(AIProvider):
             result = self._parse_completion(data)
         except AIProviderError as exc:
             ai_health.record_failure(self._name, self._model, exc)
-            logger.warning("AI request failed: provider=%s, error=%s", self._name, exc)
+            logger.warning(
+                "AI request failed: provider=%s category=%s retryable=%s error_type=%s",
+                self._name,
+                exc.category,
+                exc.retryable,
+                type(exc).__name__,
+            )
             raise
 
         ai_health.record_success(self._name, self._model)
@@ -461,6 +501,14 @@ class OpenAICompatibleProvider(AIProvider):
             finish_reason=choice.get("finish_reason"),
             usage=data.get("usage") or {},
         )
+
+
+async def _wait_for_retry(delay: float, deadline) -> bool:
+    """Sleep only when the request retains enough budget for another attempt."""
+    if deadline is not None and deadline.remaining < delay + deadline.min_remaining_for_attempt:
+        return False
+    await asyncio.sleep(delay)
+    return deadline is None or deadline.has_budget_for_attempt
 
 
 def _retry_delay(response: httpx.Response | None, attempt: int) -> float:

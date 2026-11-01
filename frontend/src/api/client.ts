@@ -15,12 +15,25 @@ const BASE = import.meta.env.VITE_API_URL?.replace(/\/+$/, "") || DEFAULT_API_BA
 export class ApiError extends Error {
   readonly status: number;
   readonly code: string;
+  readonly category: string;
+  readonly retryable: boolean;
+  readonly recoveryAction?: string;
+  readonly requestId?: string;
 
-  constructor(status: number, code: string, message: string) {
+  constructor(
+    status: number,
+    code: string,
+    message: string,
+    options: { category?: string; retryable?: boolean; recoveryAction?: string | null; requestId?: string } = {},
+  ) {
     super(message);
     this.name = "ApiError";
     this.status = status;
     this.code = code;
+    this.category = options.category ?? "request";
+    this.retryable = options.retryable ?? false;
+    this.recoveryAction = options.recoveryAction ?? undefined;
+    this.requestId = options.requestId;
   }
 }
 
@@ -51,9 +64,14 @@ async function request<T>(
     asBlob?: boolean;
     /** Return the raw Response so its body can be read as a stream. */
     asStream?: boolean;
+    /** Per-request deadline; defaults to 90 seconds for AI/provider-backed routes. */
+    timeoutMs?: number;
   } = {},
 ): Promise<T> {
   let response: Response;
+  const controller = new AbortController();
+  const timeoutMs = opts.timeoutMs ?? 90_000;
+  const timeoutId = globalThis.setTimeout(() => controller.abort(), timeoutMs);
   try {
     const json = opts.body !== undefined;
     response = await fetch(buildUrl(path, opts.query), {
@@ -64,33 +82,66 @@ async function request<T>(
           ? { "Content-Type": "application/json" }
           : undefined,
       body: opts.blob ?? (json ? JSON.stringify(opts.body) : undefined),
+      signal: controller.signal,
     });
   } catch {
+    globalThis.clearTimeout(timeoutId);
     // Network-level failure (backend down, DNS, CORS).
-    throw new ApiError(0, "NETWORK_ERROR", "Cannot reach the IRIS backend.");
+    if (controller.signal.aborted) {
+      throw new ApiError(0, "TIMEOUT", "The request timed out.", {
+        category: "timeout",
+        retryable: true,
+        recoveryAction: "Check the connection and retry. If this changed data, check its status first.",
+      });
+    }
+    throw new ApiError(0, "NETWORK_ERROR", "Cannot reach the IRIS backend.", {
+      category: "network",
+      retryable: true,
+      recoveryAction: "Check the connection and retry.",
+    });
   }
 
-  if (response.status === 204) return undefined as T;
-  if (opts.asBlob && response.ok) return (await response.blob()) as T;
-  if (opts.asStream && response.ok) return response as T;
-
-  let data: unknown = null;
   try {
-    data = await response.json();
-  } catch {
-    // fallthrough: empty or non-JSON body
-  }
+    if (response.status === 204) return undefined as T;
+    if (opts.asBlob && response.ok) return (await response.blob()) as T;
+    if (opts.asStream && response.ok) return response as T;
 
-  if (!response.ok) {
-    const envelope = data as Partial<ErrorEnvelope> | null;
-    const err = envelope?.error;
-    throw new ApiError(
-      response.status,
-      err?.code ?? `HTTP_${response.status}`,
-      err?.message ?? "The request failed.",
-    );
+    let data: unknown = null;
+    try {
+      data = await response.json();
+    } catch {
+      if (controller.signal.aborted) throw new Error("request aborted while reading the response");
+      // fallthrough: empty or non-JSON body
+    }
+
+    if (!response.ok) {
+      const envelope = data as Partial<ErrorEnvelope> | null;
+      const err = envelope?.error;
+      throw new ApiError(
+        response.status,
+        err?.code ?? `HTTP_${response.status}`,
+        err?.message ?? "The request failed.",
+        {
+          category: err?.category,
+          retryable: err?.retryable,
+          recoveryAction: err?.recovery_action,
+          requestId: err?.correlation_id ?? response.headers.get("X-Request-ID") ?? undefined,
+        },
+      );
+    }
+    return data as T;
+  } catch (cause) {
+    if (controller.signal.aborted && !(cause instanceof ApiError)) {
+      throw new ApiError(0, "TIMEOUT", "The request timed out.", {
+        category: "timeout",
+        retryable: true,
+        recoveryAction: "Check the connection and retry. If this changed data, check its status first.",
+      });
+    }
+    throw cause;
+  } finally {
+    globalThis.clearTimeout(timeoutId);
   }
-  return data as T;
 }
 
 export const api = {

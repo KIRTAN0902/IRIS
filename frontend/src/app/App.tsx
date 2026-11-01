@@ -1,6 +1,7 @@
 import { lazy, Suspense } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { ApiError } from "@/api/client";
 import { AppShell } from "@/components/layout/AppShell";
 import { HomePage } from "@/features/home/HomePage";
 
@@ -27,7 +28,10 @@ const MeshPage = lazy(() => import("@/features/mesh/MeshPage").then((m) => ({ de
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      retry: 1,
+      retry: (failureCount, error) =>
+        failureCount < 2 && error instanceof ApiError && error.retryable,
+      retryDelay: (attemptIndex) =>
+        Math.min(1000 * 2 ** attemptIndex, 8000) + Math.random() * 250,
       refetchOnWindowFocus: true,
       staleTime: 30_000,
     },

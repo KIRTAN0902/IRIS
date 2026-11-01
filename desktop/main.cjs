@@ -4,6 +4,12 @@ const http = require('http');
 const { spawn } = require('child_process');
 const fs = require('fs');
 const url = require('url');
+const {
+  isTrustedAppUrl,
+  normalizeExternalUrl,
+  resolveFrontendAssetPath,
+  isWithinDirectory,
+} = require('./security.cjs');
 
 // 1. Register custom standard scheme for native offline app execution
 protocol.registerSchemesAsPrivileged([
@@ -39,6 +45,12 @@ let mainWindow = null;
 let tray = null;
 let isQuitting = false;
 let hasNotifiedTray = false;
+let watchdogTimer = null;
+let distWatcher = null;
+let rendererRecoveryCount = 0;
+let rendererRecoveryResetTimer = null;
+let backendStartRetryDelayMs = 30_000;
+let backendNextStartAt = 0;
 
 const BACKEND_URL = 'http://127.0.0.1:8000/health';
 const APP_URL = 'iris://app/index.html';
@@ -62,7 +74,7 @@ log('Using frontend distribution from: ' + DIST_DIR);
 if (fs.existsSync(DIST_DIR)) {
   let reloadTimer = null;
   try {
-    fs.watch(DIST_DIR, { recursive: true }, (eventType, filename) => {
+    distWatcher = fs.watch(DIST_DIR, { recursive: true }, (eventType, filename) => {
       if (filename && (filename.endsWith('.html') || filename.endsWith('.js') || filename.endsWith('.css'))) {
         clearTimeout(reloadTimer);
         reloadTimer = setTimeout(() => {
@@ -131,23 +143,38 @@ function checkUrl(targetUrl, timeoutMs = 4000) {
 async function ensureServices() {
   // Ensure local IRIS intelligence backend engine daemon is running
   const backendUp = await checkUrl(BACKEND_URL);
-  if (!backendUp) {
-    log('Backend offline; starting IRIS backend daemon...');
-    const vbsScript = path.join(REPO_ROOT, 'start-mesh-silent.vbs');
-    if (fs.existsSync(vbsScript)) {
-      spawn('wscript.exe', [vbsScript], {
+  if (backendUp) {
+    backendStartRetryDelayMs = 30_000;
+    backendNextStartAt = 0;
+    return;
+  }
+  if (Date.now() < backendNextStartAt) return;
+
+  backendNextStartAt = Date.now() + backendStartRetryDelayMs;
+  backendStartRetryDelayMs = Math.min(backendStartRetryDelayMs * 2, 5 * 60_000);
+  log('Backend offline; attempting to start the IRIS backend daemon.');
+  const vbsScript = path.join(REPO_ROOT, 'start-mesh-silent.vbs');
+  if (fs.existsSync(vbsScript)) {
+    try {
+      const child = spawn('wscript.exe', [vbsScript], {
         cwd: REPO_ROOT,
         detached: true,
         stdio: 'ignore',
         windowsHide: true,
-      }).unref();
+      });
+      child.once('error', (err) => log(`Backend start failed: ${err.name}`));
+      child.unref();
       log('Spawned backend via start-mesh-silent.vbs');
+    } catch (err) {
+      log(`Backend start failed: ${err.name}`);
     }
+  } else {
+    log('Backend start script is unavailable.');
   }
 }
 
 // Watchdog: automatically restart backend if it goes down while IRIS desktop runs
-setInterval(async () => {
+watchdogTimer = setInterval(async () => {
   const backendUp = await checkUrl(BACKEND_URL);
   if (!backendUp) {
     log('Watchdog: Backend offline on port 8000, resurrecting...');
@@ -181,6 +208,23 @@ function createWindow() {
     mainWindow.focus();
   });
 
+  mainWindow.webContents.on('render-process-gone', (_event, details) => {
+    log(`Renderer process exited: reason=${details.reason} exitCode=${details.exitCode}`);
+    if (isQuitting || rendererRecoveryCount >= 3) {
+      log('Renderer recovery limit reached; leaving the window stopped for user action.');
+      return;
+    }
+    rendererRecoveryCount += 1;
+    clearTimeout(rendererRecoveryResetTimer);
+    rendererRecoveryResetTimer = setTimeout(() => { rendererRecoveryCount = 0; }, 60000);
+    setTimeout(() => {
+      if (mainWindow && !mainWindow.isDestroyed() && !isQuitting) {
+        log(`Reloading renderer after crash (attempt ${rendererRecoveryCount}/3).`);
+        mainWindow.loadURL(APP_URL).catch((err) => log(`Renderer recovery load failed: ${err.name}`));
+      }
+    }, 800);
+  });
+
   // Safety fallback: ensure window is displayed within 500ms
   setTimeout(() => {
     if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) {
@@ -210,11 +254,19 @@ function createWindow() {
   });
 
   mainWindow.webContents.setWindowOpenHandler(({ url: openUrl }) => {
-    if (openUrl.startsWith('iris://') || openUrl.startsWith('http://localhost') || openUrl.startsWith('http://127.0.0.1')) {
+    if (isTrustedAppUrl(openUrl)) {
       return { action: 'allow' };
     }
-    shell.openExternal(openUrl);
+    const safeUrl = normalizeExternalUrl(openUrl);
+    if (safeUrl) shell.openExternal(safeUrl).catch((err) => log(`External link open failed: ${err.name}`));
     return { action: 'deny' };
+  });
+
+  mainWindow.webContents.on('will-navigate', (event, navigationUrl) => {
+    if (!isTrustedAppUrl(navigationUrl)) {
+      event.preventDefault();
+      log('Blocked renderer navigation outside the IRIS app origin.');
+    }
   });
 
   loadApp();
@@ -331,30 +383,57 @@ function toggleWindow() {
   }
 }
 
-ipcMain.on('window-minimize', () => {
-  if (mainWindow) mainWindow.minimize();
+function isTrustedIpcSender(event) {
+  return Boolean(
+    mainWindow &&
+    !mainWindow.isDestroyed() &&
+    event.sender === mainWindow.webContents &&
+    isTrustedAppUrl(event.senderFrame?.url || '')
+  );
+}
+
+ipcMain.on('window-minimize', (event) => {
+  if (isTrustedIpcSender(event)) mainWindow.minimize();
 });
 
-ipcMain.on('window-maximize', () => {
-  if (mainWindow) {
+ipcMain.on('window-maximize', (event) => {
+  if (isTrustedIpcSender(event)) {
     if (mainWindow.isMaximized()) mainWindow.unmaximize();
     else mainWindow.maximize();
   }
 });
 
-ipcMain.on('window-close', () => {
-  if (mainWindow) mainWindow.hide();
+ipcMain.on('window-close', (event) => {
+  if (isTrustedIpcSender(event)) mainWindow.hide();
 });
 
-ipcMain.handle('coding-select-directory', async () => {
+ipcMain.handle('coding-select-directory', async (event) => {
+  if (!isTrustedIpcSender(event)) return null;
+  if (!mainWindow || mainWindow.isDestroyed()) return null;
   const result = await dialog.showOpenDialog(mainWindow, { properties: ['openDirectory', 'createDirectory'] });
   return result.canceled ? null : result.filePaths[0] || null;
+});
+
+ipcMain.handle('open-external', async (event, rawUrl) => {
+  if (!isTrustedIpcSender(event)) return false;
+  const safeUrl = normalizeExternalUrl(rawUrl);
+  if (!safeUrl) return false;
+  try {
+    await shell.openExternal(safeUrl);
+    return true;
+  } catch (err) {
+    log(`External link open failed: ${err.name}`);
+    return false;
+  }
 });
 
 app.whenReady().then(() => {
   // Register custom protocol handler for native iris://app execution
   protocol.handle('iris', async (request) => {
     const reqUrl = new URL(request.url);
+    if (!isTrustedAppUrl(request.url)) {
+      return new Response('Not found', { status: 404 });
+    }
 
     // 1. Transparently proxy /api/ calls directly to local backend daemon
     if (reqUrl.pathname.startsWith('/api/')) {
@@ -370,8 +449,13 @@ app.whenReady().then(() => {
         }
         return await net.fetch(targetUrl, fetchOpts);
       } catch (err) {
-        log('API proxy error (' + targetUrl + '): ' + err.message);
-        return new Response(JSON.stringify({ error: err.message }), {
+        log(`API proxy error path=${reqUrl.pathname} error=${err.name}`);
+        return new Response(JSON.stringify({ error: {
+          code: 'BACKEND_UNAVAILABLE',
+          message: 'The IRIS backend is unavailable.',
+          category: 'network',
+          retryable: true,
+        } }), {
           status: 502,
           headers: { 'Content-Type': 'application/json' },
         });
@@ -379,9 +463,16 @@ app.whenReady().then(() => {
     }
 
     // 2. Resolve static assets from local build
-    let relPath = reqUrl.pathname.replace(/^\/+/, '');
-    let filePath = path.join(DIST_DIR, relPath);
-    if (!fs.existsSync(filePath) || fs.statSync(filePath).isDirectory()) {
+    let filePath = resolveFrontendAssetPath(DIST_DIR, reqUrl.pathname);
+    try {
+      if (!filePath || !fs.existsSync(filePath) || fs.statSync(filePath).isDirectory()) {
+        filePath = path.join(DIST_DIR, 'index.html');
+      } else {
+        const realDist = fs.realpathSync(DIST_DIR);
+        const realFile = fs.realpathSync(filePath);
+        if (!isWithinDirectory(realDist, realFile)) filePath = path.join(DIST_DIR, 'index.html');
+      }
+    } catch {
       filePath = path.join(DIST_DIR, 'index.html');
     }
     return net.fetch(url.pathToFileURL(filePath).toString());
@@ -408,6 +499,13 @@ app.whenReady().then(() => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
     else showWindow();
   });
+});
+
+app.on('before-quit', () => {
+  isQuitting = true;
+  if (watchdogTimer) clearInterval(watchdogTimer);
+  if (distWatcher) distWatcher.close();
+  clearTimeout(rendererRecoveryResetTimer);
 });
 
 app.on('will-quit', () => {

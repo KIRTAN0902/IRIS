@@ -288,7 +288,9 @@ def test_launch_windows_app_terminal_home_vs_target():
         assert res_default["app"] == "Terminal"
         cmd_str_default = " ".join(res_default["command"])
         assert home_str in cmd_str_default
-        assert "Set-Location 'C:" not in cmd_str_default
+        # The system may use Windows Terminal (-d) or fall back to PowerShell.
+        # Both must open at home; the fallback expresses that via Set-Location.
+        assert "-d" in cmd_str_default or f"Set-Location '{home_str}'" in cmd_str_default
 
         # 2. Specific directory: starts in home directory and navigates to target directory
         target = r"C:\kirtan\IRIS"

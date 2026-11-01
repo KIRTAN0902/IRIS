@@ -19,7 +19,6 @@ export function AppShell() {
   const location = useLocation();
   const navigate = useNavigate();
   const setAskOpen = useUiStore((s) => s.setAskOpen);
-  const askOpen = useUiStore((s) => s.askOpen);
   const uiState = useUIState();
 
   useEffect(() => {
@@ -133,7 +132,7 @@ export function AppShell() {
         </main>
       </div>
       <MobileBottomNav />
-      <Suspense fallback={null}>{askOpen && <AskIrisConsole />}</Suspense>
+      <Suspense fallback={null}><AskIrisConsole /></Suspense>
       <AgyDrawer />
     </div>
     </VoiceSessionProvider>

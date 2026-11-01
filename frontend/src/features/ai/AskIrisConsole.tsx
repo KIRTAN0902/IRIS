@@ -53,8 +53,8 @@ export function AskIrisConsole() {
   const navigate = useNavigate();
   const ask = useAskIRIS();
   const vision = useIngestVision();
-  const aiStatusQuery = useAIStatus();
-  const todayState = useTodayState();
+  const aiStatusQuery = useAIStatus(open);
+  const todayState = useTodayState(open);
   const aiStatus = aiStatusQuery.data ?? todayState.data?.ai_status;
   const isAiOffline = aiStatus && (!aiStatus.responding || aiStatus.status === "NOT_RESPONDING");
 
@@ -88,13 +88,7 @@ export function AskIrisConsole() {
 
   useEffect(() => {
     if (open) {
-      setQuestion("");
       setTimeout(() => inputRef.current?.focus(), 30);
-    } else {
-      objectUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
-      objectUrlsRef.current.clear();
-      setImages([]);
-      setImageError(null);
     }
   }, [open]);
 
@@ -185,7 +179,6 @@ export function AskIrisConsole() {
         (currentImages.length > 1
           ? "Extract the useful context from these images and act on it."
           : "Extract the useful context from this image and act on it.");
-      setQuestion("");
       setThread((t) => [
         ...t.slice(-8),
         {
@@ -194,7 +187,6 @@ export function AskIrisConsole() {
           badge: true,
         },
       ]);
-      setImages([]);
       setSubmitting(true);
 
       Promise.all(
@@ -219,6 +211,12 @@ export function AskIrisConsole() {
             },
             {
               onSuccess: (res) => {
+                setQuestion("");
+                currentImages.forEach((img) => {
+                  URL.revokeObjectURL(img.preview);
+                  objectUrlsRef.current.delete(img.preview);
+                });
+                setImages((current) => current.filter((img) => !currentImages.includes(img)));
                 setConversationId(res.conversation_id);
                 setThread((t) => [
                   ...t,
@@ -233,7 +231,7 @@ export function AskIrisConsole() {
               onError: (err) => {
                 setThread((t) => [
                   ...t,
-                  { role: "ASSISTANT", content: `IRIS couldn't read those images: ${err.message}` },
+                  { role: "ASSISTANT", content: `IRIS did not confirm the image request: ${err.message}. The draft and attachments remain available. Check conversation history before resending; the request may have reached IRIS.` },
                 ]);
               },
               onSettled: () => setSubmitting(false),
@@ -242,17 +240,17 @@ export function AskIrisConsole() {
         })
         .catch(() => {
           setSubmitting(false);
-          setThread((t) => [...t, { role: "ASSISTANT", content: "IRIS couldn't read those images." }]);
+          setThread((t) => [...t, { role: "ASSISTANT", content: "IRIS could not prepare the image request. Your draft and attachments remain available." }]);
         });
       return;
     }
 
-    setQuestion("");
     setThread((t) => [...t.slice(-8), { role: "USER", content: text }]);
     ask.mutate(
       { question: text, conversation_id: conversationId },
       {
         onSuccess: (res) => {
+          setQuestion("");
           setConversationId(res.conversation_id);
           setThread((t) => [...t, { role: "ASSISTANT", content: res.answer, source: res.source, codingAction: res.coding_action }]);
           if (res.answer) {
@@ -261,7 +259,7 @@ export function AskIrisConsole() {
           }
         },
         onError: (err) => {
-          setThread((t) => [...t, { role: "ASSISTANT", content: `IRIS couldn't answer: ${err.message}` }]);
+          setThread((t) => [...t, { role: "ASSISTANT", content: `IRIS did not confirm this request: ${err.message}. Your draft remains available. Check conversation history before resending; the request may have reached IRIS.` }]);
         },
       },
     );
@@ -294,6 +292,7 @@ export function AskIrisConsole() {
               <input
                 ref={inputRef}
                 value={question}
+                disabled={busy}
                 onChange={(e) => setQuestion(e.target.value)}
                 placeholder={images.length > 0 ? "Add a question about these images (optional)…" : "Ask IRIS anything about your life…"}
                 maxLength={120000}
@@ -314,6 +313,7 @@ export function AskIrisConsole() {
               />
               <button
                 type="button"
+                disabled={busy}
                 onClick={(e) => {
                   e.stopPropagation();
                   imageInputRef.current?.click();
@@ -364,6 +364,7 @@ export function AskIrisConsole() {
                     </div>
                     <button
                       type="button"
+                      disabled={busy}
                       onClick={() => removeImage(img.id)}
                       aria-label={`Remove ${img.file.name}`}
                       title="Remove image"
