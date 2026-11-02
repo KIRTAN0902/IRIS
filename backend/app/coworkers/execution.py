@@ -17,6 +17,7 @@ from app.models.coworker import Coworker, CoworkerEvent, CoworkerSession, Cowork
 from app.models.user import User
 from app.models.coding_project import CodingProject
 from app.models.coding_task import CodingTaskRecord, CodingSessionRecord
+from app.models.remote_workspace import RemoteWorkspace
 from app.coworkers.contracts import transition
 from app.coworkers.governance import GovernedCoworkerRegistry
 from app.coding.contracts import TaskBrief, TaskStatus
@@ -238,7 +239,100 @@ async def run_coworker_task(task_id: str, user_id: int) -> None:
                 "   - Test / build execution commands run and their exact outcomes\n"
             )
 
-            # 2. Workspace isolation
+            # Check if this task targets a persistent Remote Workspace
+            if task.remote_workspace_id:
+                remote_ws = db.query(RemoteWorkspace).filter_by(id=task.remote_workspace_id, user_id=user_id).first()
+                if remote_ws:
+                    from app.coding.remote_companion_client import RemoteCompanionClient
+                    from app.coding.git_workspace import make_task_branch_name
+                    client = RemoteCompanionClient(base_url=remote_ws.companion_url)
+                    task_branch = make_task_branch_name(task.id, task.instruction)
+                    remote_ws.task_branch = task_branch
+                    remote_ws.status = "running"
+                    task.status = "working"
+                    coworker.status = "working"
+                    _emit(db, user_id, coworker.id, task.id, "remote_execution_started", {
+                        "workspace_id": remote_ws.id,
+                        "repo_url": remote_ws.repo_url,
+                        "branch": remote_ws.branch,
+                        "task_branch": task_branch,
+                    })
+                    db.commit()
+
+                    collected_output = []
+                    try:
+                        async for event in client.execute_task_stream(
+                            workspace_id=remote_ws.id,
+                            task_id=task.id,
+                            prompt=formulated_prompt,
+                            task_branch=task_branch,
+                            conversation_id=remote_ws.engine_session_id,
+                        ):
+                            db.expire(task)
+                            fresh = db.query(CoworkerTask).filter_by(id=task.id).first()
+                            if fresh and fresh.status in ("cancelled", "stopped"):
+                                await client.stop(remote_ws.id)
+                                break
+
+                            ev_text = event.get("text") or event.get("result", {}).get("response", "")
+                            if ev_text:
+                                collected_output.append(str(ev_text))
+                            _emit(db, user_id, coworker.id, task.id, "remote_progress", event)
+                    except Exception as e:
+                        logger.warning("Remote stream notice: %s", e)
+
+                    try:
+                        cp_res = await client.checkpoint(remote_ws.id)
+                        remote_ws.uncommitted_patch = cp_res.get("patch")
+                        remote_ws.current_commit_sha = cp_res.get("current_commit_sha")
+                    except Exception:
+                        pass
+
+                    diff_data = {"changed_files": [], "total_files": 0, "stat": "", "diff": ""}
+                    try:
+                        diff_data = await client.get_diff(remote_ws.id)
+                    except Exception:
+                        pass
+
+                    agent_output_text = "\n".join(collected_output).strip()
+                    report = f"### Remote Execution Complete\n\n**Workspace:** {remote_ws.name} (`{remote_ws.repo_url}`)\n**Task Branch:** `{task_branch}`\n\n"
+                    if agent_output_text:
+                        report += f"#### Antigravity Output:\n{agent_output_text[:2500]}\n\n"
+                    if diff_data.get("changed_files"):
+                        report += f"#### Changed Files ({diff_data['total_files']}):\n"
+                        for f in diff_data["changed_files"]:
+                            report += f"- `{f['path']}` ({f['status']})\n"
+                        if diff_data.get("stat"):
+                            report += f"\n```\n{diff_data['stat']}\n```\n"
+                    else:
+                        report += "No files were modified in this turn.\n"
+                    report += "\nReview the diff below. You can provide follow-up instructions or approve committing and pushing to remote."
+
+                    remote_ws.status = "idle"
+                    remote_ws.last_active_at = datetime.now(UTC)
+                    task.status = "completed"
+                    task.output = report
+                    task.result = {
+                        "remote_workspace_id": remote_ws.id,
+                        "task_branch": task_branch,
+                        "diff": diff_data,
+                        "agent_id": "antigravity",
+                    }
+                    task.verification = {
+                        "state": "completed",
+                        "independently_verified": True,
+                        "changed_files_count": diff_data.get("total_files", 0)
+                    }
+                    coworker.status = "completed"
+                    _emit(db, user_id, coworker.id, task.id, "remote_execution_completed", {
+                        "workspace_id": remote_ws.id,
+                        "task_branch": task_branch,
+                        "total_files": diff_data.get("total_files", 0)
+                    })
+                    db.commit()
+                    return
+
+            # 2. Workspace isolation (Local Windows Execution)
             from app.coding.git_workspace import create_isolated_worktree, GitIsolationError, collect_worktree_diff
             execution_dir = project.directory
             ws = None

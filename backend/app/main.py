@@ -152,6 +152,7 @@ def create_app() -> FastAPI:
         intelligence,
         mesh,
         projects,
+        remote_workspaces,
         reviews,
         schedule,
         startup,
@@ -186,6 +187,7 @@ def create_app() -> FastAPI:
     app.include_router(coding_execution.router, prefix=api)
     app.include_router(coding_execution.task_router, prefix=api)
     app.include_router(coworkers.router, prefix=api)
+    app.include_router(remote_workspaces.router, prefix=api)
     app.include_router(ui_orchestrator.router, prefix=api)
     app.include_router(mesh.router, prefix=api)
     app.include_router(agy.router, prefix=api)

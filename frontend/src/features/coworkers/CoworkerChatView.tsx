@@ -4,6 +4,7 @@ import {
   ArrowUp,
   ChevronDown,
   ChevronUp,
+  Cloud,
   Code2,
   FolderPlus,
   GitBranch,
@@ -13,6 +14,7 @@ import {
   Mic,
   MicOff,
   PenTool,
+  RefreshCw,
   Search,
   Settings,
   Square,
@@ -40,6 +42,20 @@ export type Coworker = {
   status: string;
   availability: boolean;
   config_version: number;
+};
+
+export type RemoteWorkspace = {
+  id: string;
+  name: string;
+  repo_url: string;
+  branch: string;
+  task_branch?: string | null;
+  status: string;
+  storage_type: string;
+  engine_name: string;
+  last_commit_sha?: string | null;
+  uncommitted_patch?: string | null;
+  companion_url?: string | null;
 };
 
 export type Project = {
@@ -73,6 +89,7 @@ export type MessageTurn = {
   task_id?: string;
   coding_task_id?: string | null;
   project_id?: number | null;
+  remote_workspace_id?: string | null;
   task_branch?: string | null;
   agent_id?: string | null;
   worktree_path?: string | null;
@@ -119,8 +136,34 @@ export function CoworkerChatView({
   const [isRecording, setIsRecording] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
 
+  // Milestone H: Persistent Remote Workspaces & Target Execution
+  const [remoteWorkspaces, setRemoteWorkspaces] = useState<RemoteWorkspace[]>([]);
+  const [selectedRemoteWorkspaceId, setSelectedRemoteWorkspaceId] = useState<string | null>(null);
+  const [executionTarget, setExecutionTarget] = useState<"local" | "remote">("local");
+  const [showRemoteModal, setShowRemoteModal] = useState(false);
+  const [newRemoteName, setNewRemoteName] = useState("IRIS Cloud Sandbox");
+  const [newRemoteRepo, setNewRemoteRepo] = useState("https://github.com/KIRTAN0902/IRIS.git");
+  const [newRemoteBranch, setNewRemoteBranch] = useState("main");
+  const [recoveringWs, setRecoveringWs] = useState(false);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null);
+
+  const fetchRemoteWorkspaces = useCallback(async () => {
+    try {
+      const wsList = await api.get<RemoteWorkspace[]>("/workspaces");
+      setRemoteWorkspaces(wsList);
+      if (wsList.length > 0 && !selectedRemoteWorkspaceId) {
+        setSelectedRemoteWorkspaceId(wsList[0].id);
+      }
+    } catch {
+      // Offline or local-only fallback
+    }
+  }, [selectedRemoteWorkspaceId]);
+
+  useEffect(() => {
+    void fetchRemoteWorkspaces();
+  }, [fetchRemoteWorkspaces]);
 
   const isCodingCoworker = useMemo(() => {
     const role = (coworker.role || "").toLowerCase();
@@ -214,6 +257,7 @@ export function CoworkerChatView({
       await api.post(`/coworkers/${coworker.id}/chat`, {
         message: text,
         project_id: activeProjectId,
+        workspace_id: executionTarget === "remote" ? selectedRemoteWorkspaceId : undefined,
         engine: isCodingCoworker ? selectedEngine : undefined,
       });
       await fetchMessages();
@@ -261,6 +305,69 @@ export function CoworkerChatView({
       await api.post(`/coding/execution/tasks/${codingTaskId}/push`, { remote: "origin" });
       await fetchMessages();
       alert("Branch pushed to origin remote.");
+    } catch (err: any) {
+      alert(`Push failed: ${err.message || err}`);
+    }
+  };
+
+  // Milestone H: Create persistent remote workspace linked to GitHub
+  const handleCreateRemoteWorkspace = async () => {
+    if (!newRemoteRepo.trim()) return;
+    try {
+      const res = await api.post<RemoteWorkspace>("/workspaces", {
+        name: newRemoteName.trim(),
+        repo_url: newRemoteRepo.trim(),
+        branch: newRemoteBranch.trim(),
+        project_id: activeProjectId,
+      });
+      setShowRemoteModal(false);
+      await fetchRemoteWorkspaces();
+      setSelectedRemoteWorkspaceId(res.id);
+      setExecutionTarget("remote");
+      alert(`Remote workspace "${res.name}" connected.`);
+    } catch (err: any) {
+      alert(`Failed to create remote workspace: ${err.message || err}`);
+    }
+  };
+
+  // Milestone H: Recover sleeping/interrupted remote workspace
+  const handleRecoverRemoteWorkspace = async (workspaceId: string) => {
+    setRecoveringWs(true);
+    try {
+      await api.post(`/workspaces/${workspaceId}/recover`);
+      await fetchRemoteWorkspaces();
+      await fetchMessages();
+      alert("Remote workspace recovered successfully from GitHub + checkpointed patch.");
+    } catch (err: any) {
+      alert(`Recovery failed: ${err.message || err}`);
+    } finally {
+      setRecoveringWs(false);
+    }
+  };
+
+  // Milestone H: Commit changes to remote task branch
+  const handleCommitRemote = async (workspaceId: string) => {
+    const msg = window.prompt("Commit message for remote task branch:", "feat: implement requested changes");
+    if (!msg?.trim()) return;
+    try {
+      await api.post(`/workspaces/${workspaceId}/commit`, { message: msg.trim() });
+      await fetchMessages();
+      await fetchRemoteWorkspaces();
+      alert("Changes committed to remote task branch.");
+    } catch (err: any) {
+      alert(`Commit failed: ${err.message || err}`);
+    }
+  };
+
+  // Milestone H: Push remote task branch to GitHub
+  const handlePushRemote = async (workspaceId: string, branch: string) => {
+    const pat = window.prompt("Enter GitHub Personal Access Token (PAT) for push approval:\n(Token is used for this request only and never stored in logs)", "");
+    if (!pat?.trim()) return;
+    try {
+      await api.post(`/workspaces/${workspaceId}/push`, { branch, github_pat: pat.trim() });
+      await fetchMessages();
+      await fetchRemoteWorkspaces();
+      alert(`Branch ${branch} pushed to GitHub successfully!`);
     } catch (err: any) {
       alert(`Push failed: ${err.message || err}`);
     }
@@ -371,31 +478,120 @@ export function CoworkerChatView({
 
         {/* Working Directory & Action Controls */}
         <div className="flex flex-wrap items-center gap-2">
-          {/* Workspace Quick-Selector */}
-          <div className="flex items-center gap-1.5 rounded-xl border border-line bg-ops-panel px-2.5 py-1.5 text-xs">
-            <HardDrive size={13} className="text-ai shrink-0" />
-            <select
-              aria-label="Working Directory"
-              value={activeProjectId ?? ""}
-              onChange={(e) => onSelectProject(e.target.value ? Number(e.target.value) : null)}
-              className="bg-transparent font-medium text-ink outline-none cursor-pointer max-w-[200px] truncate"
-            >
-              <option value="">No working directory</option>
-              {projects.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name} ({p.directory})
-                </option>
-              ))}
-            </select>
+          {/* Milestone H: Local vs Remote Cloud Execution Selector */}
+          <div className="flex items-center gap-1 rounded-xl border border-line bg-ops-panel p-1 text-xs font-medium text-ink">
             <button
               type="button"
-              onClick={() => setShowWorkspaceModal(true)}
-              className="text-[11px] font-semibold text-ai hover:underline pl-1 cursor-pointer"
-              title="Register a new working directory"
+              onClick={() => setExecutionTarget("local")}
+              className={`flex items-center gap-1 rounded-lg px-2 py-1 text-xs transition cursor-pointer ${
+                executionTarget === "local" ? "bg-white font-semibold text-ink shadow-2xs" : "text-ink-dim hover:text-ink"
+              }`}
+              title="Execute inside local PC Git worktree"
             >
-              + Add
+              <HardDrive size={12} className={executionTarget === "local" ? "text-ai" : ""} />
+              <span>Local PC</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setExecutionTarget("remote");
+                if (remoteWorkspaces.length === 0) setShowRemoteModal(true);
+              }}
+              className={`flex items-center gap-1 rounded-lg px-2 py-1 text-xs transition cursor-pointer ${
+                executionTarget === "remote" ? "bg-white font-semibold text-ink shadow-2xs" : "text-ink-dim hover:text-ink"
+              }`}
+              title="Execute inside 24/7 persistent remote container (laptop can be off)"
+            >
+              <Cloud size={12} className={executionTarget === "remote" ? "text-emerald-600" : ""} />
+              <span>Remote Cloud</span>
             </button>
           </div>
+
+          {/* If Local: show local directory selector */}
+          {executionTarget === "local" ? (
+            <div className="flex items-center gap-1.5 rounded-xl border border-line bg-ops-panel px-2.5 py-1.5 text-xs">
+              <HardDrive size={13} className="text-ai shrink-0" />
+              <select
+                aria-label="Working Directory"
+                value={activeProjectId ?? ""}
+                onChange={(e) => onSelectProject(e.target.value ? Number(e.target.value) : null)}
+                className="bg-transparent font-medium text-ink outline-none cursor-pointer max-w-[200px] truncate"
+              >
+                <option value="">No working directory</option>
+                {projects.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name} ({p.directory})
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={() => setShowWorkspaceModal(true)}
+                className="text-[11px] font-semibold text-ai hover:underline pl-1 cursor-pointer"
+                title="Register a new working directory"
+              >
+                + Add
+              </button>
+            </div>
+          ) : (
+            /* If Remote: show remote workspace selector + recovery button */
+            <div className="flex items-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50/60 px-2.5 py-1.5 text-xs">
+              <Cloud size={13} className="text-emerald-700 shrink-0" />
+              <select
+                aria-label="Remote Workspace"
+                value={selectedRemoteWorkspaceId ?? ""}
+                onChange={(e) => setSelectedRemoteWorkspaceId(e.target.value || null)}
+                className="bg-transparent font-medium text-emerald-950 outline-none cursor-pointer max-w-[210px] truncate"
+              >
+                {remoteWorkspaces.length === 0 ? (
+                  <option value="">No remote workspace</option>
+                ) : (
+                  remoteWorkspaces.map((ws) => (
+                    <option key={ws.id} value={ws.id}>
+                      {ws.name} ({ws.branch})
+                    </option>
+                  ))
+                )}
+              </select>
+              {(() => {
+                const ws = remoteWorkspaces.find((w) => w.id === selectedRemoteWorkspaceId);
+                return (
+                  <>
+                    {ws && (
+                      <span className="rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-800">
+                        {ws.status}
+                      </span>
+                    )}
+                    {ws?.uncommitted_patch && (
+                      <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800" title="Uncommitted changes checkpointed in durable storage">
+                        Patch Saved
+                      </span>
+                    )}
+                    {ws && ["sleeping", "stopped", "failed"].includes(ws.status) && (
+                      <button
+                        type="button"
+                        onClick={() => handleRecoverRemoteWorkspace(ws.id)}
+                        disabled={recoveringWs}
+                        className="text-[11px] font-semibold text-emerald-700 hover:underline pl-1 cursor-pointer flex items-center gap-1"
+                        title="Wake compute and restore workspace from GitHub + saved patch"
+                      >
+                        <RefreshCw size={11} className={recoveringWs ? "animate-spin" : ""} />
+                        {recoveringWs ? "Waking..." : "Wake"}
+                      </button>
+                    )}
+                  </>
+                );
+              })()}
+              <button
+                type="button"
+                onClick={() => setShowRemoteModal(true)}
+                className="text-[11px] font-semibold text-emerald-700 hover:underline pl-1 cursor-pointer"
+                title="Connect a GitHub repository to a persistent cloud workspace"
+              >
+                + New
+              </button>
+            </div>
+          )}
 
           {/* Engine Selector for Coding Coworkers */}
           {isCodingCoworker && (
@@ -460,6 +656,46 @@ export function CoworkerChatView({
               Save Workspace
             </Button>
           </div>
+        </div>
+      )}
+
+      {/* Milestone H: Remote Cloud Workspace Register Modal */}
+      {showRemoteModal && (
+        <div className="border-b border-emerald-200 bg-emerald-50/70 px-5 py-3 text-xs space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="font-semibold text-emerald-800 flex items-center gap-1.5">
+              <Cloud size={14} /> Connect Persistent Cloud Workspace (GitHub / 24/7 $0)
+            </span>
+            <button onClick={() => setShowRemoteModal(false)} className="text-ink-faint hover:text-ink cursor-pointer">
+              ✕
+            </button>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <input
+              placeholder="Workspace Name (e.g. IRIS Cloud Sandbox)"
+              value={newRemoteName}
+              onChange={(e) => setNewRemoteName(e.target.value)}
+              className="rounded-lg border border-line bg-white px-2.5 py-1 text-xs outline-none focus:border-emerald-600"
+            />
+            <input
+              placeholder="GitHub Repository URL (e.g. https://github.com/KIRTAN0902/IRIS.git)"
+              value={newRemoteRepo}
+              onChange={(e) => setNewRemoteRepo(e.target.value)}
+              className="flex-1 min-w-[260px] rounded-lg border border-line bg-white px-2.5 py-1 text-xs font-mono outline-none focus:border-emerald-600"
+            />
+            <input
+              placeholder="Base Branch"
+              value={newRemoteBranch}
+              onChange={(e) => setNewRemoteBranch(e.target.value)}
+              className="w-24 rounded-lg border border-line bg-white px-2.5 py-1 text-xs font-mono outline-none focus:border-emerald-600"
+            />
+            <Button onClick={handleCreateRemoteWorkspace} className="text-xs bg-emerald-700 hover:bg-emerald-800 text-white px-3 py-1">
+              Connect Cloud Workspace
+            </Button>
+          </div>
+          <p className="text-[11px] text-emerald-700">
+            The remote container will clone this repository, isolate tasks on dedicated branches, and preserve uncommitted patches. Your local laptop can remain off.
+          </p>
         </div>
       )}
 
@@ -653,18 +889,30 @@ export function CoworkerChatView({
                         )}
 
                         {/* Git Actions (Commit, Push) */}
-                        {turn.coding_task_id && (
+                        {(turn.coding_task_id || turn.remote_workspace_id) && (
                           <div className="flex flex-wrap gap-2 pt-1">
                             <Button
                               variant="outline"
-                              onClick={() => handleCommitWorktree(turn.coding_task_id!)}
+                              onClick={() => {
+                                if (turn.remote_workspace_id) {
+                                  handleCommitRemote(turn.remote_workspace_id);
+                                } else if (turn.coding_task_id) {
+                                  handleCommitWorktree(turn.coding_task_id);
+                                }
+                              }}
                               className="text-xs h-8 px-2.5"
                             >
                               <GitCommit size={13} className="mr-1" /> Commit to Task Branch
                             </Button>
                             <Button
                               variant="outline"
-                              onClick={() => handlePushBranch(turn.coding_task_id!)}
+                              onClick={() => {
+                                if (turn.remote_workspace_id) {
+                                  handlePushRemote(turn.remote_workspace_id, turn.task_branch || "iris/task");
+                                } else if (turn.coding_task_id) {
+                                  handlePushBranch(turn.coding_task_id);
+                                }
+                              }}
                               className="text-xs h-8 px-2.5 text-ai border-ai/40 hover:bg-ai/10"
                             >
                               <UploadCloud size={13} className="mr-1" /> Push Branch to Remote

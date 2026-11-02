@@ -67,7 +67,8 @@ class TaskCreate(BaseModel):
 class CoworkerChatRequest(BaseModel):
     message: str = Field(min_length=1, max_length=15000)
     project_id: int | None = None
-    engine: str | None = None
+    engine: str | None = "antigravity"
+    workspace_id: str | None = None
 
 
 class TaskAssignment(BaseModel):
@@ -475,6 +476,7 @@ def list_coworker_messages(coworker_id: str, user: User = Depends(current_user),
             "task_id": t.id,
             "coding_task_id": t.coding_task_id,
             "project_id": t.project_id,
+            "remote_workspace_id": t.remote_workspace_id,
             "task_branch": (t.result or {}).get("task_branch"),
             "agent_id": (t.result or {}).get("agent_id") or "antigravity-cli",
             "worktree_path": (t.result or {}).get("worktree_path"),
@@ -535,12 +537,13 @@ def chat_coworker(coworker_id: str, data: CoworkerChatRequest, background: Backg
         coworker_id=c.id,
         parent_task_id=last_task.id if last_task else None,
         project_id=project_id,
+        remote_workspace_id=data.workspace_id,
         instruction=msg,
         objectives=[msg],
         acceptance_criteria=["Deliver verified implementation or natural conversational response."],
         required_capabilities=c.allowed_capabilities or [],
         dependencies=[],
-        permission_scope={"project_id": project_id, "preferred_agent": preferred_agent, "auto_run": True, "conversational_auto_execute": True},
+        permission_scope={"project_id": project_id, "workspace_id": data.workspace_id, "preferred_agent": preferred_agent, "auto_run": True, "conversational_auto_execute": True},
         status="queued"
     )
     db.add(t)

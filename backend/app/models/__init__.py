@@ -20,6 +20,7 @@ from app.models.project import Project
 from app.models.coding_project import CodingProject
 from app.models.coding_task import CodingTaskRecord, CodingSessionRecord
 from app.models.coworker import Coworker, CoworkerTask, CoworkerSession, CoworkerEvent, CoworkerApproval
+from app.models.remote_workspace import RemoteWorkspace
 from app.models.recurring_schedule import RecurringSchedule
 from app.models.signal import Signal
 from app.models.startup import Startup
@@ -60,6 +61,7 @@ __all__ = [
     "CoworkerSession",
     "CoworkerEvent",
     "CoworkerApproval",
+    "RemoteWorkspace",
     "SavingsGoal",
     "RecurringSchedule",
     "Signal",

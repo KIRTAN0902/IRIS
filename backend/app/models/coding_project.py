@@ -20,6 +20,8 @@ class CodingProject(Base):
     allowed_commands: Mapped[list[str]] = mapped_column(JSON, default=list)
     allowed_domains: Mapped[list[str]] = mapped_column(JSON, default=list)
     network_access: Mapped[bool] = mapped_column(Boolean, default=False)
+    git_repo_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    default_branch: Mapped[str | None] = mapped_column(String(128), nullable=True, default="main")
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=False)
     last_accessed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
