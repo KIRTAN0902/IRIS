@@ -146,7 +146,7 @@ def register_exception_handlers(app: FastAPI) -> None:
         )
 
     @app.exception_handler(IntegrityError)
-    async def _integrity_error(_: Request, exc: IntegrityError) -> JSONResponse:
+    async def _integrity_error(request: Request, exc: IntegrityError) -> JSONResponse:
         logger.warning("database_integrity_error")
         return error_response(
             status.HTTP_409_CONFLICT,

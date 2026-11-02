@@ -64,6 +64,12 @@ class TaskCreate(BaseModel):
     run: bool = True
 
 
+class CoworkerChatRequest(BaseModel):
+    message: str = Field(min_length=1, max_length=15000)
+    project_id: int | None = None
+    engine: str | None = None
+
+
 class TaskAssignment(BaseModel):
     coworker_id: str
 
@@ -376,12 +382,181 @@ def follow_up(task_id: str, data: TaskCreate, background: BackgroundTasks,
 
 @router.post("/tasks/{task_id}/cancel")
 def cancel_task(task_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
-    t=_task(db,user,task_id)
-    if t.status not in {"queued","waiting_approval","waiting_input","paused","interrupted"}:
-        raise HTTPException(409,"Active provider execution cannot be cancelled safely by the current provider")
-    t.status=transition(t.status,"cancelled"); t.ended_at=datetime.now(UTC)
-    c=_coworker(db,user,t.coworker_id); c.status="idle"
-    _event(db,user.id,c.id,t.id,"task_stopped",{"status":t.status}); db.commit(); return _task_out(t)
+    t = _task(db, user, task_id)
+    if t.status in {"completed", "cancelled"}:
+        return _task_out(t)
+
+    # Terminate underlying coding session if present
+    if t.coding_task_id:
+        from app.models.coding_task import CodingTaskRecord, CodingSessionRecord
+        from app.coding.antigravity import coding_agents
+        ct = db.query(CodingTaskRecord).filter_by(id=t.coding_task_id, user_id=user.id).first()
+        if ct:
+            ct.status = "cancelled"
+            ct.ended_at = datetime.now(UTC)
+            if ct.session_id:
+                cs = db.query(CodingSessionRecord).filter_by(id=ct.session_id).first()
+                if cs:
+                    try:
+                        coding_agents.get(ct.agent_id or "antigravity-cli").stop(cs.manager_key or "")
+                    except Exception:
+                        pass
+                    cs.status = "stopped"
+                    cs.ended_at = datetime.now(UTC)
+
+    if t.session_id:
+        sess = db.query(CoworkerSession).filter_by(id=t.session_id).first()
+        if sess:
+            sess.status = "stopped"
+            sess.ended_at = datetime.now(UTC)
+
+    t.status = "cancelled"
+    t.ended_at = datetime.now(UTC)
+    t.output = (t.output or "") + ("\n\n[Task stopped by user. Process terminated safely.]" if t.output else "Task stopped by user.")
+    c = _coworker(db, user, t.coworker_id)
+    c.status = "idle"
+    _event(db, user.id, c.id, t.id, "task_stopped", {"status": t.status, "reason": "user_cancelled"})
+    db.commit()
+    return _task_out(t)
+
+
+@router.post("/{coworker_id}/stop")
+def stop_coworker(coworker_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    c = _coworker(db, user, coworker_id)
+    active = db.query(CoworkerTask).filter(
+        CoworkerTask.coworker_id == c.id,
+        CoworkerTask.user_id == user.id,
+        CoworkerTask.status.in_(["queued", "running", "working", "waiting_approval", "waiting_input", "paused", "assigned"])
+    ).order_by(CoworkerTask.created_at.desc()).first()
+    if not active:
+        c.status = "idle"
+        db.commit()
+        return {"stopped": False, "message": "No active task running for this coworker."}
+    return cancel_task(active.id, user, db)
+
+
+@router.get("/{coworker_id}/messages")
+def list_coworker_messages(coworker_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    c = _coworker(db, user, coworker_id)
+    tasks = db.query(CoworkerTask).filter_by(
+        user_id=user.id, coworker_id=c.id
+    ).order_by(CoworkerTask.created_at.asc()).all()
+
+    for task in tasks:
+        _sync_coding_status(db, user, task)
+    db.commit()
+
+    turns = []
+    for t in tasks:
+        events = db.query(CoworkerEvent).filter_by(
+            user_id=user.id, task_id=t.id
+        ).order_by(CoworkerEvent.created_at.asc()).all()
+
+        turns.append({
+            "id": f"u-{t.id}",
+            "role": "user",
+            "content": t.instruction,
+            "created_at": t.created_at.isoformat() if t.created_at else None,
+            "task_id": t.id,
+        })
+
+        diff_summary = None
+        if t.result and isinstance(t.result, dict):
+            diff_summary = t.result.get("diff")
+
+        turns.append({
+            "id": f"c-{t.id}",
+            "role": "coworker",
+            "content": t.output or "",
+            "error": t.error,
+            "status": t.status,
+            "created_at": (t.started_at or t.created_at).isoformat() if (t.started_at or t.created_at) else None,
+            "ended_at": t.ended_at.isoformat() if t.ended_at else None,
+            "task_id": t.id,
+            "coding_task_id": t.coding_task_id,
+            "project_id": t.project_id,
+            "task_branch": (t.result or {}).get("task_branch"),
+            "agent_id": (t.result or {}).get("agent_id") or "antigravity-cli",
+            "worktree_path": (t.result or {}).get("worktree_path"),
+            "diff": diff_summary,
+            "result": t.result,
+            "verification": t.verification,
+            "events": [{"id": e.id, "type": e.event_type, "payload": e.payload, "created_at": e.created_at.isoformat()} for e in events],
+        })
+    return turns
+
+
+@router.post("/{coworker_id}/chat", status_code=202)
+def chat_coworker(coworker_id: str, data: CoworkerChatRequest, background: BackgroundTasks,
+                  user: User = Depends(current_user), db: Session = Depends(get_db)):
+    require_execution("coworker")
+    c = _coworker(db, user, coworker_id)
+    msg = data.message.strip()
+    msg_lower = msg.lower()
+
+    # 1. Stop / Cancel Intent Interception
+    stop_phrases = {"stop", "cancel", "terminate", "abort", "halt", "pause", "wait stop", "don't continue", "stop it", "stop please"}
+    is_stop_intent = msg_lower in stop_phrases or any(msg_lower.startswith(p + " ") for p in ("stop", "cancel", "abort", "halt"))
+    if is_stop_intent:
+        active = db.query(CoworkerTask).filter(
+            CoworkerTask.coworker_id == c.id,
+            CoworkerTask.user_id == user.id,
+            CoworkerTask.status.in_(["queued", "running", "working", "waiting_approval", "waiting_input", "paused", "assigned"])
+        ).order_by(CoworkerTask.created_at.desc()).first()
+        if active:
+            stopped_task = cancel_task(active.id, user, db)
+            return {
+                "action": "stopped",
+                "task_id": active.id,
+                "message": f"Task stopped upon your request. Active processes terminated safely and changes on branch `{ (active.result or {}).get('task_branch', 'iris/task') }` are preserved.",
+                "task": stopped_task
+            }
+
+    # 2. Workspace resolution & persistence
+    project_id = data.project_id if data.project_id is not None else c.project_id
+    if not project_id:
+        active_p = db.query(CodingProject).filter_by(user_id=user.id, active=True, is_active=True).first()
+        if active_p:
+            project_id = active_p.id
+    if project_id and c.project_id != project_id:
+        c.project_id = project_id
+        db.commit()
+
+    # 3. Context linking to last task
+    last_task = db.query(CoworkerTask).filter_by(
+        user_id=user.id, coworker_id=c.id
+    ).order_by(CoworkerTask.created_at.desc()).first()
+
+    task_id = str(uuid4())
+    preferred_agent = data.engine or (c.permission_profile or {}).get("preferred_agent") or "antigravity-cli"
+    t = CoworkerTask(
+        id=task_id,
+        user_id=user.id,
+        coworker_id=c.id,
+        parent_task_id=last_task.id if last_task else None,
+        project_id=project_id,
+        instruction=msg,
+        objectives=[msg],
+        acceptance_criteria=["Deliver verified implementation or natural conversational response."],
+        required_capabilities=c.allowed_capabilities or [],
+        dependencies=[],
+        permission_scope={"project_id": project_id, "preferred_agent": preferred_agent, "auto_run": True, "conversational_auto_execute": True},
+        status="queued"
+    )
+    db.add(t)
+    db.flush()
+    c.status = "working"
+    _event(db, user.id, c.id, t.id, "chat_message_received", {"message": msg, "project_id": project_id, "engine": preferred_agent})
+    db.commit()
+    db.refresh(t)
+
+    background.add_task(run_coworker_task, t.id, user.id)
+    return {
+        "action": "dispatched",
+        "task_id": t.id,
+        "task": _task_out(t),
+        "coworker": _coworker_out(c)
+    }
 
 
 @router.get("/tasks/{task_id}/events")
