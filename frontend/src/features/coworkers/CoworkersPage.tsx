@@ -194,6 +194,7 @@ export function CoworkersPage() {
               selectedProjectId={selected.project_id}
               onProjectChange={(pid) => updateProject(pid ? String(pid) : "")}
               projects={projects}
+              onRefreshProjects={refresh}
             />
           </section>
         ) : (

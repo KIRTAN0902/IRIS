@@ -7,6 +7,7 @@ import {
   ChevronUp,
   Clock,
   Code2,
+  FolderPlus,
   GitBranch,
   GitCommit,
   HardDrive,
@@ -26,6 +27,7 @@ type Project = {
   id: number;
   name: string;
   directory: string;
+  is_active?: boolean;
   read_access?: boolean;
   write_access?: boolean;
   command_access?: boolean;
@@ -97,6 +99,7 @@ interface CodingCoworkerWorkspaceProps {
   selectedProjectId: number | null;
   onProjectChange: (projectId: number | null) => void;
   projects: Project[];
+  onRefreshProjects?: () => Promise<void>;
 }
 
 export function CodingCoworkerWorkspace({
@@ -105,6 +108,7 @@ export function CodingCoworkerWorkspace({
   selectedProjectId,
   onProjectChange,
   projects,
+  onRefreshProjects,
 }: CodingCoworkerWorkspaceProps) {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [selectedAgent, setSelectedAgent] = useState<string>("antigravity-cli");
@@ -116,6 +120,9 @@ export function CodingCoworkerWorkspace({
   const [diffData, setDiffData] = useState<DiffInfo | null>(null);
   const [rawOutput, setRawOutput] = useState<string>("");
   const [showTechnicalDetails, setShowTechnicalDetails] = useState(false);
+  const [showRegisterModal, setShowRegisterModal] = useState(false);
+  const [regName, setRegName] = useState("IRIS");
+  const [regDir, setRegDir] = useState("C:\\kirtan\\IRIS");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successNotice, setSuccessNotice] = useState<string | null>(null);
@@ -204,6 +211,80 @@ export function CodingCoworkerWorkspace({
     void refreshAgents();
     void refreshTasks();
   }, [refreshAgents, refreshTasks]);
+
+  // Auto-select active or first available project if none is currently selected
+  useEffect(() => {
+    if (!selectedProjectId && projects.length > 0) {
+      const preferred = projects.find((p) => p.is_active) ?? projects[0];
+      if (preferred) {
+        onProjectChange(preferred.id);
+      }
+    }
+  }, [selectedProjectId, projects, onProjectChange]);
+
+  const handleBrowseDir = async () => {
+    try {
+      const path = await (window as unknown as { irisDesktop?: { selectProjectDirectory?: () => Promise<string | null> } })
+        .irisDesktop?.selectProjectDirectory?.();
+      if (path) {
+        setRegDir(path);
+      }
+    } catch {
+      // ignore
+    }
+  };
+
+  const handleRegisterWorkspace = async (customName?: string, customDir?: string) => {
+    const targetName = (customName || regName).trim();
+    const targetDir = (customDir || regDir).trim();
+    if (!targetName || !targetDir) return;
+
+    setLoading(true);
+    setError(null);
+    try {
+      const created = await api.post<Project>("/coding/projects", {
+        name: targetName,
+        directory: targetDir,
+        aliases: [targetName.toLowerCase(), "repo", "core"],
+      });
+      // Enable permissions immediately for coworker execution
+      await api.patch(`/coding/projects/${created.id}`, {
+        write_access: true,
+        command_access: true,
+        allowed_commands: ["command(git)", "command(pytest)", "command(npm)"],
+        is_active: true,
+      });
+      setShowRegisterModal(false);
+      setSuccessNotice(`Workspace "${targetName}" registered successfully.`);
+      if (onRefreshProjects) {
+        await onRefreshProjects();
+      }
+      onProjectChange(created.id);
+    } catch (err) {
+      setError(`Failed to register workspace: ${err}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleEnablePermissions = async (projId: number) => {
+    setLoading(true);
+    try {
+      await api.patch(`/coding/projects/${projId}`, {
+        write_access: true,
+        command_access: true,
+        allowed_commands: ["command(git)", "command(pytest)", "command(npm)"],
+      });
+      setSuccessNotice("Workspace write and command permissions granted.");
+      if (onRefreshProjects) {
+        await onRefreshProjects();
+      }
+    } catch (err) {
+      setError(`Failed to update permissions: ${err}`);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const activeProject = projects.find((p) => p.id === selectedProjectId) ?? null;
 
@@ -427,13 +508,24 @@ export function CodingCoworkerWorkspace({
               value={selectedProjectId ?? ""}
               onChange={(e) => onProjectChange(e.target.value ? Number(e.target.value) : null)}
             >
-              <option value="">Select Project Workspace</option>
+              <option value="">
+                {projects.length === 0 ? "No workspaces registered" : "Select Project Workspace"}
+              </option>
               {projects.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.name} ({p.directory})
                 </option>
               ))}
             </select>
+            <button
+              type="button"
+              onClick={() => setShowRegisterModal((v) => !v)}
+              className="flex items-center gap-1 rounded-lg border border-line bg-surface px-2 py-1.5 text-xs font-medium text-ink-dim hover:text-ink hover:bg-ops-panel transition cursor-pointer"
+              title="Register a new workspace repository"
+            >
+              <FolderPlus size={13} className="text-ai" />
+              <span>Add</span>
+            </button>
           </div>
 
           <div className="flex items-center gap-1.5 text-xs">
@@ -453,6 +545,103 @@ export function CodingCoworkerWorkspace({
           </div>
         </div>
       </section>
+
+      {/* Register Workspace Panel */}
+      {showRegisterModal && (
+        <section className="rounded-2xl border border-ai/30 bg-ai/5 p-4 space-y-3 shadow-sm">
+          <div className="flex items-center justify-between">
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-ai flex items-center gap-1.5">
+              <FolderPlus size={14} /> Register Coding Workspace Repository
+            </h3>
+            <button
+              onClick={() => setShowRegisterModal(false)}
+              className="text-xs text-ink-faint hover:text-ink cursor-pointer"
+            >
+              ✕ Close
+            </button>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div>
+              <label className="block text-[11px] font-medium text-ink-dim">Workspace Name</label>
+              <input
+                className="mt-1 w-full rounded-lg border border-line bg-white px-2.5 py-1.5 text-xs text-ink outline-none focus:border-ai"
+                placeholder="e.g. IRIS"
+                value={regName}
+                onChange={(e) => setRegName(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="block text-[11px] font-medium text-ink-dim">Directory Path (Absolute)</label>
+              <div className="mt-1 flex gap-1.5">
+                <input
+                  className="w-full rounded-lg border border-line bg-white px-2.5 py-1.5 text-xs font-mono text-ink outline-none focus:border-ai"
+                  placeholder="C:\kirtan\IRIS"
+                  value={regDir}
+                  onChange={(e) => setRegDir(e.target.value)}
+                />
+                <button
+                  type="button"
+                  onClick={handleBrowseDir}
+                  className="rounded-lg border border-line bg-white px-2.5 py-1.5 text-xs text-ink hover:bg-ops-panel cursor-pointer shrink-0"
+                  title="Browse folder via desktop picker"
+                >
+                  Browse
+                </button>
+              </div>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-ai/20">
+            <button
+              type="button"
+              onClick={() => {
+                setRegName("IRIS");
+                setRegDir("C:\\kirtan\\IRIS");
+              }}
+              className="text-[11px] text-ai hover:underline cursor-pointer"
+            >
+              Quick fill: C:\kirtan\IRIS
+            </button>
+            <div className="flex gap-2">
+              <Button variant="ghost" onClick={() => setShowRegisterModal(false)} className="text-xs">
+                Cancel
+              </Button>
+              <Button
+                onClick={() => void handleRegisterWorkspace()}
+                disabled={!regName.trim() || !regDir.trim() || loading}
+                className="text-xs bg-ai hover:bg-ai/90 text-white"
+              >
+                Register & Link Workspace
+              </Button>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* Selected Workspace Active Banner */}
+      {activeProject && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-ops-panel px-4 py-2.5 text-xs border border-line shadow-xs">
+          <div className="flex items-center gap-2 min-w-0">
+            <HardDrive size={14} className="text-ai shrink-0" />
+            <span className="font-semibold text-ink">{activeProject.name}</span>
+            <span className="font-mono text-ink-dim truncate">{activeProject.directory}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className={`inline-flex items-center gap-1 rounded px-2 py-0.5 text-[10px] font-medium ${activeProject.write_access ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"}`}>
+              <Shield size={10} />
+              {activeProject.write_access ? "Write & Commands Granted" : "Read-Only"}
+            </span>
+            {!activeProject.write_access && (
+              <button
+                type="button"
+                onClick={() => void handleEnablePermissions(activeProject.id)}
+                className="rounded bg-ai/10 px-2.5 py-1 text-[11px] font-medium text-ai hover:bg-ai/20 transition cursor-pointer"
+              >
+                Enable Write Permissions
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Notifications */}
       {error && (
@@ -656,12 +845,48 @@ export function CodingCoworkerWorkspace({
                 )}
               </div>
             </article>
+          ) : projects.length === 0 ? (
+            <div className="rounded-2xl border-2 border-dashed border-ai/30 bg-ai/5 p-8 text-center space-y-4">
+              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-ai/10 text-ai">
+                <HardDrive size={28} />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-ink">No Coding Workspace Registered</h3>
+                <p className="mt-1.5 max-w-md mx-auto text-xs text-ink-dim">
+                  To collaborate with the Coding Coworker, register a local Git repository workspace. The coworker will formulate execution plans and implement changes within dedicated, isolated branches.
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+                <Button
+                  onClick={() => void handleRegisterWorkspace("IRIS", "C:\\kirtan\\IRIS")}
+                  disabled={loading}
+                  className="bg-ai hover:bg-ai/90 text-white text-xs font-medium px-4 py-2 cursor-pointer"
+                >
+                  Register Current Workspace (C:\kirtan\IRIS)
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => setShowRegisterModal(true)}
+                  className="text-xs cursor-pointer"
+                >
+                  Register Another Folder...
+                </Button>
+              </div>
+            </div>
+          ) : !activeProject ? (
+            <div className="rounded-2xl border border-dashed border-line bg-surface p-8 text-center text-ink-dim">
+              <HardDrive size={36} className="mx-auto text-ink-faint" />
+              <h3 className="mt-3 font-semibold text-ink">Choose a Project Workspace</h3>
+              <p className="mt-1 text-xs">
+                Select a workspace from the dropdown above to begin collaborating with the Coding Coworker.
+              </p>
+            </div>
           ) : (
             <div className="rounded-2xl border border-dashed border-line bg-surface p-8 text-center text-ink-dim">
               <Code2 size={36} className="mx-auto text-ink-faint" />
-              <h3 className="mt-3 font-semibold text-ink">Ready to Code</h3>
+              <h3 className="mt-3 font-semibold text-ink">Ready to Code in {activeProject.name}</h3>
               <p className="mt-1 text-xs">
-                Select a workspace and describe what you want built. The Coding Coworker will create a structured plan and execute it safely in an isolated branch.
+                Describe what you want built below. The Coding Coworker will create a structured plan and execute it safely in an isolated branch.
               </p>
             </div>
           )}

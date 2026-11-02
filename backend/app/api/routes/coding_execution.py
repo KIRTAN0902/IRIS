@@ -87,6 +87,27 @@ def agents():
 @router.get("/projects")
 def list_projects(user: User=Depends(current_user), db: Session=Depends(get_db)):
     projects=db.query(CodingProject).filter_by(user_id=user.id,active=True).order_by(CodingProject.last_accessed_at.desc().nullslast(),CodingProject.name.asc()).all()
+    if not projects:
+        from app.core.config import BASE_DIR
+        repo_root = BASE_DIR.parent
+        if (repo_root / ".git").exists():
+            p = CodingProject(
+                user_id=user.id,
+                name=repo_root.name.upper(),
+                directory=str(repo_root.resolve()),
+                aliases=[repo_root.name.lower(), "core", "repo"],
+                description=f"Local {repo_root.name} repository workspace",
+                read_access=True,
+                write_access=True,
+                command_access=True,
+                allowed_commands=["command(git)", "command(pytest)", "command(npm)"],
+                is_active=True,
+                active=True,
+            )
+            db.add(p)
+            db.commit()
+            db.refresh(p)
+            projects = [p]
     return [{**{k:getattr(p,k) for k in ("id","name","directory","aliases","description","read_access","write_access","command_access","network_access","active","is_active")},
              "allowed_commands":p.allowed_commands or [],
              "allowed_domains":p.allowed_domains or [],
