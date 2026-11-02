@@ -135,12 +135,22 @@ async def checkpoint_workspace(
     client = _get_client(ws)
     try:
         res = await client.checkpoint(workspace_id)
+        ws.previous_patch = ws.uncommitted_patch
         ws.uncommitted_patch = res.get("patch")
+        ws.checkpoint_hash = res.get("patch_hash")
+        ws.checkpoint_version = (ws.checkpoint_version or 0) + 1
+        ws.checkpoint_at = datetime.now(UTC)
         ws.current_commit_sha = res.get("current_commit_sha")
         ws.last_active_at = datetime.now(UTC)
         db.commit()
         db.refresh(ws)
-        return {"checkpointed": True, "workspace_id": workspace_id, "has_uncommitted": bool(ws.uncommitted_patch)}
+        return {
+            "checkpointed": True,
+            "workspace_id": workspace_id,
+            "has_uncommitted": bool(ws.uncommitted_patch),
+            "checkpoint_version": ws.checkpoint_version,
+            "checkpoint_hash": ws.checkpoint_hash,
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Checkpoint failed: {e}")
 
@@ -164,12 +174,22 @@ async def recover_workspace(
     try:
         await client.provision_workspace(workspace_id, ws.repo_url, target_branch)
         if ws.uncommitted_patch:
-            await client.restore(workspace_id, target_branch, ws.uncommitted_patch)
+            await client.restore(
+                workspace_id=workspace_id,
+                branch=target_branch,
+                patch=ws.uncommitted_patch,
+                expected_hash=ws.checkpoint_hash,
+            )
         ws.status = "idle"
         ws.last_active_at = datetime.now(UTC)
         db.commit()
         db.refresh(ws)
-        return {"recovered": True, "workspace_id": workspace_id, "branch": target_branch}
+        return {
+            "recovered": True,
+            "workspace_id": workspace_id,
+            "branch": target_branch,
+            "version": ws.checkpoint_version,
+        }
     except Exception as e:
         ws.status = "failed"
         db.commit()

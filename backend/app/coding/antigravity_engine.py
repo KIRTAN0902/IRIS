@@ -4,13 +4,57 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import signal
 import subprocess
+import sys
 import threading
 from datetime import UTC, datetime
 from typing import Any
 
 from app.coding.engine_base import EngineEvent, EngineSessionInfo, ICodingEngine
 from app.coding.git_workspace import run_git
+
+
+def _kill_process_tree(proc: subprocess.Popen) -> None:
+    """Terminate a process and all spawned child processes."""
+    if proc.poll() is not None:
+        return
+    pid = getattr(proc, "pid", None)
+    if not pid:
+        try:
+            proc.terminate()
+            proc.wait(timeout=1)
+        except Exception:
+            try:
+                proc.kill()
+            except Exception:
+                pass
+        return
+    if sys.platform == "win32":
+        try:
+            subprocess.run(["taskkill", "/F", "/T", "/PID", str(pid)], capture_output=True, timeout=5)
+        except Exception:
+            try:
+                proc.kill()
+            except Exception:
+                pass
+    else:
+        try:
+            pgid = os.getpgid(pid)
+            os.killpg(pgid, signal.SIGTERM)
+            try:
+                proc.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                os.killpg(pgid, signal.SIGKILL)
+        except Exception:
+            try:
+                proc.terminate()
+                proc.wait(timeout=2)
+            except Exception:
+                try:
+                    proc.kill()
+                except Exception:
+                    pass
 
 
 class AntigravityEngine(ICodingEngine):
@@ -99,16 +143,19 @@ class AntigravityEngine(ICodingEngine):
         if permissions and permissions.get("adc_auth"):
             env["AGY_ADC_AUTH"] = "true"
 
-        proc = subprocess.Popen(
-            argv,
-            cwd=workspace_dir,
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            bufsize=1,
-            env=env,
-        )
+        popen_kwargs: dict[str, Any] = {
+            "cwd": workspace_dir,
+            "stdin": subprocess.PIPE,
+            "stdout": subprocess.PIPE,
+            "stderr": subprocess.PIPE,
+            "text": True,
+            "bufsize": 1,
+            "env": env,
+        }
+        if sys.platform != "win32":
+            popen_kwargs["start_new_session"] = True
+
+        proc = subprocess.Popen(argv, **popen_kwargs)
 
         session_state = {
             "proc": proc,
@@ -198,14 +245,7 @@ class AntigravityEngine(ICodingEngine):
 
         proc = session.get("proc")
         if proc and proc.poll() is None:
-            try:
-                proc.terminate()
-                proc.wait(timeout=2)
-            except Exception:
-                try:
-                    proc.kill()
-                except Exception:
-                    pass
+            _kill_process_tree(proc)
         session["alive"] = False
         return True
 

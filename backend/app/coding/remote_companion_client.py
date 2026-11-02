@@ -40,6 +40,14 @@ class RemoteCompanionClient:
                 raise RemoteCompanionError(f"Remote companion unhealthy: {resp.text}")
             return resp.json()
 
+    async def ready(self) -> dict[str, Any]:
+        """Check if remote companion has git available and storage is writable."""
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            resp = await client.get(f"{self.base_url}/ready")
+            if resp.status_code != 200:
+                raise RemoteCompanionError(f"Remote companion not ready: {resp.text}")
+            return resp.json()
+
     async def provision_workspace(
         self,
         workspace_id: str,
@@ -128,9 +136,17 @@ class RemoteCompanionClient:
                 raise RemoteCompanionError(f"Checkpoint failed: {resp.text}")
             return resp.json()
 
-    async def restore(self, workspace_id: str, branch: str, patch: str | None = None) -> dict[str, Any]:
-        """Restore uncommitted patch into workspace."""
-        payload = {"branch": branch, "patch": patch}
+    async def restore(
+        self,
+        workspace_id: str,
+        branch: str,
+        patch: str | None = None,
+        expected_hash: str | None = None,
+    ) -> dict[str, Any]:
+        """Restore uncommitted patch into workspace with optional hash verification."""
+        payload: dict[str, Any] = {"branch": branch, "patch": patch}
+        if expected_hash:
+            payload["expected_hash"] = expected_hash
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             resp = await client.post(
                 f"{self.base_url}/api/workspaces/{workspace_id}/restore",

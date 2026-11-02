@@ -1,6 +1,8 @@
 # IRIS Remote Coding Companion (Hugging Face Docker Space)
 
-This directory contains the standalone containerized execution companion for **IRIS Milestone H**. It is designed to be deployed directly to a free **Hugging Face Spaces (Docker runtime)** space ($0 / no credit card required).
+This directory contains the standalone containerized execution companion for **IRIS Milestone H & H.1**. It is designed to be deployed directly to a free **Hugging Face Spaces (Docker runtime)** space ($0 / no credit card required).
+
+For comprehensive step-by-step deployment instructions, refer to **[DEPLOYMENT.md](DEPLOYMENT.md)**.
 
 ---
 

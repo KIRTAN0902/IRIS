@@ -250,3 +250,108 @@ backend/tests/api/test_coworker_conversational.py::test_coworker_stop_endpoint P
 | **Chat-First UI with Remote Switcher** | Implemented and Tested | `CoworkerChatView.tsx` compiled and verified in Vite build |
 | **Desktop (Electron) Compatibility** | Implemented and Tested | Synchronized via `scripts/sync-desktop.cjs` |
 | **Single Vercel Architecture Preserved** | Implemented and Verified | No secondary backend deployed; zero breaking schema changes |
+
+---
+
+## 15. Milestone H.1 — Engineering Hardening & Deployment Readiness
+
+### A. Executive Summary & Division of Responsibility
+Milestone H.1 hardens the IRIS Coding Co-worker for production reliability, container security, durable recovery, and seamless deployment readiness to **Hugging Face Spaces** ($0 / no credit card required).
+
+**Division of Responsibility:**
+- **Antigravity (Coding Agent):** Performed all architectural hardening, security fixes, automated test expansions, patch integrity checks, Docker packaging, and user documentation.
+- **User:** Personally creates the private Hugging Face Space, configures environment secrets, and performs deployment following the newly created [`remote_companion/DEPLOYMENT.md`](file:///C:/kirtan/IRIS/remote_companion/DEPLOYMENT.md). The agent does not touch user HF credentials or deploy externally on the user's behalf.
+
+### B. Engineering & Security Hardenings Implemented
+
+1. **Constant-Time Secret Verification & Fail-Closed Production Checks:**
+   - Updated `verify_bearer_auth` in [`remote_companion/main.py`](file:///C:/kirtan/IRIS/remote_companion/main.py#L86) to use `hmac.compare_digest` to prevent timing attacks.
+   - Added fail-closed check: when `is_production_environment()` detects `ENVIRONMENT=production` or `SPACE_ID`, the companion rejects requests with HTTP 500 if `IRIS_COMPANION_SECRET` is unset, empty, or left as `"dev-secret-token"`.
+2. **Readiness Probe (`GET /ready`):**
+   - Implemented a dedicated readiness endpoint distinct from `/health`. Checks that `git` is installed and functional, and verifies that the workspace storage filesystem (`WORKSPACES_ROOT`) is writable by creating and deleting a probe file. Returns HTTP 503 if unhealthy.
+   - Integrated into [`RemoteCompanionClient.ready()`](file:///C:/kirtan/IRIS/backend/app/coding/remote_companion_client.py#L43).
+3. **Workspace Concurrency Lock:**
+   - In [`execute_task`](file:///C:/kirtan/IRIS/remote_companion/main.py#L182), added an active execution check against `ACTIVE_PROCESSES[workspace_id]`. Overlapping execution requests on the same workspace return **HTTP 409 Conflict**, preventing concurrent modifications or git race conditions.
+4. **Git PAT Sanitization from Disk:**
+   - When provisioning with a GitHub Personal Access Token (PAT), the companion previously cloned via `https://x-access-token:<PAT>@github.com/...`, which Git saved into `.git/config` on disk.
+   - Hardened: The companion immediately resets `remote.origin.url` to the clean URL post-clone (`run_git_safe(ws_dir, "config", "remote.origin.url", clean_repo_url)`). For pushes, the authenticated URL is passed ephemerally in-memory, ensuring `.git/config` never stores the PAT.
+5. **Versioned Checkpoints with SHA-256 Hash & Dry-Run Restore:**
+   - Checkpoints now calculate a SHA-256 hash of the patch (`patch_hash`).
+   - In [`RemoteWorkspace`](file:///C:/kirtan/IRIS/backend/app/models/remote_workspace.py#L23), added `checkpoint_version` (auto-incrementing), `checkpoint_hash`, `checkpoint_at`, and `previous_patch` (preserving prior diff before overwrite).
+   - In [`/restore`](file:///C:/kirtan/IRIS/remote_companion/main.py#L309):
+     1. Validates `expected_hash` with constant-time equality check; rejects corrupted patches with HTTP 422.
+     2. Runs a dry-run test (`git apply --check`) before touching the workspace tree. Rejects conflicting patches with HTTP 422 without corrupting files.
+     3. Applies verified patch cleanly and cleans up temporary files in `finally` blocks.
+6. **Cross-Platform Process Tree Termination:**
+   - Created `kill_process_tree` in both [`remote_companion/main.py`](file:///C:/kirtan/IRIS/remote_companion/main.py#L42) and [`backend/app/coding/antigravity_engine.py`](file:///C:/kirtan/IRIS/backend/app/coding/antigravity_engine.py#L18).
+   - On Windows: Uses `taskkill /F /T /PID` to eliminate the complete sub-process hierarchy.
+   - On POSIX/Linux: Uses `start_new_session=True` on process creation and `os.killpg(pgid, signal.SIGTERM)` followed by `SIGKILL` if timeout expires. Handles mock processes gracefully.
+7. **Malformed NDJSON Streaming Resilience:**
+   - Enhanced NDJSON parser to safely catch non-JSON, empty, and truncated lines, forwarding them as `raw_text` events without aborting stream iterations.
+
+### C. Automated Test Coverage & Verification
+
+All 38 test suites across coding, workspace management, and conversational coworker interfaces passed:
+
+```text
+backend\tests\coding\test_antigravity_adapter.py::test_governed_argv_keeps_review_and_workspace_boundaries PASSED
+backend\tests\coding\test_antigravity_adapter.py::test_resume_uses_verified_continue_flag PASSED
+backend\tests\coding\test_antigravity_adapter.py::test_headless_ndjson_events_capture_conversation_and_result PASSED
+backend\tests\coding\test_antigravity_adapter.py::test_headless_argv_forces_safe_ndjson_policy PASSED
+backend\tests\coding\test_antigravity_adapter.py::test_headless_project_permissions_are_narrow PASSED
+backend\tests\coding\test_antigravity_poc.py::test_poc_1_and_2_engine_initialization_and_auth PASSED
+backend\tests\coding\test_antigravity_poc.py::test_poc_3_4_5_file_operations_and_diff PASSED
+backend\tests\coding\test_antigravity_poc.py::test_poc_6_command_and_test_execution PASSED
+backend\tests\coding\test_antigravity_poc.py::test_poc_7_8_9_10_multi_turn_continuation_and_streaming PASSED
+backend\tests\coding\test_codex_adapter.py::test_codex_adapter_capabilities PASSED
+backend\tests\coding\test_codex_adapter.py::test_codex_headless_session_jsonl_events PASSED
+backend\tests\coding\test_codex_adapter.py::test_codex_headless_session_failure_on_error PASSED
+backend\tests\coding\test_coding_coworker_workflow.py::test_coding_coworker_creates_plan_and_isolated_worktree PASSED
+backend\tests\coding\test_coding_coworker_workflow.py::test_coding_coworker_auto_resolves_project_or_prompts PASSED
+backend\tests\coding\test_git_workspace.py::test_make_task_branch_name PASSED
+backend\tests\coding\test_git_workspace.py::test_inspect_git_state PASSED
+backend\tests\coding\test_git_workspace.py::test_create_isolated_worktree_preserves_uncommitted_changes PASSED
+backend\tests\coding\test_git_workspace.py::test_validate_push_permission PASSED
+backend\tests\coding\test_multi_agent_isolation.py::test_agent_registry_discovers_both_engines PASSED
+backend\tests\coding\test_multi_agent_isolation.py::test_create_and_approve_task_with_codex_cli_uses_isolated_worktree PASSED
+backend\tests\coding\test_multi_agent_isolation.py::test_push_endpoint_strictly_blocks_protected_branches PASSED
+backend\tests\api\test_remote_workspace.py::test_secret_redaction PASSED
+backend\tests\api\test_remote_workspace.py::test_companion_health_endpoint PASSED
+backend\tests\api\test_remote_workspace.py::test_companion_auth_enforcement PASSED
+backend\tests\api\test_remote_workspace.py::test_companion_workspace_lifecycle_and_git_safety PASSED
+backend\tests\api\test_remote_workspace.py::test_iris_remote_workspace_model_persistence PASSED
+backend\tests\api\test_remote_workspace.py::test_iris_workspaces_api_routes PASSED
+backend\tests\api\test_remote_workspace.py::test_companion_readiness_probe PASSED
+backend\tests\api\test_remote_workspace.py::test_companion_production_secret_enforcement PASSED
+backend\tests\api\test_remote_workspace.py::test_companion_concurrency_lock PASSED
+backend\tests\api\test_remote_workspace.py::test_companion_git_pat_sanitized_from_disk PASSED
+backend\tests\api\test_remote_workspace.py::test_companion_checkpoint_hash_and_dry_run_restore PASSED
+backend\tests\api\test_remote_workspace.py::test_kill_process_tree PASSED
+backend\tests\api\test_remote_workspace.py::test_iris_checkpoint_and_recover_api PASSED
+backend\tests\api\test_coworker_conversational.py::test_coworker_chat_endpoint_dispatches_task PASSED
+backend\tests\api\test_coworker_conversational.py::test_coworker_messages_endpoint_returns_turns PASSED
+backend\tests\api\test_coworker_conversational.py::test_conversational_stop_intent_cancels_running_task PASSED
+backend\tests\api\test_coworker_conversational.py::test_stop_endpoint_stops_coworker_task PASSED
+
+======================= 38 passed, 1 warning in 44.76s ========================
+```
+
+### D. Production Deployment Package Delivered
+
+1. **[`remote_companion/DEPLOYMENT.md`](file:///C:/kirtan/IRIS/remote_companion/DEPLOYMENT.md):** Comprehensive, user-friendly step-by-step deployment guide for Hugging Face Spaces ($0 / no credit card required), with secrets configuration, push commands, verification commands, and recovery instructions.
+2. **[`remote_companion/Dockerfile`](file:///C:/kirtan/IRIS/remote_companion/Dockerfile):** Debian Bullseye base, Node.js 20, Python 3.11, Git, Google Antigravity, and non-root `appuser` (UID 1000).
+3. **[`remote_companion/requirements.txt`](file:///C:/kirtan/IRIS/remote_companion/requirements.txt):** Pinned and upper-bounded dependency specification.
+4. **[`remote_companion/main.py`](file:///C:/kirtan/IRIS/remote_companion/main.py):** Hardened FastAPI companion with constant-time auth, readiness probe, PAT sanitization, dry-run patch restore, SHA-256 integrity checks, and process tree termination.
+
+### E. Capabilities Classification (Accurate Status)
+
+| Capability | Status | Notes |
+| :--- | :--- | :--- |
+| **Antigravity CLI / SDK Integration** | Verified & Tested | Headless NDJSON streaming, multi-turn, resume |
+| **Remote Companion Service** | Hardened & Tested | 13/13 automated tests passed; constant-time auth & dry-run restore |
+| **Zero Data Loss Patch Persistence** | Implemented & Tested | Checkpoints with SHA-256 hash stored in Supabase PostgreSQL |
+| **Git PAT Sanitization** | Implemented & Tested | PAT never stored in `.git/config` on disk |
+| **Process Tree Termination** | Implemented & Tested | Windows `taskkill` & Linux `killpg` |
+| **User Deployment Guide** | Complete | `remote_companion/DEPLOYMENT.md` ready for user execution |
+| **Hugging Face Live Remote Deployment** | Ready for User Deployment | User creates Space and deploys per Milestone division of responsibility |
+

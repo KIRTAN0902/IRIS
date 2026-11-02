@@ -123,6 +123,7 @@ def test_poc_7_8_9_10_multi_turn_continuation_and_streaming(test_git_repo: Path,
 
     class MockProc:
         def __init__(self):
+            self.pid = 12345
             self.stdout = LineIter()
             self.stdin = io.StringIO()
             self.stderr = io.StringIO()
