@@ -55,6 +55,16 @@ def test_vercel_lifespan_skips_process_local_startup(monkeypatch, db):
     assert rejected.json()["error"]["code"] == "DATABASE_CONFIGURATION_REQUIRED"
 
 
+def test_health_endpoint_available_at_root_and_api_prefix(client):
+    r_root = client.get("/health")
+    r_api = client.get("/api/health")
+
+    assert r_root.status_code == 200
+    assert r_api.status_code == 200
+    assert r_root.json()["status"] == r_api.json()["status"]
+    assert r_root.json()["database"] == r_api.json()["database"]
+
+
 def test_development_cors_allows_known_origin_and_rejects_arbitrary_origin(client):
     allowed = client.get("/health", headers={"Origin": "http://localhost:5173"})
     denied = client.get("/health", headers={"Origin": "https://untrusted.example"})

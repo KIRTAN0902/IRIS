@@ -164,7 +164,8 @@ def create_app() -> FastAPI:
     )
 
     api = settings.api_prefix
-    app.include_router(health.router)  # /health stays at root
+    app.include_router(health.router)  # /health at root (Vercel/health-check probes)
+    app.include_router(health.router, prefix=api)  # /api/health for frontend api.get("/health")
     app.include_router(users.router, prefix=api)
     app.include_router(tasks.router, prefix=api)
     app.include_router(goals.router, prefix=api)
