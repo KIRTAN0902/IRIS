@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "@/api/client";
 import { Button } from "@/components/ui/Button";
+import { CodingCoworkerWorkspace } from "./CodingCoworkerWorkspace";
 
 type Coworker = {
   id: string; name: string; role: string; description: string; specialisation: string;
@@ -39,7 +40,14 @@ export function CoworkersPage() {
   const [editing, setEditing] = useState(false);
   const [recommendation, setRecommendation] = useState("");
   const [computerDemo, setComputerDemo] = useState<ComputerDemo | null>(null);
+  const [viewMode, setViewMode] = useState<"workspace" | "profile">("workspace");
   const selected = useMemo(() => coworkers.find((c) => c.id === selectedId) ?? null, [coworkers, selectedId]);
+
+  const isCodingCoworker = useMemo(() => {
+    if (!selected) return false;
+    const role = selected.role.toLowerCase();
+    return role.includes("coding") || role === "developer" || role === "software developer";
+  }, [selected]);
 
   const refresh = useCallback(async () => {
     try {
@@ -168,14 +176,66 @@ export function CoworkersPage() {
         <h3 className="pt-3 text-xs font-semibold uppercase tracking-wider text-ink-faint">Create from a template</h3>
         <div className="grid grid-cols-2 gap-2">{templates.map((t) => <button key={t.key} onClick={() => createFrom(t)} className="rounded-xl border border-ops-line bg-white p-3 text-left hover:border-ai/40"><span className="block text-sm font-medium">{t.name}</span><span className="mt-1 block text-xs text-ink-faint">{t.specialisation}</span></button>)}</div>
       </section>
-      {selected ? <section className="min-w-0 space-y-4 rounded-2xl border border-ops-line bg-white p-4 shadow-sm sm:p-6">
-        <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs uppercase tracking-wider text-ink-faint">{selected.role} · {selected.specialisation}</p><h2 className="mt-1 text-2xl font-semibold">{selected.name}</h2><p className="mt-1 text-sm text-ink-dim">{selected.description || "Custom IRIS coworker"}</p></div><button onClick={() => setEditing((v) => !v)} className="rounded-lg border border-ops-line px-3 py-2 text-sm hover:bg-ops-ground">{editing ? "Close editor" : "Edit profile"}</button></div>
-        {editing && <div className="rounded-xl bg-ops-ground p-4"><label className="block text-xs font-medium text-ink-dim">Assigned project workspace</label><select value={selected.project_id ?? ""} onChange={(e) => updateProject(e.target.value)} className="mt-1 w-full rounded-lg border border-ops-line bg-white p-2 text-sm"><option value="">No project assigned</option>{projects.map((p) => <option key={p.id} value={p.id}>{p.name} · {p.directory}</option>)}</select><p className="mt-1 text-xs text-ink-faint">Project permissions are enforced by the backend. Coworkers do not automatically receive write, command, or network access.</p><div className="mt-3 flex flex-wrap gap-2"><button onClick={editProfile} className="rounded-lg border border-ops-line bg-white px-3 py-2 text-sm">Edit identity, instructions and capabilities</button><button onClick={editResponsibilities} className="rounded-lg border border-ops-line bg-white px-3 py-2 text-sm">Edit responsibilities</button></div><p className="mt-3 text-xs text-ink-faint">Granted capabilities: {selected.allowed_capabilities.length ? selected.allowed_capabilities.join(", ") : "none"}. Host command, email, drive and device capabilities remain denied without a scoped adapter.</p></div>}
-        <div className="grid gap-3 sm:grid-cols-2"><Info label="Availability" value={selected.availability ? "Available" : "Unavailable"}/><Info label="Configuration" value={`Version ${selected.config_version}`}/><Info label="Provider preference" value={`${selected.preferred_provider ?? "IRIS default"}${selected.preferred_model ? ` · ${selected.preferred_model}` : ""}`}/><Info label="Workspace" value={projects.find((p) => p.id === selected.project_id)?.name ?? "None"}/></div>
-        <div className="rounded-xl border border-ops-line p-4"><h3 className="font-medium">Assign work</h3><textarea value={instruction} onChange={(e) => setInstruction(e.target.value)} rows={3} placeholder="Describe the task, expected result, and constraints…" className="mt-3 w-full resize-y rounded-lg border border-ops-line p-3 text-sm outline-none focus:border-ai"/>{recommendation && <p className="mt-2 text-xs text-ai">{recommendation}</p>}<div className="mt-2 flex flex-wrap items-center justify-between gap-2"><p className="text-xs text-ink-faint">Tools are restricted to this coworker’s read-only capability grants. Writes require a separate approval.</p><div className="flex gap-2"><Button variant="outline" onClick={() => void recommend()} disabled={!instruction.trim()}>Ask IRIS Supervisor</Button><Button onClick={assign} disabled={!instruction.trim() || !selected.availability}>Assign task</Button></div></div></div>
-        <div><h3 className="font-medium">Task history</h3><div className="mt-2 space-y-2">{(selected.tasks ?? []).map((t) => <article key={t.id} className="rounded-xl border border-ops-line p-3"><div className="flex flex-wrap justify-between gap-2"><strong className="text-sm">{t.instruction}</strong><span className={`text-xs capitalize ${statusTone[t.status] ?? "text-ink-dim"}`}>{t.status.replaceAll("_", " ")}</span></div>{t.output && <p className="mt-2 whitespace-pre-wrap text-sm text-ink-dim">{t.output}</p>}{t.error && <p className="mt-2 text-sm text-red-700">{t.error}</p>}{t.verification && <p className="mt-2 text-xs text-ink-faint">Verification: {t.verification.state ?? "pending"} · independently verified: {t.verification.independently_verified ? "yes" : "no"}{t.verification.unresolved_items?.length ? ` · unresolved: ${t.verification.unresolved_items.join("; ")}` : ""}</p>}<div className="mt-2 flex flex-wrap gap-2">{t.status === "completed_with_issues" && <button onClick={() => act(() => api.post(`/coworkers/tasks/${t.id}/review`, { accepted: true, reason: "User reviewed and accepted the persisted deliverable in IRIS." }))} className="text-xs font-medium text-amber-800 underline">Review and accept deliverable</button>}{["queued","interrupted","paused"].includes(t.status) && <button onClick={() => act(() => api.post(`/coworkers/tasks/${t.id}/run`, {}))} className="text-xs text-ai underline">Run / resume / retry explicitly</button>}{t.status==="queued" && <button onClick={() => act(() => api.post(`/coworkers/tasks/${t.id}/pause`, {}))} className="text-xs text-amber-700 underline">Pause queued task</button>}{["queued","waiting_approval","waiting_input","paused","interrupted"].includes(t.status) && <button onClick={() => act(() => api.post(`/coworkers/tasks/${t.id}/cancel`, {}))} className="text-xs text-red-700 underline">Stop</button>}{(t.project_id || t.coding_task_id) && <a href="/projects" className="text-xs text-ai underline">Review coding brief and execution in Projects</a>}</div></article>)}{(selected.tasks ?? []).length===0 && <p className="text-sm text-ink-faint">No assigned tasks yet.</p>}</div></div>
-        <div><h3 className="font-medium">Recent execution events</h3><ol className="mt-2 max-h-48 space-y-2 overflow-auto">{events.map((e) => <li key={e.id} className="flex gap-3 text-xs"><time className="shrink-0 text-ink-faint">{new Date(e.created_at).toLocaleTimeString()}</time><span><b>{e.type.replaceAll("_", " ")}</b>{Object.keys(e.payload).length>0 ? ` · ${JSON.stringify(e.payload)}` : ""}</span></li>)}</ol></div>
-      </section> : <section className="rounded-2xl border border-dashed border-ops-line bg-ops-panel p-8 text-center"><h2 className="text-lg font-medium">Start with a coworker</h2><p className="mt-2 text-sm text-ink-dim">Create one from a template or define a custom role and responsibilities.</p></section>}
+      {selected ? (
+        isCodingCoworker && viewMode === "workspace" && !editing ? (
+          <section className="min-w-0 space-y-4">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium text-ai">● Coding Workspace Active</span>
+              <button
+                onClick={() => setViewMode("profile")}
+                className="rounded-lg border border-line bg-surface px-3 py-1.5 text-xs text-ink-dim hover:text-ink cursor-pointer"
+              >
+                Coworker Profile & Settings
+              </button>
+            </div>
+            <CodingCoworkerWorkspace
+              coworkerId={selected.id}
+              coworkerName={selected.name}
+              selectedProjectId={selected.project_id}
+              onProjectChange={(pid) => updateProject(pid ? String(pid) : "")}
+              projects={projects}
+            />
+          </section>
+        ) : (
+          <section className="min-w-0 space-y-4 rounded-2xl border border-ops-line bg-white p-4 shadow-sm sm:p-6">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-xs uppercase tracking-wider text-ink-faint">
+                  {selected.role} · {selected.specialisation}
+                </p>
+                <h2 className="mt-1 text-2xl font-semibold">{selected.name}</h2>
+                <p className="mt-1 text-sm text-ink-dim">{selected.description || "Custom IRIS coworker"}</p>
+              </div>
+              <div className="flex gap-2">
+                {isCodingCoworker && (
+                  <button
+                    onClick={() => setViewMode("workspace")}
+                    className="rounded-lg bg-ink px-3 py-2 text-sm text-white hover:bg-ink/90 cursor-pointer"
+                  >
+                    Open Coding Workspace
+                  </button>
+                )}
+                <button
+                  onClick={() => setEditing((v) => !v)}
+                  className="rounded-lg border border-ops-line px-3 py-2 text-sm hover:bg-ops-ground cursor-pointer"
+                >
+                  {editing ? "Close editor" : "Edit profile"}
+                </button>
+              </div>
+            </div>
+            {editing && <div className="rounded-xl bg-ops-ground p-4"><label className="block text-xs font-medium text-ink-dim">Assigned project workspace</label><select value={selected.project_id ?? ""} onChange={(e) => updateProject(e.target.value)} className="mt-1 w-full rounded-lg border border-ops-line bg-white p-2 text-sm"><option value="">No project assigned</option>{projects.map((p) => <option key={p.id} value={p.id}>{p.name} · {p.directory}</option>)}</select><p className="mt-1 text-xs text-ink-faint">Project permissions are enforced by the backend. Coworkers do not automatically receive write, command, or network access.</p><div className="mt-3 flex flex-wrap gap-2"><button onClick={editProfile} className="rounded-lg border border-ops-line bg-white px-3 py-2 text-sm">Edit identity, instructions and capabilities</button><button onClick={editResponsibilities} className="rounded-lg border border-ops-line bg-white px-3 py-2 text-sm">Edit responsibilities</button></div><p className="mt-3 text-xs text-ink-faint">Granted capabilities: {selected.allowed_capabilities.length ? selected.allowed_capabilities.join(", ") : "none"}. Host command, email, drive and device capabilities remain denied without a scoped adapter.</p></div>}
+            <div className="grid gap-3 sm:grid-cols-2"><Info label="Availability" value={selected.availability ? "Available" : "Unavailable"}/><Info label="Configuration" value={`Version ${selected.config_version}`}/><Info label="Provider preference" value={`${selected.preferred_provider ?? "IRIS default"}${selected.preferred_model ? ` · ${selected.preferred_model}` : ""}`}/><Info label="Workspace" value={projects.find((p) => p.id === selected.project_id)?.name ?? "None"}/></div>
+            <div className="rounded-xl border border-ops-line p-4"><h3 className="font-medium">Assign work</h3><textarea value={instruction} onChange={(e) => setInstruction(e.target.value)} rows={3} placeholder="Describe the task, expected result, and constraints…" className="mt-3 w-full resize-y rounded-lg border border-ops-line p-3 text-sm outline-none focus:border-ai"/>{recommendation && <p className="mt-2 text-xs text-ai">{recommendation}</p>}<div className="mt-2 flex flex-wrap items-center justify-between gap-2"><p className="text-xs text-ink-faint">Tools are restricted to this coworker’s read-only capability grants. Writes require a separate approval.</p><div className="flex gap-2"><Button variant="outline" onClick={() => void recommend()} disabled={!instruction.trim()}>Ask IRIS Supervisor</Button><Button onClick={assign} disabled={!instruction.trim() || !selected.availability}>Assign task</Button></div></div></div>
+            <div><h3 className="font-medium">Task history</h3><div className="mt-2 space-y-2">{(selected.tasks ?? []).map((t) => <article key={t.id} className="rounded-xl border border-ops-line p-3"><div className="flex flex-wrap justify-between gap-2"><strong className="text-sm">{t.instruction}</strong><span className={`text-xs capitalize ${statusTone[t.status] ?? "text-ink-dim"}`}>{t.status.replaceAll("_", " ")}</span></div>{t.output && <p className="mt-2 whitespace-pre-wrap text-sm text-ink-dim">{t.output}</p>}{t.error && <p className="mt-2 text-sm text-red-700">{t.error}</p>}{t.verification && <p className="mt-2 text-xs text-ink-faint">Verification: {t.verification.state ?? "pending"} · independently verified: {t.verification.independently_verified ? "yes" : "no"}{t.verification.unresolved_items?.length ? ` · unresolved: ${t.verification.unresolved_items.join("; ")}` : ""}</p>}<div className="mt-2 flex flex-wrap gap-2">{t.status === "completed_with_issues" && <button onClick={() => act(() => api.post(`/coworkers/tasks/${t.id}/review`, { accepted: true, reason: "User reviewed and accepted the persisted deliverable in IRIS." }))} className="text-xs font-medium text-amber-800 underline">Review and accept deliverable</button>}{["queued","interrupted","paused"].includes(t.status) && <button onClick={() => act(() => api.post(`/coworkers/tasks/${t.id}/run`, {}))} className="text-xs text-ai underline">Run / resume / retry explicitly</button>}{t.status==="queued" && <button onClick={() => act(() => api.post(`/coworkers/tasks/${t.id}/pause`, {}))} className="text-xs text-amber-700 underline">Pause queued task</button>}{["queued","waiting_approval","waiting_input","paused","interrupted"].includes(t.status) && <button onClick={() => act(() => api.post(`/coworkers/tasks/${t.id}/cancel`, {}))} className="text-xs text-red-700 underline">Stop</button>}{(t.project_id || t.coding_task_id) && <a href="/projects" className="text-xs text-ai underline">Review coding brief and execution in Projects</a>}</div></article>)}{(selected.tasks ?? []).length===0 && <p className="text-sm text-ink-faint">No assigned tasks yet.</p>}</div></div>
+            <div><h3 className="font-medium">Recent execution events</h3><ol className="mt-2 max-h-48 space-y-2 overflow-auto">{events.map((e) => <li key={e.id} className="flex gap-3 text-xs"><time className="shrink-0 text-ink-faint">{new Date(e.created_at).toLocaleTimeString()}</time><span><b>{e.type.replaceAll("_", " ")}</b>{Object.keys(e.payload).length>0 ? ` · ${JSON.stringify(e.payload)}` : ""}</span></li>)}</ol></div>
+          </section>
+        )
+      ) : (
+        <section className="rounded-2xl border border-dashed border-ops-line bg-ops-panel p-8 text-center">
+          <h2 className="text-lg font-medium">Start with a coworker</h2>
+          <p className="mt-2 text-sm text-ink-dim">Create one from a template or define a custom role and responsibilities.</p>
+        </section>
+      )}
     </div>
   </div>;
 }

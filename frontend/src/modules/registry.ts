@@ -92,7 +92,7 @@ export const DIARY_NAV_ITEM: NavItem = {
 
 export const AGY_NAV_ITEM: NavItem = {
   id: "agy",
-  name: "Antigravity",
+  name: "Terminal Diagnostics",
   route: "/agy",
   glyph: "⌘",
   icon: SquareTerminal,
@@ -216,11 +216,12 @@ export const MODULES: ModuleDefinition[] = [
   },
   {
     id: "agy",
-    name: "Antigravity",
+    name: "Terminal Diagnostics",
     icon: SquareTerminal,
     route: "/agy",
     category: "command",
     enabled: true,
+    brief: "Developer diagnostics and low-level ConPTY terminal session monitor.",
     glyph: "⌘",
   },
   {

@@ -1,4 +1,4 @@
-﻿"""Persist managed Antigravity output independently of UI polling."""
+"""Persist managed Antigravity output independently of UI polling."""
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -11,13 +11,15 @@ logger=logging.getLogger("iris.coding.persistence")
 def persist_headless_sessions() -> None:
     from app.core.database import SessionLocal
     from app.coding.headless import headless_manager
+    from app.coding.adapters.codex_adapter import codex_headless_manager
     from app.coding.contracts import TaskStatus, validate_transition
     from app.models.coding_task import CodingSessionRecord, CodingTaskRecord
+    from app.coding.git_workspace import collect_worktree_diff, commit_worktree_changes
 
-    sessions=headless_manager.list_sessions()
+    sessions = list(headless_manager.list_sessions()) + list(codex_headless_manager.list_sessions())
     if not sessions:
         return
-    db=SessionLocal()
+    db = SessionLocal()
     try:
         changed=False
         for live in sessions:
@@ -59,8 +61,25 @@ def persist_headless_sessions() -> None:
                             params=(step.get("tool_info") or {}).get("parameters") or {}
                             path=next((params.get(k) for k in ("Path","path","FilePath","file_path","notebook_path") if params.get(k)),None)
                             if path and path not in changed_files: changed_files.append(path)
-                    task.result={"agent_reported":True,"status":result.get("status"),"summary":result.get("response",""),"changed_files_reported_by_tools":changed_files,"commands_executed":commands}
-                    task.verification={"independently_verified":False,"tests_observed":[c["command"] for c in commands if c.get("command") and any(x in c["command"].lower() for x in ("pytest","npm test","vitest","jest","cargo test"))],"test_results":"Not independently verified; inspect captured command output.","note":"A successful agent turn does not itself establish tests passed."}
+
+                    worktree_dir = (task.brief or {}).get("worktree_path")
+                    base_commit = (task.brief or {}).get("base_commit")
+                    diff_info = {}
+                    new_commit = None
+                    if worktree_dir and base_commit:
+                        try:
+                            new_commit = commit_worktree_changes(worktree_dir, f"IRIS Task: {task.instruction[:80]}")
+                            diff_info = collect_worktree_diff(worktree_dir, base_commit)
+                            for f in diff_info.get("changed_files", []):
+                                if f.get("path") and f["path"] not in changed_files:
+                                    changed_files.append(f["path"])
+                        except Exception as exc:
+                            diff_info = {"error": str(exc)}
+
+                    task.result={"agent_reported":True,"status":result.get("status"),"summary":result.get("response",""),"changed_files_reported_by_tools":changed_files,"commands_executed":commands,
+                                 "worktree_path":worktree_dir,"branch_name":(task.brief or {}).get("task_branch"),"base_commit":base_commit,"task_commit":new_commit,
+                                 "diff_stat":diff_info.get("stat",""),"diff_summary":diff_info.get("diff","")[:20000],"changed_files":diff_info.get("changed_files",[])}
+                    task.verification={"independently_verified":False,"tests_observed":[c["command"] for c in commands if c.get("command") and any(x in c["command"].lower() for x in ("pytest","npm test","vitest","jest","cargo test"))],"test_results":"Not independently verified; inspect captured command output.","note":"A successful agent turn does not itself establish tests passed.","git_verified":bool(new_commit)}
                     task.events=list(task.events or [])+[{"type":"completion_reported","at":datetime.now(UTC).isoformat()}]
                 elif state=="FAILED" and task.status in {TaskStatus.RUNNING.value,TaskStatus.WAITING_FOR_USER.value}:
                     validate_transition(TaskStatus(task.status),TaskStatus.FAILED)

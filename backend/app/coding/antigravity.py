@@ -55,5 +55,8 @@ class CodingAgentRegistry:
     def get(self,agent_id:str): return self._adapters.get(agent_id)
     def discover(self): return [a.detect() for a in self._adapters.values()]
 
+from app.coding.adapters.codex_adapter import CodexCLIAdapter
+
 coding_agents=CodingAgentRegistry()
 coding_agents.register(AntigravityCLIAdapter())
+coding_agents.register(CodexCLIAdapter())

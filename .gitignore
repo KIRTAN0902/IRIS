@@ -53,3 +53,5 @@ shield_*.json
 
 *.apk
 downloads/
+.iris_worktrees/
+.iris/

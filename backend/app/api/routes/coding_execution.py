@@ -155,8 +155,20 @@ def create_task(data:TaskCreate,user:User=Depends(current_user),db:Session=Depen
     p=_project(db,user,data.project_id)
     if not p.read_access: raise HTTPException(403,"Project read access is disabled")
     if data.brief.project_id != p.id: raise HTTPException(400,"Brief project does not match task project")
-    if data.agent_id != "antigravity-cli": raise HTTPException(400,"Unsupported coding agent")
+    from app.coding.antigravity import coding_agents
+    adapter = coding_agents.get(data.agent_id)
+    if not adapter: raise HTTPException(400,f"Unsupported coding agent: {data.agent_id}")
     brief=data.brief.model_copy(deep=True)
+    task_id = str(uuid.uuid4())
+    from app.coding.git_workspace import make_task_branch_name, inspect_git_state
+    git_info = inspect_git_state(p.directory)
+    if git_info.get("is_git"):
+        task_branch = make_task_branch_name(task_id, data.instruction)
+        brief.constraints = list(brief.constraints or []) + [
+            f"Dedicated task branch: {task_branch}",
+            "Execute strictly inside the isolated Git worktree.",
+            "Never modify or push to protected branches (main, master) or the original working branch."
+        ]
     # Select small, relevant context instead of copying full conversation history.
     readme=Path(p.directory)/"README.md"
     if readme.is_file():
@@ -169,8 +181,13 @@ def create_task(data:TaskCreate,user:User=Depends(current_user),db:Session=Depen
     except Exception:
         # Context retrieval must not prevent safely drafting a task.
         pass
-    row=CodingTaskRecord(id=str(uuid.uuid4()),user_id=user.id,project_id=p.id,agent_id=data.agent_id,instruction=data.instruction,
-       brief=brief.model_dump(),status=TaskStatus.AWAITING_APPROVAL.value,approval_state="pending",events=[{"type":"task_created","at":datetime.now(UTC).isoformat()},{"type":"workspace_preflight","git":_git_snapshot(p.directory)}])
+    brief_dict = brief.model_dump()
+    if git_info.get("is_git"):
+        brief_dict["task_branch"] = task_branch
+        brief_dict["base_commit"] = git_info.get("head_commit")
+        brief_dict["original_branch"] = git_info.get("branch")
+    row=CodingTaskRecord(id=task_id,user_id=user.id,project_id=p.id,agent_id=data.agent_id,instruction=data.instruction,
+       brief=brief_dict,status=TaskStatus.AWAITING_APPROVAL.value,approval_state="pending",events=[{"type":"task_created","at":datetime.now(UTC).isoformat()},{"type":"workspace_preflight","git":git_info}])
     db.add(row); db.commit(); db.refresh(row)
     return {"id":row.id,"status":row.status,"brief":row.brief,"approval_state":row.approval_state}
 
@@ -191,31 +208,55 @@ def approve_task(task_id:str,data:ApproveTask,user:User=Depends(current_user),db
     if not p.read_access: raise HTTPException(403,"Project read access is disabled")
     if not p.write_access: raise HTTPException(403,"Enable project write access before approving agent execution")
     if not p.command_access: raise HTTPException(403,"Enable command execution access before approving agent execution")
-    original=next((e.get("git") for e in (t.events or []) if e.get("type")=="workspace_preflight"),None)
-    current=_git_snapshot(p.directory)
-    if original != current: raise HTTPException(409,"Workspace Git state changed since this brief was prepared. Refresh/review the workspace state before approval.")
-    agent=agents()[0]
-    if not agent["available"]: raise HTTPException(503,"Antigravity CLI is not available")
+    from app.coding.antigravity import coding_agents
+    from app.coding.git_workspace import create_isolated_worktree, inspect_git_state, GitIsolationError
+    adapter=coding_agents.get(t.agent_id)
+    if not adapter: raise HTTPException(400,f"Unsupported coding agent: {t.agent_id}")
+    det=adapter.detect()
+    if not det.get("available"): raise HTTPException(503,f"{det.get('name', t.agent_id)} is not available on this system")
     prompt=data.prompt.strip()
     if len(prompt)<3: raise HTTPException(400,"Approved prompt is empty")
     validate_transition(TaskStatus(t.status),TaskStatus.QUEUED)
     t.approved_prompt=prompt; t.approval_state="approved"; t.status=TaskStatus.QUEUED.value
     t.events=list(t.events or [])+[{"type":"approval_granted","at":datetime.now(UTC).isoformat()}]
     db.commit()
-    from app.coding.antigravity import coding_agents
+
+    execution_dir=p.directory
+    git_state=inspect_git_state(p.directory)
+    if git_state.get("is_git"):
+        try:
+            ws=create_isolated_worktree(p.id,p.directory,t.id,t.instruction)
+            execution_dir=ws.worktree_dir
+            updated_brief=dict(t.brief or {})
+            updated_brief["worktree_path"]=ws.worktree_dir
+            updated_brief["task_branch"]=ws.task_branch
+            updated_brief["base_commit"]=ws.base_commit
+            updated_brief["original_branch"]=ws.original_branch
+            t.brief=updated_brief
+            t.events=list(t.events or [])+[{
+                "type":"isolated_worktree_created",
+                "worktree_dir":ws.worktree_dir,
+                "task_branch":ws.task_branch,
+                "base_commit":ws.base_commit,
+                "at":datetime.now(UTC).isoformat()
+            }]
+        except GitIsolationError as exc:
+            validate_transition(TaskStatus(t.status),TaskStatus.FAILED)
+            t.status=TaskStatus.FAILED.value; t.result={"error":str(exc)}; t.ended_at=datetime.now(UTC); db.commit()
+            raise HTTPException(409,f"Could not create isolated Git worktree: {exc}") from exc
+
     from app.services.agy_bridge import AgyError
     sid=str(uuid.uuid4())
     try:
-        adapter=coding_agents.get(t.agent_id)
-        session=adapter.launch(p.directory,prompt,str(uuid.uuid4()),permissions={"allowed_commands":p.allowed_commands or [],"allowed_domains":p.allowed_domains or [],"network_access":p.network_access})
-    except AgyError as e:
+        session=adapter.launch(execution_dir,prompt,str(uuid.uuid4()),permissions={"allowed_commands":p.allowed_commands or [],"allowed_domains":p.allowed_domains or [],"network_access":p.network_access})
+    except (AgyError, RuntimeError) as e:
         validate_transition(TaskStatus(t.status),TaskStatus.FAILED)
         t.status=TaskStatus.FAILED.value; t.result={"error":str(e)}; t.ended_at=datetime.now(UTC); db.commit()
         raise HTTPException(502,str(e)) from e
     validate_transition(TaskStatus(t.status),TaskStatus.RUNNING)
     t.status=TaskStatus.RUNNING.value; t.started_at=datetime.now(UTC); t.session_id=sid
-    t.events=list(t.events or [])+[{"type":"agent_launched","at":datetime.now(UTC).isoformat(),"session_key":session.key}]
-    db.add(CodingSessionRecord(id=sid,task_id=t.id,agent_id=t.agent_id,project_id=p.id,directory=p.directory,external_session_id=None,manager_key=session.key,status="running",resume_supported=True,output="",started_at=datetime.now(UTC)))
+    t.events=list(t.events or [])+[{"type":"agent_launched","agent_id":t.agent_id,"directory":execution_dir,"at":datetime.now(UTC).isoformat(),"session_key":session.key}]
+    db.add(CodingSessionRecord(id=sid,task_id=t.id,agent_id=t.agent_id,project_id=p.id,directory=execution_dir,external_session_id=None,manager_key=session.key,status="running",resume_supported=True,output="",started_at=datetime.now(UTC)))
     p.last_accessed_at=datetime.now(UTC); db.commit()
     return _task_out(t)
 
@@ -344,8 +385,21 @@ def task_session(task_id:str,user:User=Depends(current_user),db:Session=Depends(
                     params=(step.get("tool_info") or {}).get("parameters") or {}
                     path=next((params.get(k) for k in ("Path","path","FilePath","file_path","notebook_path") if params.get(k)),None)
                     if path and path not in changed_files: changed_files.append(path)
-            t.result={"agent_reported":True,"status":result.get("status"),"summary":result.get("response",""),"changed_files_reported_by_tools":changed_files,"commands_executed":commands}
-            t.verification={"independently_verified":False,"tests_observed":[c["command"] for c in commands if c.get("command") and any(x in c["command"].lower() for x in ("pytest","npm test","vitest","jest","cargo test"))],"test_results":"Not independently verified; inspect captured command output.","note":"A successful agent turn does not itself establish tests passed."}
+            worktree_dir=(t.brief or {}).get("worktree_path")
+            base_commit=(t.brief or {}).get("base_commit")
+            diff_info={}; new_commit=None
+            if worktree_dir and base_commit:
+                try:
+                    from app.coding.git_workspace import commit_worktree_changes, collect_worktree_diff
+                    new_commit=commit_worktree_changes(worktree_dir, f"IRIS Task: {t.instruction[:80]}")
+                    diff_info=collect_worktree_diff(worktree_dir, base_commit)
+                    for f in diff_info.get("changed_files", []):
+                        if f.get("path") and f["path"] not in changed_files: changed_files.append(f["path"])
+                except Exception as exc: diff_info={"error": str(exc)}
+            t.result={"agent_reported":True,"status":result.get("status"),"summary":result.get("response",""),"changed_files_reported_by_tools":changed_files,"commands_executed":commands,
+                      "worktree_path":worktree_dir,"branch_name":(t.brief or {}).get("task_branch"),"base_commit":base_commit,"task_commit":new_commit,
+                      "diff_stat":diff_info.get("stat",""),"diff_summary":diff_info.get("diff","")[:20000],"changed_files":diff_info.get("changed_files",[])}
+            t.verification={"independently_verified":False,"tests_observed":[c["command"] for c in commands if c.get("command") and any(x in c["command"].lower() for x in ("pytest","npm test","vitest","jest","cargo test"))],"test_results":"Not independently verified; inspect captured command output.","note":"A successful agent turn does not itself establish tests passed.","git_verified":bool(new_commit)}
             t.events=list(t.events or [])+[{"type":"completion_reported","at":datetime.now(UTC).isoformat()}]
         db.commit()
     elif s and t.status==TaskStatus.RUNNING.value:
@@ -370,3 +424,73 @@ def stop_task(task_id:str,user:User=Depends(current_user),db:Session=Depends(get
         validate_transition(TaskStatus(t.status),TaskStatus.CANCELLED); t.status=TaskStatus.CANCELLED.value
     t.ended_at=datetime.now(UTC); t.events=list(t.events or [])+[{"type":"session_stopped","at":datetime.now(UTC).isoformat()}]
     db.commit(); return _task_out(t)
+
+class TaskCommitRequest(BaseModel):
+    message: str = Field(min_length=3, max_length=500)
+
+class TaskPushRequest(BaseModel):
+    remote: str = "origin"
+
+@task_router.get("/tasks/{task_id}/diff")
+def task_diff(task_id: str, user: User=Depends(current_user), db: Session=Depends(get_db)):
+    t = db.query(CodingTaskRecord).filter_by(id=task_id, user_id=user.id).first()
+    if not t: raise HTTPException(404, "Task not found")
+    worktree_dir = (t.brief or {}).get("worktree_path") or (t.result or {}).get("worktree_path")
+    base_commit = (t.brief or {}).get("base_commit") or (t.result or {}).get("base_commit")
+    if not worktree_dir or not base_commit:
+        return {"diff": "", "stat": "", "changed_files": [], "isolated_worktree": False}
+    from app.coding.git_workspace import collect_worktree_diff
+    diff_info = collect_worktree_diff(worktree_dir, base_commit)
+    return {"isolated_worktree": True, "branch": (t.brief or {}).get("task_branch"), **diff_info}
+
+@task_router.post("/tasks/{task_id}/commit")
+def task_commit(task_id: str, data: TaskCommitRequest, user: User=Depends(current_user), db: Session=Depends(get_db)):
+    require_execution("coding_agent")
+    t = db.query(CodingTaskRecord).filter_by(id=task_id, user_id=user.id).first()
+    if not t: raise HTTPException(404, "Task not found")
+    worktree_dir = (t.brief or {}).get("worktree_path") or (t.result or {}).get("worktree_path")
+    if not worktree_dir: raise HTTPException(400, "Task does not have an isolated Git worktree")
+    from app.coding.git_workspace import commit_worktree_changes, GitIsolationError
+    try:
+        commit_hash = commit_worktree_changes(worktree_dir, data.message)
+        t.events = list(t.events or []) + [{"type": "task_committed", "commit": commit_hash, "message": data.message, "at": datetime.now(UTC).isoformat()}]
+        if t.result and isinstance(t.result, dict):
+            t.result["task_commit"] = commit_hash
+        db.commit()
+        return {"commit_hash": commit_hash, "branch": (t.brief or {}).get("task_branch")}
+    except GitIsolationError as exc:
+        raise HTTPException(409, str(exc)) from exc
+
+@task_router.post("/tasks/{task_id}/push")
+def task_push(task_id: str, data: TaskPushRequest, user: User=Depends(current_user), db: Session=Depends(get_db)):
+    require_execution("coding_agent")
+    t = db.query(CodingTaskRecord).filter_by(id=task_id, user_id=user.id).first()
+    if not t: raise HTTPException(404, "Task not found")
+    worktree_dir = (t.brief or {}).get("worktree_path") or (t.result or {}).get("worktree_path")
+    task_branch = (t.brief or {}).get("task_branch") or (t.result or {}).get("branch_name")
+    original_branch = (t.brief or {}).get("original_branch")
+    if not worktree_dir or not task_branch:
+        raise HTTPException(400, "Task has no isolated worktree branch to push")
+    from app.coding.git_workspace import push_task_branch, GitIsolationError
+    try:
+        res = push_task_branch(worktree_dir, task_branch, original_branch=original_branch, remote=data.remote)
+        t.events = list(t.events or []) + [{"type": "branch_pushed", "branch": task_branch, "remote": data.remote, "at": datetime.now(UTC).isoformat()}]
+        db.commit()
+        return res
+    except GitIsolationError as exc:
+        raise HTTPException(403, str(exc)) from exc
+
+@task_router.post("/tasks/{task_id}/cleanup")
+def task_cleanup(task_id: str, delete_branch: bool = False, user: User=Depends(current_user), db: Session=Depends(get_db)):
+    require_execution("coding_agent")
+    t = db.query(CodingTaskRecord).filter_by(id=task_id, user_id=user.id).first()
+    if not t: raise HTTPException(404, "Task not found")
+    p = _project(db, user, t.project_id)
+    worktree_dir = (t.brief or {}).get("worktree_path") or (t.result or {}).get("worktree_path")
+    if not worktree_dir:
+        return {"cleaned": False, "reason": "No worktree found"}
+    from app.coding.git_workspace import cleanup_isolated_worktree
+    cleaned = cleanup_isolated_worktree(p.directory, worktree_dir, delete_branch=delete_branch)
+    t.events = list(t.events or []) + [{"type": "worktree_cleaned", "worktree_dir": worktree_dir, "at": datetime.now(UTC).isoformat()}]
+    db.commit()
+    return {"cleaned": cleaned}

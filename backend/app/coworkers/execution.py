@@ -101,10 +101,32 @@ async def run_coworker_task(task_id: str, user_id: int) -> None:
         db.add(session); _emit(db, user_id, coworker.id, task.id, "execution_started", {"session_id": session.id})
         db.commit()
 
-        # Developer coworkers hand implementation to the existing reviewed
-        # Antigravity workflow. This preserves its project permission checks,
-        # user-approved brief, session persistence and CLI adapter.
-        if coworker.role.strip().lower() in {"developer", "software developer"} and task.project_id:
+        # Developer and Coding Coworker hand implementation to the reviewed
+        # isolated Git workspace workflow.
+        if coworker.role.strip().lower() in {"developer", "software developer", "coding coworker"}:
+            if not task.project_id:
+                # Attempt to resolve project from instruction or active project
+                projects = db.query(CodingProject).filter_by(user_id=user_id, active=True).all()
+                q_lower = task.instruction.lower()
+                matches = [p for p in projects if p.name.lower() in q_lower or any(a.lower() in q_lower for a in (p.aliases or []))]
+                if len(matches) == 1:
+                    task.project_id = matches[0].id
+                elif not matches:
+                    active_p = db.query(CodingProject).filter_by(user_id=user_id, active=True, is_active=True).first()
+                    if active_p:
+                        task.project_id = active_p.id
+
+            if not task.project_id:
+                task.status = transition(task.status, "waiting_input")
+                projects = db.query(CodingProject).filter_by(user_id=user_id, active=True).all()
+                names = ", ".join([p.name for p in projects]) if projects else "none registered"
+                task.output = f"Please select a target project for this development task. Available projects: {names}."
+                task.result = {"status": "project_selection_required", "projects": [{"id": p.id, "name": p.name} for p in projects]}
+                session.status = "waiting_input"; session.output = task.output; session.ended_at = datetime.now(UTC)
+                coworker.status = "waiting_input"
+                _emit(db, user_id, coworker.id, task.id, "project_selection_required", {"available_projects": [p.name for p in projects]})
+                db.commit(); return
+
             project=db.query(CodingProject).filter_by(id=task.project_id,user_id=user_id,active=True).first()
             if not project or not project.read_access:
                 raise RuntimeError("Developer task workspace is unavailable or not readable.")
@@ -116,27 +138,53 @@ async def run_coworker_task(task_id: str, user_id: int) -> None:
                 task.ended_at=datetime.now(UTC); session.status="failed"; session.error=task.error; session.ended_at=task.ended_at
                 coworker.status="failed"; _emit(db,user_id,coworker.id,task.id,"task_failed",{"reason":task.error,"active_coding_task_id":active_coding.id})
                 _fail_dependents(db,user_id,task.id,task.error); db.commit(); return
-            brief=TaskBrief(objective=task.instruction,project_id=project.id,agent_id="antigravity-cli",
+
+            # Select engine based on task requirements or preference
+            from app.coding.antigravity import coding_agents
+            from app.coding.git_workspace import inspect_git_state, make_task_branch_name
+            preferred_agent = (task.permission_scope or {}).get("preferred_agent") or (coworker.permission_profile or {}).get("preferred_agent")
+            if not preferred_agent or not coding_agents.get(preferred_agent):
+                preferred_agent = "codex-cli" if coding_agents.get("codex-cli") and coding_agents.get("codex-cli").detect().get("available") else "antigravity-cli"
+
+            coding_id=str(uuid4())
+            git_state = inspect_git_state(project.directory)
+            task_branch = make_task_branch_name(coding_id, task.instruction) if git_state.get("is_git") else None
+
+            constraints=["Preserve existing user changes.","Use only the assigned workspace."]
+            if task_branch:
+                constraints.extend([
+                    f"Task branch: {task_branch}",
+                    "Execute strictly inside the isolated Git worktree.",
+                    "Never modify or push directly to main, master, or original branch."
+                ])
+
+            brief=TaskBrief(objective=task.instruction,project_id=project.id,agent_id=preferred_agent,
                 architecture=project.description or "Inspect the project documentation and current architecture before changing code.",
-                relevant_decisions=[],constraints=["Preserve existing user changes.","Use only the selected project workspace."],
+                relevant_decisions=[],constraints=constraints,
                 implementation="\n".join(task.objectives or [task.instruction]),
                 expected_behavior="Meet the user's stated objective without broadening the requested scope.",
                 acceptance_criteria=task.acceptance_criteria or ["Report actual changed files and verification evidence."],
                 tests=["Run the relevant project tests and report the exact commands and outcomes."],
                 restrictions=["Do not discard existing changes.","Do not claim tests ran without evidence."])
-            coding_id=str(uuid4())
+            brief_dict = brief.model_dump()
+            if task_branch:
+                brief_dict["task_branch"] = task_branch
+                brief_dict["base_commit"] = git_state.get("head_commit")
+                brief_dict["original_branch"] = git_state.get("branch")
+
             coding_task=CodingTaskRecord(id=coding_id,user_id=user_id,project_id=project.id,parent_task_id=None,
-                agent_id="antigravity-cli",instruction=task.instruction,brief=brief.model_dump(),approved_prompt=None,
+                agent_id=preferred_agent,instruction=task.instruction,brief=brief_dict,approved_prompt=None,
                 status="awaiting_approval",approval_state="pending",events=[{"type":"task_created","source":"coworker","at":now.isoformat()}])
             db.add(coding_task); db.flush()
             task.coding_task_id=coding_id
             task.status=transition(task.status,"waiting_input")
-            task.output="Implementation brief prepared. No project changes have started; review and approve it in Projects."
-            task.result={"coding_task_id":coding_id,"coding_status":"awaiting_approval","brief":brief.model_dump()}
+            branch_note = f" on isolated branch `{task_branch}`" if task_branch else ""
+            task.output=f"Implementation plan formulated for **{project.name}**{branch_note} using {preferred_agent}. No project changes have started; review and approve the plan to begin execution."
+            task.result={"coding_task_id":coding_id,"coding_status":"awaiting_approval","brief":brief_dict,"task_branch":task_branch,"agent_id":preferred_agent}
             task.verification={"state":"awaiting_user_approval","independently_verified":False}
             session.status="waiting_input"; session.output=task.output; session.ended_at=datetime.now(UTC)
             coworker.status="waiting_input"
-            _emit(db,user_id,coworker.id,task.id,"approval_requested",{"coding_task_id":coding_id,"type":"coding_brief"})
+            _emit(db,user_id,coworker.id,task.id,"approval_requested",{"coding_task_id":coding_id,"type":"coding_brief","task_branch":task_branch,"agent_id":preferred_agent})
             db.commit(); return
 
         # Coworkers inherit IRIS's model-provider abstraction and harness. Each
