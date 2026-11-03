@@ -248,9 +248,11 @@ def provision_workspace(req: ProvisionWorkspaceRequest, authorization: str | Non
             shutil.rmtree(ws_dir, ignore_errors=True)
             raise HTTPException(status_code=400, detail=redact_secrets(str(e)))
 
-    # Configure committer identity
+    # Configure committer identity and memory bounds
     run_git_safe(ws_dir, "config", "user.name", "IRIS Coding Co-worker")
     run_git_safe(ws_dir, "config", "user.email", "coworker@iris.dev")
+    run_git_safe(ws_dir, "config", "core.packedGitLimit", "128m")
+    run_git_safe(ws_dir, "config", "core.packedGitWindowSize", "128m")
 
     base_sha = run_git_safe(ws_dir, "rev-parse", "HEAD").stdout.strip()
 
@@ -349,6 +351,8 @@ async def execute_task(
             yield json.dumps({"event": "completed", "exit_code": proc.returncode}) + "\n"
         finally:
             ACTIVE_PROCESSES.pop(workspace_id, None)
+            import gc
+            gc.collect()
 
     return StreamingResponse(_stream(), media_type="application/x-ndjson")
 
