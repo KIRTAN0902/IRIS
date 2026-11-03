@@ -19,13 +19,21 @@ The companion acts as a remote, persistent workspace where the IRIS Coding Co-wo
 
 ## 2. Step 1 — Create the Hugging Face Space
 
+> [!NOTE]
+> **Why does Docker show "Paid"?**
+> Hugging Face recently updated their platform anti-abuse policy: creating **Docker SDK** spaces now requires adding a billing method/credit card to unlock.
+> 
+> **The 100% Free ($0 / Zero Credit Card) Solution:**
+> Choose **`Gradio`** as the Space SDK!
+> Gradio Spaces are **100% free with no credit card required**. Because Gradio is built natively on top of FastAPI and Uvicorn, our entire remote companion runs directly inside it with zero compromises, exposing all the exact same `/health`, `/ready`, and `/api/workspaces/...` endpoints!
+
 1. Navigate to [huggingface.co/new-space](https://huggingface.co/new-space).
 2. Configure the following settings:
    - **Space name:** `iris-coworker-sandbox` (or a name of your choice)
    - **License:** `mit`
-   - **Select the Space SDK:** Choose **`Docker`**
+   - **Select the Space SDK:** Choose **`Gradio`** (Free, no credit card required)
    - **Choose a template:** Choose **`Blank`**
-   - **Space Hardware:** Select **`CPU basic · 2 vCPU · 16 GB · Free`** ($0 / month, no credit card required)
+   - **Space Hardware:** **`CPU basic · 2 vCPU · 16 GB · Free`** ($0 / month, no credit card required)
    - **Visibility:** Select **`Private`** (Recommended to keep your workspace, git diffs, and companion private)
 3. Click **Create Space**.
 
@@ -50,9 +58,20 @@ In your newly created Space, navigate to **Settings** ➔ **Variables and secret
 
 ## 4. Step 3 — Deploy Companion Files to Hugging Face
 
-You only need to push the contents of the `remote_companion/` directory (`Dockerfile`, `requirements.txt`, `main.py`).
+Push the companion files (`app.py`, `main.py`, `requirements.txt`, `packages.txt`):
 
-### Option A: Via Git CLI (Recommended)
+### Option A: Via Hugging Face Web UI (Easiest)
+
+1. In your newly created Hugging Face Space, click the **Files** tab.
+2. Click **Add file** ➔ **Upload files**.
+3. Drag and drop the following files from `remote_companion/`:
+   - `app.py`
+   - `main.py`
+   - `requirements.txt`
+   - `packages.txt`
+4. Click **Commit changes to main**.
+
+### Option B: Via Git CLI
 
 From your local IRIS repository:
 
@@ -63,7 +82,7 @@ cd remote_companion
 # 2. Initialize a temporary git repository or add Hugging Face remote
 git init
 git checkout -b main
-git add Dockerfile requirements.txt main.py
+git add app.py main.py requirements.txt packages.txt
 git commit -m "feat: deploy IRIS remote companion"
 
 # 3. Add your Hugging Face Space repository as a remote
@@ -75,16 +94,6 @@ git push -f hf main
 ```
 
 *(Note: When prompted for your password, use your Hugging Face Access Token from [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens) with `write` permission).*
-
-### Option B: Via Hugging Face Web UI
-
-1. In your Hugging Face Space, click the **Files** tab.
-2. Click **Add file** ➔ **Upload files**.
-3. Drag and drop the three files from `remote_companion/`:
-   - `Dockerfile`
-   - `requirements.txt`
-   - `main.py`
-4. Click **Commit changes to main**.
 
 ---
 
