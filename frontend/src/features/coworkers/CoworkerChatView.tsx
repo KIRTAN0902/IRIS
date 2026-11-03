@@ -144,6 +144,7 @@ export function CoworkerChatView({
   const [newRemoteName, setNewRemoteName] = useState("IRIS Cloud Sandbox");
   const [newRemoteRepo, setNewRemoteRepo] = useState("https://github.com/KIRTAN0902/IRIS.git");
   const [newRemoteBranch, setNewRemoteBranch] = useState("main");
+  const [newRemoteCompanionUrl, setNewRemoteCompanionUrl] = useState("");
   const [recoveringWs, setRecoveringWs] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -319,14 +320,36 @@ export function CoworkerChatView({
         repo_url: newRemoteRepo.trim(),
         branch: newRemoteBranch.trim(),
         project_id: activeProjectId,
+        companion_url: newRemoteCompanionUrl.trim() || undefined,
       });
       setShowRemoteModal(false);
+      setNewRemoteCompanionUrl("");
       await fetchRemoteWorkspaces();
       setSelectedRemoteWorkspaceId(res.id);
       setExecutionTarget("remote");
       alert(`Remote workspace "${res.name}" connected.`);
     } catch (err: any) {
       alert(`Failed to create remote workspace: ${err.message || err}`);
+    }
+  };
+
+  // Milestone H: Update companion URL (e.g. from Google Colab)
+  const handleUpdateCompanionUrl = async (workspaceId: string) => {
+    const ws = remoteWorkspaces.find((w) => w.id === workspaceId);
+    const currentUrl = ws?.companion_url || "";
+    const newUrl = window.prompt(
+      "Enter new Companion URL (e.g. from Google Colab https://xxxx.trycloudflare.com):",
+      currentUrl
+    );
+    if (newUrl === null) return;
+    try {
+      await api.patch(`/workspaces/${workspaceId}`, {
+        companion_url: newUrl.trim() || null,
+      });
+      await fetchRemoteWorkspaces();
+      alert("Companion URL updated successfully!");
+    } catch (err: any) {
+      alert(`Failed to update URL: ${err.message || err}`);
     }
   };
 
@@ -579,6 +602,16 @@ export function CoworkerChatView({
                         {recoveringWs ? "Waking..." : "Wake"}
                       </button>
                     )}
+                    {ws && (
+                      <button
+                        type="button"
+                        onClick={() => handleUpdateCompanionUrl(ws.id)}
+                        className="text-[11px] font-semibold text-emerald-700 hover:underline pl-1 cursor-pointer"
+                        title={ws.companion_url ? `Current URL: ${ws.companion_url}` : "Configure cloud companion URL"}
+                      >
+                        Edit URL
+                      </button>
+                    )}
                   </>
                 );
               })()}
@@ -688,6 +721,12 @@ export function CoworkerChatView({
               value={newRemoteBranch}
               onChange={(e) => setNewRemoteBranch(e.target.value)}
               className="w-24 rounded-lg border border-line bg-white px-2.5 py-1 text-xs font-mono outline-none focus:border-emerald-600"
+            />
+            <input
+              placeholder="Companion URL (e.g. from Colab https://xxx.trycloudflare.com or leave blank for default)"
+              value={newRemoteCompanionUrl}
+              onChange={(e) => setNewRemoteCompanionUrl(e.target.value)}
+              className="flex-1 min-w-[300px] rounded-lg border border-line bg-white px-2.5 py-1 text-xs font-mono outline-none focus:border-emerald-600"
             />
             <Button onClick={handleCreateRemoteWorkspace} className="text-xs bg-emerald-700 hover:bg-emerald-800 text-white px-3 py-1">
               Connect Cloud Workspace

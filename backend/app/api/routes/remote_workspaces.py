@@ -28,6 +28,13 @@ class CreateWorkspaceRequest(BaseModel):
     companion_url: str | None = None
 
 
+class UpdateWorkspaceRequest(BaseModel):
+    name: str | None = None
+    companion_url: str | None = None
+    branch: str | None = None
+    task_branch: str | None = None
+
+
 class CommitApprovalRequest(BaseModel):
     message: str
     author_name: str = "IRIS Coding Co-worker"
@@ -119,6 +126,31 @@ async def get_workspace(
         "workspace": ws,
         "diff": diff_data,
     }
+
+
+@router.patch("/{workspace_id}")
+async def update_workspace(
+    workspace_id: str,
+    req: UpdateWorkspaceRequest,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+):
+    """Update workspace attributes, such as updating companion_url or branch."""
+    ws = db.query(RemoteWorkspace).filter_by(id=workspace_id, user_id=user.id).first()
+    if not ws:
+        raise HTTPException(status_code=404, detail="Workspace not found.")
+    if req.name is not None:
+        ws.name = req.name.strip()
+    if req.companion_url is not None:
+        ws.companion_url = req.companion_url.strip()
+    if req.branch is not None:
+        ws.branch = req.branch.strip()
+    if req.task_branch is not None:
+        ws.task_branch = req.task_branch.strip()
+    ws.last_active_at = datetime.now(UTC)
+    db.commit()
+    db.refresh(ws)
+    return ws
 
 
 @router.post("/{workspace_id}/checkpoint")
