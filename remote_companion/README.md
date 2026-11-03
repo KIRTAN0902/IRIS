@@ -4,11 +4,13 @@ This directory contains the standalone execution companion for **IRIS Milestone 
 
 ---
 
-## Deployment Options ($0 Free Tiers)
+## Deployment Options ($0 Free Tiers, No Credit Card)
 
-1. **[Recommended] Render.com ($0 / No Credit Card Required):**
+1. **[Recommended for High RAM] Google Colab (12.7 GB RAM · 2 vCPUs · $0 Free):**
+   - See **[COLAB_DEPLOYMENT.md](COLAB_DEPLOYMENT.md)** to run the 1-click companion notebook [`IRIS_Colab_Companion.ipynb`](IRIS_Colab_Companion.ipynb) with a free Cloudflare tunnel.
+2. **Render.com Web Service ($0 / No Credit Card Required):**
    - See **[RENDER_DEPLOYMENT.md](RENDER_DEPLOYMENT.md)** for step-by-step setup on Render.com free tier with automated keep-alive cron job.
-2. **Hugging Face Spaces:**
+3. **Hugging Face Spaces:**
    - See **[DEPLOYMENT.md](DEPLOYMENT.md)** for Hugging Face Spaces instructions (note: Hugging Face currently requires billing verification/PRO subscription to unlock compute-backed spaces).
 
 ---
