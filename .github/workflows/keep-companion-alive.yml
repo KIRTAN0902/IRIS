@@ -1,0 +1,32 @@
+name: Keep Remote Companion Awake
+
+on:
+  schedule:
+    # Runs every 12 minutes to keep the Render free-tier companion awake
+    - cron: '*/12 * * * *'
+  workflow_dispatch:
+
+jobs:
+  ping-companion:
+    name: Ping Remote Companion Health
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send Keep-Alive Ping
+        env:
+          COMPANION_URL: ${{ vars.REMOTE_COMPANION_URL || secrets.REMOTE_COMPANION_URL }}
+        run: |
+          if [ -z "$COMPANION_URL" ]; then
+            echo "::notice::REMOTE_COMPANION_URL is not set. Add it under Repository Settings -> Secrets and variables -> Actions to enable automatic keep-alive."
+            exit 0
+          fi
+          echo "Pinging ${COMPANION_URL}/health..."
+          RESPONSE=$(curl -s -w "\n%{http_code}" --max-time 30 "${COMPANION_URL%/}/health" || true)
+          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+          BODY=$(echo "$RESPONSE" | sed '$d')
+          echo "HTTP Status: $HTTP_CODE"
+          echo "Response: $BODY"
+          if [ "$HTTP_CODE" -eq 200 ]; then
+            echo "Companion is awake and healthy."
+          else
+            echo "Companion responded with status $HTTP_CODE or was waking up."
+          fi

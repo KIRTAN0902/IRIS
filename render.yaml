@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: iris-remote-companion
+    runtime: python
+    rootDir: remote_companion
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    plan: free
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: ENVIRONMENT
+        value: production
+      - key: IRIS_COMPANION_SECRET
+        generateValue: true

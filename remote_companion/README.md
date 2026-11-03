@@ -1,8 +1,15 @@
-# IRIS Remote Coding Companion (Hugging Face Docker Space)
+# IRIS Remote Coding Companion
 
-This directory contains the standalone containerized execution companion for **IRIS Milestone H & H.1**. It is designed to be deployed directly to a free **Hugging Face Spaces (Docker runtime)** space ($0 / no credit card required).
+This directory contains the standalone execution companion for **IRIS Milestone H & H.1**. It allows the IRIS Coding Co-worker to execute coding tasks in a remote cloud environment 24/7 without keeping your personal laptop running.
 
-For comprehensive step-by-step deployment instructions, refer to **[DEPLOYMENT.md](DEPLOYMENT.md)**.
+---
+
+## Deployment Options ($0 Free Tiers)
+
+1. **[Recommended] Render.com ($0 / No Credit Card Required):**
+   - See **[RENDER_DEPLOYMENT.md](RENDER_DEPLOYMENT.md)** for step-by-step setup on Render.com free tier with automated keep-alive cron job.
+2. **Hugging Face Spaces:**
+   - See **[DEPLOYMENT.md](DEPLOYMENT.md)** for Hugging Face Spaces instructions (note: Hugging Face currently requires billing verification/PRO subscription to unlock compute-backed spaces).
 
 ---
 

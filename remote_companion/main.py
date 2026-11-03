@@ -30,10 +30,11 @@ ACTIVE_PROCESSES: dict[str, subprocess.Popen] = {}
 
 
 def is_production_environment() -> bool:
-    """Detect if running in production or Hugging Face cloud environment."""
+    """Detect if running in production, Render, or cloud environment."""
     env = os.getenv("ENVIRONMENT", "").lower()
     return bool(
         env in ("production", "prod")
+        or os.getenv("RENDER")
         or os.getenv("SPACE_ID")
         or os.getenv("SPACE_AUTHOR_NAME")
         or os.getenv("HF_SPACE_ID")
