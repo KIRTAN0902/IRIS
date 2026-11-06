@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
+  ArrowLeft,
   ArrowUp,
   ChevronDown,
   ChevronUp,
@@ -17,6 +18,7 @@ import {
   RefreshCw,
   Search,
   Settings,
+  SlidersHorizontal,
   Square,
   Terminal,
   UploadCloud,
@@ -112,6 +114,7 @@ interface CoworkerChatViewProps {
   onRefreshCoworkers: () => Promise<void>;
   onRefreshProjects: () => Promise<void>;
   onOpenSettings: () => void;
+  onBack?: () => void;
 }
 
 export function CoworkerChatView({
@@ -122,6 +125,7 @@ export function CoworkerChatView({
   onRefreshCoworkers,
   onRefreshProjects,
   onOpenSettings,
+  onBack,
 }: CoworkerChatViewProps) {
   const [messages, setMessages] = useState<MessageTurn[]>([]);
   const [inputText, setInputText] = useState("");
@@ -135,6 +139,7 @@ export function CoworkerChatView({
   const [newWsDir, setNewWsDir] = useState("C:\\kirtan\\IRIS");
   const [isRecording, setIsRecording] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [showTechnicalToolbar, setShowTechnicalToolbar] = useState(false);
 
   // Milestone H: Persistent Remote Workspaces & Target Execution
   const [remoteWorkspaces, setRemoteWorkspaces] = useState<RemoteWorkspace[]>([]);
@@ -174,6 +179,29 @@ export function CoworkerChatView({
   const activeProject = useMemo(() => {
     return projects.find((p) => p.id === activeProjectId) ?? null;
   }, [projects, activeProjectId]);
+
+  const composerPlaceholder = useMemo(() => {
+    const role = (coworker.role || "").toLowerCase();
+    const spec = (coworker.specialisation || "").toLowerCase();
+    if (role.includes("dev") || role.includes("cod") || spec.includes("software")) {
+      return activeProject
+        ? `Ask ${coworker.name} to build, debug or improve something in ${activeProject.name}...`
+        : `Ask ${coworker.name} to build, debug or improve something...`;
+    }
+    if (role.includes("research") || spec.includes("research")) {
+      return `Ask ${coworker.name} to investigate something...`;
+    }
+    if (role.includes("analy") || spec.includes("data") || spec.includes("analy")) {
+      return `Ask ${coworker.name} to analyse your data...`;
+    }
+    if (role.includes("scribe") || role.includes("writer") || spec.includes("writ") || spec.includes("doc")) {
+      return `Ask ${coworker.name} to write or organise something...`;
+    }
+    if (role.includes("manager") || role.includes("lead") || spec.includes("plan")) {
+      return `Ask ${coworker.name} to plan or coordinate tasks...`;
+    }
+    return `Ask ${coworker.name} to help with something...`;
+  }, [coworker.name, coworker.role, coworker.specialisation, activeProject]);
 
   // Determine if there is an active running turn
   const activeRunningTurn = useMemo(() => {
@@ -477,9 +505,21 @@ export function CoworkerChatView({
   return (
     <div className="flex flex-col h-[calc(100vh-140px)] min-h-[580px] rounded-2xl border border-ops-line bg-surface overflow-hidden shadow-xs">
       {/* 1. Coworker Chat Header */}
-      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-line bg-surface px-5 py-3.5 shrink-0">
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-ink text-white shadow-xs">
+      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-line bg-surface px-4 py-3 shrink-0 sm:px-5">
+        <div className="flex items-center gap-2.5 min-w-0 sm:gap-3">
+          {onBack && (
+            <button
+              type="button"
+              onClick={onBack}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-line bg-ops-panel px-2.5 py-1.5 text-xs font-medium text-ink hover:bg-white hover:text-ai transition cursor-pointer shrink-0"
+              title="Return to Coworkers directory"
+            >
+              <ArrowLeft size={14} />
+              <span className="hidden sm:inline">Coworkers</span>
+            </button>
+          )}
+
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-ink text-white shadow-xs sm:h-10 sm:w-10">
             {getRoleIcon()}
           </div>
           <div className="min-w-0">
@@ -493,142 +533,179 @@ export function CoworkerChatView({
                 {activeRunningTurn ? "Executing..." : coworker.availability ? "Online" : "Offline"}
               </span>
             </div>
-            <p className="truncate text-xs text-ink-dim">
+            <p className="truncate text-xs text-ink-dim hidden sm:block">
               {coworker.description || coworker.specialisation}
             </p>
           </div>
         </div>
 
-        {/* Working Directory & Action Controls */}
-        <div className="flex flex-wrap items-center gap-2">
-          {/* Milestone H: Local vs Remote Cloud Execution Selector */}
-          <div className="flex items-center gap-1 rounded-xl border border-line bg-ops-panel p-1 text-xs font-medium text-ink">
+        {/* Header Action Controls */}
+        <div className="flex items-center gap-2">
+          {/* Milestone H: Expandable Workspace & Engine Drawer Toggle */}
+          {isCodingCoworker && (
             <button
               type="button"
-              onClick={() => setExecutionTarget("local")}
-              className={`flex items-center gap-1 rounded-lg px-2 py-1 text-xs transition cursor-pointer ${
-                executionTarget === "local" ? "bg-white font-semibold text-ink shadow-2xs" : "text-ink-dim hover:text-ink"
+              onClick={() => setShowTechnicalToolbar((v) => !v)}
+              className={`flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-medium transition cursor-pointer ${
+                showTechnicalToolbar
+                  ? "border-ai bg-ai/10 text-ai shadow-2xs"
+                  : "border-line bg-ops-panel text-ink hover:bg-white hover:border-line-bright"
               }`}
-              title="Execute inside local PC Git worktree"
+              title="Configure workspace, local vs cloud execution target, and coding engine"
             >
-              <HardDrive size={12} className={executionTarget === "local" ? "text-ai" : ""} />
-              <span>Local PC</span>
+              <SlidersHorizontal size={13} />
+              <span className="hidden sm:inline font-medium">Workspace & Engine</span>
+              <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                executionTarget === "remote" ? "bg-emerald-100 text-emerald-800" : "bg-ops-raised text-ink"
+              }`}>
+                {executionTarget === "remote" ? "☁️ Remote Cloud" : "💻 Local PC"}
+              </span>
             </button>
-            <button
-              type="button"
-              onClick={() => {
-                setExecutionTarget("remote");
-                if (remoteWorkspaces.length === 0) setShowRemoteModal(true);
-              }}
-              className={`flex items-center gap-1 rounded-lg px-2 py-1 text-xs transition cursor-pointer ${
-                executionTarget === "remote" ? "bg-white font-semibold text-ink shadow-2xs" : "text-ink-dim hover:text-ink"
-              }`}
-              title="Execute inside 24/7 persistent remote container (laptop can be off)"
-            >
-              <Cloud size={12} className={executionTarget === "remote" ? "text-emerald-600" : ""} />
-              <span>Remote Cloud</span>
-            </button>
-          </div>
-
-          {/* If Local: show local directory selector */}
-          {executionTarget === "local" ? (
-            <div className="flex items-center gap-1.5 rounded-xl border border-line bg-ops-panel px-2.5 py-1.5 text-xs">
-              <HardDrive size={13} className="text-ai shrink-0" />
-              <select
-                aria-label="Working Directory"
-                value={activeProjectId ?? ""}
-                onChange={(e) => onSelectProject(e.target.value ? Number(e.target.value) : null)}
-                className="bg-transparent font-medium text-ink outline-none cursor-pointer max-w-[200px] truncate"
-              >
-                <option value="">No working directory</option>
-                {projects.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name} ({p.directory})
-                  </option>
-                ))}
-              </select>
-              <button
-                type="button"
-                onClick={() => setShowWorkspaceModal(true)}
-                className="text-[11px] font-semibold text-ai hover:underline pl-1 cursor-pointer"
-                title="Register a new working directory"
-              >
-                + Add
-              </button>
-            </div>
-          ) : (
-            /* If Remote: show remote workspace selector + recovery button */
-            <div className="flex items-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50/60 px-2.5 py-1.5 text-xs">
-              <Cloud size={13} className="text-emerald-700 shrink-0" />
-              <select
-                aria-label="Remote Workspace"
-                value={selectedRemoteWorkspaceId ?? ""}
-                onChange={(e) => setSelectedRemoteWorkspaceId(e.target.value || null)}
-                className="bg-transparent font-medium text-emerald-950 outline-none cursor-pointer max-w-[210px] truncate"
-              >
-                {remoteWorkspaces.length === 0 ? (
-                  <option value="">No remote workspace</option>
-                ) : (
-                  remoteWorkspaces.map((ws) => (
-                    <option key={ws.id} value={ws.id}>
-                      {ws.name} ({ws.branch})
-                    </option>
-                  ))
-                )}
-              </select>
-              {(() => {
-                const ws = remoteWorkspaces.find((w) => w.id === selectedRemoteWorkspaceId);
-                return (
-                  <>
-                    {ws && (
-                      <span className="rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-800">
-                        {ws.status}
-                      </span>
-                    )}
-                    {ws?.uncommitted_patch && (
-                      <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800" title="Uncommitted changes checkpointed in durable storage">
-                        Patch Saved
-                      </span>
-                    )}
-                    {ws && ["sleeping", "stopped", "failed"].includes(ws.status) && (
-                      <button
-                        type="button"
-                        onClick={() => handleRecoverRemoteWorkspace(ws.id)}
-                        disabled={recoveringWs}
-                        className="text-[11px] font-semibold text-emerald-700 hover:underline pl-1 cursor-pointer flex items-center gap-1"
-                        title="Wake compute and restore workspace from GitHub + saved patch"
-                      >
-                        <RefreshCw size={11} className={recoveringWs ? "animate-spin" : ""} />
-                        {recoveringWs ? "Waking..." : "Wake"}
-                      </button>
-                    )}
-                    {ws && (
-                      <button
-                        type="button"
-                        onClick={() => handleUpdateCompanionUrl(ws.id)}
-                        className="text-[11px] font-semibold text-emerald-700 hover:underline pl-1 cursor-pointer"
-                        title={ws.companion_url ? `Current URL: ${ws.companion_url}` : "Configure cloud companion URL"}
-                      >
-                        Edit URL
-                      </button>
-                    )}
-                  </>
-                );
-              })()}
-              <button
-                type="button"
-                onClick={() => setShowRemoteModal(true)}
-                className="text-[11px] font-semibold text-emerald-700 hover:underline pl-1 cursor-pointer"
-                title="Connect a GitHub repository to a persistent cloud workspace"
-              >
-                + New
-              </button>
-            </div>
           )}
 
-          {/* Engine Selector for Coding Coworkers */}
-          {isCodingCoworker && (
-            <div className="flex items-center gap-1 rounded-xl border border-line bg-ops-panel px-2.5 py-1.5 text-xs font-medium text-ink">
+          {/* Coworker Profile & Settings Button */}
+          <button
+            type="button"
+            onClick={onOpenSettings}
+            className="flex items-center gap-1.5 rounded-xl border border-line bg-ops-panel p-2 text-ink-dim hover:bg-white hover:text-ink transition cursor-pointer"
+            title="Coworker Profile & Capability Settings"
+          >
+            <Settings size={15} />
+          </button>
+        </div>
+      </header>
+
+      {/* Expandable Technical Workspace & Engine Drawer */}
+      {isCodingCoworker && showTechnicalToolbar && (
+        <div className="border-b border-line bg-ops-ground/80 px-4 py-2.5 text-xs flex flex-wrap items-center justify-between gap-2.5 shrink-0 animate-in fade-in slide-in-from-top-1 duration-150 sm:px-5">
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Local vs Remote Cloud Toggle */}
+            <div className="flex items-center gap-1 rounded-xl border border-line bg-white p-1 text-xs font-medium text-ink shadow-2xs">
+              <button
+                type="button"
+                onClick={() => setExecutionTarget("local")}
+                className={`flex items-center gap-1 rounded-lg px-2 py-1 text-xs transition cursor-pointer ${
+                  executionTarget === "local" ? "bg-ops-panel font-semibold text-ink shadow-2xs" : "text-ink-dim hover:text-ink"
+                }`}
+                title="Execute inside local PC Git worktree"
+              >
+                <HardDrive size={12} className={executionTarget === "local" ? "text-ai" : ""} />
+                <span>Local PC</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setExecutionTarget("remote");
+                  if (remoteWorkspaces.length === 0) setShowRemoteModal(true);
+                }}
+                className={`flex items-center gap-1 rounded-lg px-2 py-1 text-xs transition cursor-pointer ${
+                  executionTarget === "remote" ? "bg-ops-panel font-semibold text-ink shadow-2xs" : "text-ink-dim hover:text-ink"
+                }`}
+                title="Execute inside 24/7 persistent remote container (laptop can be off)"
+              >
+                <Cloud size={12} className={executionTarget === "remote" ? "text-emerald-600" : ""} />
+                <span>Remote Cloud</span>
+              </button>
+            </div>
+
+            {/* If Local: show local directory selector */}
+            {executionTarget === "local" ? (
+              <div className="flex items-center gap-1.5 rounded-xl border border-line bg-white px-2.5 py-1 text-xs shadow-2xs">
+                <HardDrive size={13} className="text-ai shrink-0" />
+                <select
+                  aria-label="Working Directory"
+                  value={activeProjectId ?? ""}
+                  onChange={(e) => onSelectProject(e.target.value ? Number(e.target.value) : null)}
+                  className="bg-transparent font-medium text-ink outline-none cursor-pointer max-w-[200px] truncate"
+                >
+                  <option value="">No working directory</option>
+                  {projects.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name} ({p.directory})
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={() => setShowWorkspaceModal(true)}
+                  className="text-[11px] font-semibold text-ai hover:underline pl-1 cursor-pointer"
+                  title="Register a new working directory"
+                >
+                  + Add
+                </button>
+              </div>
+            ) : (
+              /* If Remote: show remote workspace selector + recovery button */
+              <div className="flex items-center gap-1.5 rounded-xl border border-emerald-200 bg-white px-2.5 py-1 text-xs shadow-2xs">
+                <Cloud size={13} className="text-emerald-700 shrink-0" />
+                <select
+                  aria-label="Remote Workspace"
+                  value={selectedRemoteWorkspaceId ?? ""}
+                  onChange={(e) => setSelectedRemoteWorkspaceId(e.target.value || null)}
+                  className="bg-transparent font-medium text-emerald-950 outline-none cursor-pointer max-w-[210px] truncate"
+                >
+                  {remoteWorkspaces.length === 0 ? (
+                    <option value="">No remote workspace</option>
+                  ) : (
+                    remoteWorkspaces.map((ws) => (
+                      <option key={ws.id} value={ws.id}>
+                        {ws.name} ({ws.branch})
+                      </option>
+                    ))
+                  )}
+                </select>
+                {(() => {
+                  const ws = remoteWorkspaces.find((w) => w.id === selectedRemoteWorkspaceId);
+                  return (
+                    <>
+                      {ws && (
+                        <span className="rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-800">
+                          {ws.status}
+                        </span>
+                      )}
+                      {ws?.uncommitted_patch && (
+                        <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800" title="Uncommitted changes checkpointed in durable storage">
+                          Patch Saved
+                        </span>
+                      )}
+                      {ws && ["sleeping", "stopped", "failed"].includes(ws.status) && (
+                        <button
+                          type="button"
+                          onClick={() => handleRecoverRemoteWorkspace(ws.id)}
+                          disabled={recoveringWs}
+                          className="text-[11px] font-semibold text-emerald-700 hover:underline pl-1 cursor-pointer flex items-center gap-1"
+                          title="Wake compute and restore workspace from GitHub + saved patch"
+                        >
+                          <RefreshCw size={11} className={recoveringWs ? "animate-spin" : ""} />
+                          {recoveringWs ? "Waking..." : "Wake"}
+                        </button>
+                      )}
+                      {ws && (
+                        <button
+                          type="button"
+                          onClick={() => handleUpdateCompanionUrl(ws.id)}
+                          className="text-[11px] font-semibold text-emerald-700 hover:underline pl-1 cursor-pointer"
+                          title={ws.companion_url ? `Current URL: ${ws.companion_url}` : "Configure cloud companion URL"}
+                        >
+                          Edit URL
+                        </button>
+                      )}
+                    </>
+                  );
+                })()}
+                <button
+                  type="button"
+                  onClick={() => setShowRemoteModal(true)}
+                  className="text-[11px] font-semibold text-emerald-700 hover:underline pl-1 cursor-pointer"
+                  title="Connect a GitHub repository to a persistent cloud workspace"
+                >
+                  + New
+                </button>
+              </div>
+            )}
+
+            {/* Engine Selector for Coding Coworkers */}
+            <div className="flex items-center gap-1 rounded-xl border border-line bg-white px-2.5 py-1 text-xs font-medium text-ink shadow-2xs">
               <Terminal size={13} className="text-ink-faint shrink-0" />
               <select
                 aria-label="Coding Engine"
@@ -640,19 +717,17 @@ export function CoworkerChatView({
                 <option value="codex-cli">Codex CLI</option>
               </select>
             </div>
-          )}
+          </div>
 
-          {/* Settings Button */}
           <button
             type="button"
-            onClick={onOpenSettings}
-            className="flex items-center gap-1.5 rounded-xl border border-line bg-surface p-2 text-ink-dim hover:bg-ops-ground hover:text-ink transition cursor-pointer"
-            title="Coworker Profile & Capability Settings"
+            onClick={() => setShowTechnicalToolbar(false)}
+            className="text-[11px] text-ink-faint hover:text-ink cursor-pointer"
           >
-            <Settings size={15} />
+            Done
           </button>
         </div>
-      </header>
+      )}
 
       {/* Workspace Register Modal */}
       {showWorkspaceModal && (
@@ -1037,11 +1112,7 @@ export function CoworkerChatView({
                 void handleSendMessage();
               }
             }}
-            placeholder={
-              activeProject
-                ? `Ask ${coworker.name} to build, research, or revise in ${activeProject.name}…`
-                : `Message ${coworker.name}…`
-            }
+            placeholder={composerPlaceholder}
             className="flex-1 resize-none bg-transparent px-2 py-1 text-sm text-ink outline-none max-h-32 placeholder:text-ink-faint"
           />
 

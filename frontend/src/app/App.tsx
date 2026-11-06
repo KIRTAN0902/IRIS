@@ -22,6 +22,7 @@ const SettingsPage = lazy(() => import("@/features/settings/SettingsPage").then(
 const ContinuityPage = lazy(() => import("@/features/continuity/ContinuityPage").then((m) => ({ default: m.ContinuityPage })));
 const AgyTerminalDeck = lazy(() => import("@/features/agy/AgyTerminalDeck").then((m) => ({ default: m.AgyTerminalDeck })));
 const CoworkersPage = lazy(() => import("@/features/coworkers/CoworkersPage").then((m) => ({ default: m.CoworkersPage })));
+const CoworkerChatPage = lazy(() => import("@/features/coworkers/CoworkerChatPage").then((m) => ({ default: m.CoworkerChatPage })));
 const ConversationsPage = lazy(() => import("@/features/chat/ConversationsPage").then((m) => ({ default: m.ConversationsPage })));
 const MemoryPage = lazy(() => import("@/features/home/MemoryPage").then((m) => ({ default: m.MemoryPage })));
 const MeshPage = lazy(() => import("@/features/mesh/MeshPage").then((m) => ({ default: m.MeshPage })));
@@ -52,6 +53,8 @@ export function App() {
             <Route path="schedule" element={<SchedulePage />} />
             <Route path="projects" element={<ProjectsPage />} />
             <Route path="coworkers" element={<CoworkersPage />} />
+            <Route path="coworkers/:coworkerId/chat" element={<CoworkerChatPage />} />
+            <Route path="coworkers/:coworkerId" element={<CoworkerChatPage />} />
             <Route path="diary" element={<DiaryPage />} />
             <Route path="finance" element={<FinancePage />} />
             <Route path="gym" element={<WorkoutsPage />} />
