@@ -151,6 +151,10 @@ class Settings(BaseSettings):
     desktop_cli_require_approval_for_class_c: bool = True
     desktop_cli_block_class_d: bool = True
 
+    # --- Remote Coding Companion ---
+    remote_companion_url: str = "https://irisforgecode.dpdns.org"
+    iris_companion_secret: str = "iris_colab_secret_2026"
+
     @property
     def is_development(self) -> bool:
         return self.environment.lower() == "development"

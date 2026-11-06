@@ -21,8 +21,9 @@ class RemoteCompanionClient:
     """Communicates with the containerized Remote Execution Companion on Hugging Face or Cloud."""
 
     def __init__(self, base_url: str | None = None, secret_token: str | None = None, timeout: float = 30.0) -> None:
-        self.base_url = (base_url or os.getenv("REMOTE_COMPANION_URL") or "http://localhost:7860").rstrip("/")
-        self.secret_token = secret_token or os.getenv("IRIS_COMPANION_SECRET") or "dev-secret-token"
+        from app.core.config import settings
+        self.base_url = (base_url or os.getenv("REMOTE_COMPANION_URL") or getattr(settings, "remote_companion_url", None) or "http://localhost:7860").rstrip("/")
+        self.secret_token = secret_token or os.getenv("IRIS_COMPANION_SECRET") or getattr(settings, "iris_companion_secret", None) or "dev-secret-token"
         self.timeout = timeout
 
     @property
