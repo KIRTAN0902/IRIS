@@ -48,7 +48,11 @@ def upgrade() -> None:
     # 2. Add workspace_id column to coworkers
     op.add_column("coworkers", sa.Column("workspace_id", sa.String(36), sa.ForeignKey("remote_workspaces.id", ondelete="SET NULL"), nullable=True))
 
-    # 3. Add git_repo_url and default_branch to coding_projects
+    # 3. Add remote_workspace_id column to coworker_tasks
+    op.add_column("coworker_tasks", sa.Column("remote_workspace_id", sa.String(36), sa.ForeignKey("remote_workspaces.id", ondelete="SET NULL"), nullable=True))
+    op.create_index("ix_coworker_tasks_remote_workspace_id", "coworker_tasks", ["remote_workspace_id"])
+
+    # 4. Add git_repo_url and default_branch to coding_projects
     op.add_column("coding_projects", sa.Column("git_repo_url", sa.String(512), nullable=True))
     op.add_column("coding_projects", sa.Column("default_branch", sa.String(128), nullable=True, server_default="main"))
 
