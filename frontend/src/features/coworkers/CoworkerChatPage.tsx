@@ -24,6 +24,10 @@ export function CoworkerChatPage() {
         api.get<Coworker>(`/coworkers/${coworkerId}`),
         api.get<Project[]>("/coding/projects"),
       ]);
+      if (!c.project_id && ps.length > 0) {
+        c.project_id = ps[0].id;
+        void api.patch(`/coworkers/${coworkerId}`, { project_id: ps[0].id });
+      }
       setCoworker(c);
       setProjects(ps);
       document.title = `${c.name} · Coworker Chat · IRIS`;

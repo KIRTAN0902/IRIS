@@ -259,6 +259,16 @@ async def run_coworker_task(task_id: str, user_id: int) -> None:
                     })
                     db.commit()
 
+                    # Pre-flight check: ensure workspace repository is cloned on companion
+                    try:
+                        await client.provision_workspace(
+                            workspace_id=remote_ws.id,
+                            repo_url=remote_ws.repo_url,
+                            branch=remote_ws.branch or "main",
+                        )
+                    except Exception as prov_err:
+                        logger.info("Companion provision pre-flight notice: %s", prov_err)
+
                     collected_output = []
                     try:
                         async for event in client.execute_task_stream(

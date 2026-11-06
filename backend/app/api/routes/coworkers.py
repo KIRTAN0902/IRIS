@@ -1,6 +1,7 @@
 """Persistent coworker management, task assignment, approvals and governance APIs."""
 from __future__ import annotations
 
+import os
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
@@ -13,6 +14,7 @@ from app.agent.registry import create_default_registry
 from app.core.database import get_db
 from app.models.coding_project import CodingProject
 from app.models.coworker import Coworker, CoworkerApproval, CoworkerEvent, CoworkerSession, CoworkerTask
+from app.models.remote_workspace import RemoteWorkspace
 from app.models.user import User
 from app.coworkers.contracts import coworker_transition, transition
 from app.coworkers.execution import run_coworker_task, _fail_dependents
@@ -524,7 +526,35 @@ def chat_coworker(coworker_id: str, data: CoworkerChatRequest, background: Backg
         c.project_id = project_id
         db.commit()
 
-    # 3. Context linking to last task
+    # 3. Remote Cloud Workspace auto-resolution for Developer / Coding coworkers
+    is_coding = any(k in (c.role or "").lower() for k in ("coding", "developer", "software"))
+    resolved_ws_id = data.workspace_id or getattr(c, "workspace_id", None)
+    if not resolved_ws_id and is_coding:
+        existing_ws = db.query(RemoteWorkspace).filter_by(user_id=user.id).order_by(RemoteWorkspace.updated_at.desc()).first()
+        if existing_ws:
+            resolved_ws_id = existing_ws.id
+            c.workspace_id = existing_ws.id
+            db.commit()
+        elif os.getenv("REMOTE_COMPANION_URL"):
+            new_ws = RemoteWorkspace(
+                id=str(uuid4()),
+                user_id=user.id,
+                project_id=project_id,
+                name="IRIS Cloud Sandbox",
+                repo_url="https://github.com/KIRTAN0902/IRIS.git",
+                branch="main",
+                companion_url=os.getenv("REMOTE_COMPANION_URL"),
+                status="idle",
+                last_active_at=datetime.now(UTC),
+            )
+            db.add(new_ws)
+            db.commit()
+            db.refresh(new_ws)
+            resolved_ws_id = new_ws.id
+            c.workspace_id = new_ws.id
+            db.commit()
+
+    # 4. Context linking to last task
     last_task = db.query(CoworkerTask).filter_by(
         user_id=user.id, coworker_id=c.id
     ).order_by(CoworkerTask.created_at.desc()).first()
@@ -537,19 +567,19 @@ def chat_coworker(coworker_id: str, data: CoworkerChatRequest, background: Backg
         coworker_id=c.id,
         parent_task_id=last_task.id if last_task else None,
         project_id=project_id,
-        remote_workspace_id=data.workspace_id,
+        remote_workspace_id=resolved_ws_id,
         instruction=msg,
         objectives=[msg],
         acceptance_criteria=["Deliver verified implementation or natural conversational response."],
         required_capabilities=c.allowed_capabilities or [],
         dependencies=[],
-        permission_scope={"project_id": project_id, "workspace_id": data.workspace_id, "preferred_agent": preferred_agent, "auto_run": True, "conversational_auto_execute": True},
+        permission_scope={"project_id": project_id, "workspace_id": resolved_ws_id, "preferred_agent": preferred_agent, "auto_run": True, "conversational_auto_execute": True},
         status="queued"
     )
     db.add(t)
     db.flush()
     c.status = "working"
-    _event(db, user.id, c.id, t.id, "chat_message_received", {"message": msg, "project_id": project_id, "engine": preferred_agent})
+    _event(db, user.id, c.id, t.id, "chat_message_received", {"message": msg, "project_id": project_id, "workspace_id": resolved_ws_id, "engine": preferred_agent})
     db.commit()
     db.refresh(t)
 

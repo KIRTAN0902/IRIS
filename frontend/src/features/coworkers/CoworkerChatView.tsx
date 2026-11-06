@@ -139,13 +139,14 @@ export function CoworkerChatView({
   const [newWsDir, setNewWsDir] = useState("C:\\kirtan\\IRIS");
   const [isRecording, setIsRecording] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
-  const [showTechnicalToolbar, setShowTechnicalToolbar] = useState(false);
 
-  // Milestone H: Persistent Remote Workspaces & Target Execution
+  // Milestone H & UX Normalisation: Default to Remote Cloud Execution
   const [remoteWorkspaces, setRemoteWorkspaces] = useState<RemoteWorkspace[]>([]);
   const [selectedRemoteWorkspaceId, setSelectedRemoteWorkspaceId] = useState<string | null>(null);
-  const [executionTarget, setExecutionTarget] = useState<"local" | "remote">("local");
+  const [executionTarget, setExecutionTarget] = useState<"local" | "remote">("remote");
   const [showRemoteModal, setShowRemoteModal] = useState(false);
+  const [showProjectDropdown, setShowProjectDropdown] = useState(false);
+  const [showDiagnosticsModal, setShowDiagnosticsModal] = useState(false);
   const [newRemoteName, setNewRemoteName] = useState("IRIS Cloud Sandbox");
   const [newRemoteRepo, setNewRemoteRepo] = useState("https://github.com/KIRTAN0902/IRIS.git");
   const [newRemoteBranch, setNewRemoteBranch] = useState("main");
@@ -541,193 +542,85 @@ export function CoworkerChatView({
 
         {/* Header Action Controls */}
         <div className="flex items-center gap-2">
-          {/* Milestone H: Expandable Workspace & Engine Drawer Toggle */}
+          {/* Primary Context Control: Codebase / Repository Selector for Coding Coworkers */}
           {isCodingCoworker && (
-            <button
-              type="button"
-              onClick={() => setShowTechnicalToolbar((v) => !v)}
-              className={`flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-medium transition cursor-pointer ${
-                showTechnicalToolbar
-                  ? "border-ai bg-ai/10 text-ai shadow-2xs"
-                  : "border-line bg-ops-panel text-ink hover:bg-white hover:border-line-bright"
-              }`}
-              title="Configure workspace, local vs cloud execution target, and coding engine"
-            >
-              <SlidersHorizontal size={13} />
-              <span className="hidden sm:inline font-medium">Workspace & Engine</span>
-              <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                executionTarget === "remote" ? "bg-emerald-100 text-emerald-800" : "bg-ops-raised text-ink"
-              }`}>
-                {executionTarget === "remote" ? "☁️ Remote Cloud" : "💻 Local PC"}
-              </span>
-            </button>
-          )}
-
-          {/* Coworker Profile & Settings Button */}
-          <button
-            type="button"
-            onClick={onOpenSettings}
-            className="flex items-center gap-1.5 rounded-xl border border-line bg-ops-panel p-2 text-ink-dim hover:bg-white hover:text-ink transition cursor-pointer"
-            title="Coworker Profile & Capability Settings"
-          >
-            <Settings size={15} />
-          </button>
-        </div>
-      </header>
-
-      {/* Expandable Technical Workspace & Engine Drawer */}
-      {isCodingCoworker && showTechnicalToolbar && (
-        <div className="border-b border-line bg-ops-ground/80 px-4 py-2.5 text-xs flex flex-wrap items-center justify-between gap-2.5 shrink-0 animate-in fade-in slide-in-from-top-1 duration-150 sm:px-5">
-          <div className="flex flex-wrap items-center gap-2">
-            {/* Local vs Remote Cloud Toggle */}
-            <div className="flex items-center gap-1 rounded-xl border border-line bg-white p-1 text-xs font-medium text-ink shadow-2xs">
+            <div className="relative">
               <button
                 type="button"
-                onClick={() => setExecutionTarget("local")}
-                className={`flex items-center gap-1 rounded-lg px-2 py-1 text-xs transition cursor-pointer ${
-                  executionTarget === "local" ? "bg-ops-panel font-semibold text-ink shadow-2xs" : "text-ink-dim hover:text-ink"
-                }`}
-                title="Execute inside local PC Git worktree"
+                onClick={() => setShowProjectDropdown((v) => !v)}
+                className="flex items-center gap-1.5 rounded-xl border border-line bg-ops-panel px-3 py-1.5 text-xs font-medium text-ink hover:bg-white hover:border-line-bright transition shadow-2xs cursor-pointer"
+                title="Active codebase repository"
               >
-                <HardDrive size={12} className={executionTarget === "local" ? "text-ai" : ""} />
-                <span>Local PC</span>
+                <Code2 size={13} className="text-ai" />
+                <span className="font-semibold">{activeProject?.name || "IRIS"}</span>
+                <span className="text-[11px] text-ink-faint hidden sm:inline">({remoteWorkspaces[0]?.branch || "main"})</span>
+                <ChevronDown size={12} className="text-ink-faint" />
               </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setExecutionTarget("remote");
-                  if (remoteWorkspaces.length === 0) setShowRemoteModal(true);
-                }}
-                className={`flex items-center gap-1 rounded-lg px-2 py-1 text-xs transition cursor-pointer ${
-                  executionTarget === "remote" ? "bg-ops-panel font-semibold text-ink shadow-2xs" : "text-ink-dim hover:text-ink"
-                }`}
-                title="Execute inside 24/7 persistent remote container (laptop can be off)"
-              >
-                <Cloud size={12} className={executionTarget === "remote" ? "text-emerald-600" : ""} />
-                <span>Remote Cloud</span>
-              </button>
-            </div>
 
-            {/* If Local: show local directory selector */}
-            {executionTarget === "local" ? (
-              <div className="flex items-center gap-1.5 rounded-xl border border-line bg-white px-2.5 py-1 text-xs shadow-2xs">
-                <HardDrive size={13} className="text-ai shrink-0" />
-                <select
-                  aria-label="Working Directory"
-                  value={activeProjectId ?? ""}
-                  onChange={(e) => onSelectProject(e.target.value ? Number(e.target.value) : null)}
-                  className="bg-transparent font-medium text-ink outline-none cursor-pointer max-w-[200px] truncate"
-                >
-                  <option value="">No working directory</option>
-                  {projects.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name} ({p.directory})
-                    </option>
-                  ))}
-                </select>
-                <button
-                  type="button"
-                  onClick={() => setShowWorkspaceModal(true)}
-                  className="text-[11px] font-semibold text-ai hover:underline pl-1 cursor-pointer"
-                  title="Register a new working directory"
-                >
-                  + Add
-                </button>
-              </div>
-            ) : (
-              /* If Remote: show remote workspace selector + recovery button */
-              <div className="flex items-center gap-1.5 rounded-xl border border-emerald-200 bg-white px-2.5 py-1 text-xs shadow-2xs">
-                <Cloud size={13} className="text-emerald-700 shrink-0" />
-                <select
-                  aria-label="Remote Workspace"
-                  value={selectedRemoteWorkspaceId ?? ""}
-                  onChange={(e) => setSelectedRemoteWorkspaceId(e.target.value || null)}
-                  className="bg-transparent font-medium text-emerald-950 outline-none cursor-pointer max-w-[210px] truncate"
-                >
-                  {remoteWorkspaces.length === 0 ? (
-                    <option value="">No remote workspace</option>
+              {showProjectDropdown && (
+                <div className="absolute right-0 top-full mt-1.5 w-64 rounded-xl border border-line bg-white p-1.5 shadow-lg z-30 animate-in fade-in-50 zoom-in-95 duration-100">
+                  <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-ink-faint">
+                    Active Codebase
+                  </div>
+                  {projects.length === 0 ? (
+                    <div className="px-2 py-1.5 text-xs text-ink-dim">No registered codebases</div>
                   ) : (
-                    remoteWorkspaces.map((ws) => (
-                      <option key={ws.id} value={ws.id}>
-                        {ws.name} ({ws.branch})
-                      </option>
+                    projects.map((p) => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => {
+                          onSelectProject(p.id);
+                          setShowProjectDropdown(false);
+                        }}
+                        className={`flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-left text-xs transition cursor-pointer ${
+                          p.id === activeProjectId ? "bg-ai/10 font-semibold text-ai" : "text-ink hover:bg-ops-panel"
+                        }`}
+                      >
+                        <span className="truncate">{p.name}</span>
+                        {p.id === activeProjectId && <span className="text-[10px] text-ai">Active</span>}
+                      </button>
                     ))
                   )}
-                </select>
-                {(() => {
-                  const ws = remoteWorkspaces.find((w) => w.id === selectedRemoteWorkspaceId);
-                  return (
-                    <>
-                      {ws && (
-                        <span className="rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-800">
-                          {ws.status}
-                        </span>
-                      )}
-                      {ws?.uncommitted_patch && (
-                        <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800" title="Uncommitted changes checkpointed in durable storage">
-                          Patch Saved
-                        </span>
-                      )}
-                      {ws && ["sleeping", "stopped", "failed"].includes(ws.status) && (
-                        <button
-                          type="button"
-                          onClick={() => handleRecoverRemoteWorkspace(ws.id)}
-                          disabled={recoveringWs}
-                          className="text-[11px] font-semibold text-emerald-700 hover:underline pl-1 cursor-pointer flex items-center gap-1"
-                          title="Wake compute and restore workspace from GitHub + saved patch"
-                        >
-                          <RefreshCw size={11} className={recoveringWs ? "animate-spin" : ""} />
-                          {recoveringWs ? "Waking..." : "Wake"}
-                        </button>
-                      )}
-                      {ws && (
-                        <button
-                          type="button"
-                          onClick={() => handleUpdateCompanionUrl(ws.id)}
-                          className="text-[11px] font-semibold text-emerald-700 hover:underline pl-1 cursor-pointer"
-                          title={ws.companion_url ? `Current URL: ${ws.companion_url}` : "Configure cloud companion URL"}
-                        >
-                          Edit URL
-                        </button>
-                      )}
-                    </>
-                  );
-                })()}
-                <button
-                  type="button"
-                  onClick={() => setShowRemoteModal(true)}
-                  className="text-[11px] font-semibold text-emerald-700 hover:underline pl-1 cursor-pointer"
-                  title="Connect a GitHub repository to a persistent cloud workspace"
-                >
-                  + New
-                </button>
-              </div>
-            )}
-
-            {/* Engine Selector for Coding Coworkers */}
-            <div className="flex items-center gap-1 rounded-xl border border-line bg-white px-2.5 py-1 text-xs font-medium text-ink shadow-2xs">
-              <Terminal size={13} className="text-ink-faint shrink-0" />
-              <select
-                aria-label="Coding Engine"
-                value={selectedEngine}
-                onChange={(e) => setSelectedEngine(e.target.value)}
-                className="bg-transparent text-xs font-medium text-ink outline-none cursor-pointer"
-              >
-                <option value="antigravity-cli">Antigravity CLI (agy)</option>
-                <option value="codex-cli">Codex CLI</option>
-              </select>
+                  <div className="my-1 border-t border-line" />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowProjectDropdown(false);
+                      setShowWorkspaceModal(true);
+                    }}
+                    className="flex w-full items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-left text-xs font-medium text-ai hover:bg-ai/5 transition cursor-pointer"
+                  >
+                    <FolderPlus size={13} />
+                    <span>+ Register new codebase</span>
+                  </button>
+                </div>
+              )}
             </div>
-          </div>
+          )}
 
-          <button
-            type="button"
-            onClick={() => setShowTechnicalToolbar(false)}
-            className="text-[11px] text-ink-faint hover:text-ink cursor-pointer"
-          >
-            Done
-          </button>
+          {/* Secondary Action: Advanced Workspace Diagnostics & Settings */}
+          {isCodingCoworker ? (
+            <button
+              type="button"
+              onClick={() => setShowDiagnosticsModal(true)}
+              className="flex h-8 w-8 items-center justify-center rounded-xl border border-line bg-ops-panel text-ink-dim hover:bg-white hover:text-ink transition cursor-pointer"
+              title="Advanced Diagnostics & Workspace Settings"
+            >
+              <Settings size={15} />
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={onOpenSettings}
+              className="flex h-8 w-8 items-center justify-center rounded-xl border border-line bg-ops-panel text-ink-dim hover:bg-white hover:text-ink transition cursor-pointer"
+              title="Coworker Settings"
+            >
+              <Settings size={15} />
+            </button>
+          )}
         </div>
-      )}
+      </header>
 
       {/* Workspace Register Modal */}
       {showWorkspaceModal && (
@@ -810,6 +703,136 @@ export function CoworkerChatView({
           <p className="text-[11px] text-emerald-700">
             The remote container will clone this repository, isolate tasks on dedicated branches, and preserve uncommitted patches. Your local laptop can remain off.
           </p>
+        </div>
+      )}
+
+      {/* Advanced Diagnostics & Settings Modal */}
+      {showDiagnosticsModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+          <div className="w-full max-w-lg rounded-2xl border border-line bg-white p-6 shadow-xl space-y-5 animate-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b border-line pb-3">
+              <div className="flex items-center gap-2">
+                <SlidersHorizontal size={17} className="text-ai" />
+                <h3 className="font-semibold text-ink text-base">Advanced Workspace & Engine Settings</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowDiagnosticsModal(false)}
+                className="text-ink-dim hover:text-ink p-1 rounded-lg hover:bg-ops-panel transition cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Execution Target Environment */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-ink-dim">Target Execution Environment</label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setExecutionTarget("remote")}
+                  className={`flex flex-col items-start gap-1 rounded-xl border p-3 text-left transition cursor-pointer ${
+                    executionTarget === "remote"
+                      ? "border-emerald-500 bg-emerald-50/70 text-emerald-950 shadow-2xs"
+                      : "border-line bg-ops-panel text-ink hover:bg-white"
+                  }`}
+                >
+                  <div className="flex items-center gap-1.5 text-xs font-semibold">
+                    <Cloud size={14} className="text-emerald-700" />
+                    <span>Remote Cloud (Default)</span>
+                  </div>
+                  <span className="text-[11px] text-ink-dim leading-tight">
+                    Runs in persistent cloud container (https://irisforgecode.dpdns.org). Laptop can sleep.
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setExecutionTarget("local")}
+                  className={`flex flex-col items-start gap-1 rounded-xl border p-3 text-left transition cursor-pointer ${
+                    executionTarget === "local"
+                      ? "border-ai bg-ai/10 text-ink shadow-2xs"
+                      : "border-line bg-ops-panel text-ink hover:bg-white"
+                  }`}
+                >
+                  <div className="flex items-center gap-1.5 text-xs font-semibold">
+                    <HardDrive size={14} className="text-ai" />
+                    <span>Local PC Worktree</span>
+                  </div>
+                  <span className="text-[11px] text-ink-dim leading-tight">
+                    Runs inside local PC Git worktree. Requires local CLI engine running.
+                  </span>
+                </button>
+              </div>
+            </div>
+
+            {/* Engine Selection */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-ink-dim">Coding Engine</label>
+              <select
+                value={selectedEngine}
+                onChange={(e) => setSelectedEngine(e.target.value)}
+                className="w-full rounded-xl border border-line bg-ops-panel px-3 py-2 text-xs font-medium text-ink outline-none cursor-pointer"
+              >
+                <option value="antigravity-cli">Antigravity CLI (agy) — Primary Google Coding Engine</option>
+                <option value="codex-cli">Codex CLI — Fallback Coding Engine</option>
+              </select>
+            </div>
+
+            {/* Remote Cloud Endpoint & Status */}
+            <div className="rounded-xl border border-line bg-ops-panel p-3.5 space-y-2 text-xs">
+              <div className="flex items-center justify-between">
+                <span className="font-semibold text-ink flex items-center gap-1.5">
+                  <Cloud size={13} className="text-emerald-700" /> Remote Companion
+                </span>
+                <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-800">
+                  Ready (https://irisforgecode.dpdns.org)
+                </span>
+              </div>
+              <p className="text-[11px] text-ink-dim">
+                Permanent Cloudflare Tunnel connected to Google Colab / Docker container.
+              </p>
+              {remoteWorkspaces.length > 0 && (
+                <div className="pt-2 border-t border-line/60 flex items-center justify-between text-[11px]">
+                  <span className="text-ink-dim">Sandbox: {remoteWorkspaces[0].name} ({remoteWorkspaces[0].branch})</span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleRecoverRemoteWorkspace(remoteWorkspaces[0].id)}
+                      disabled={recoveringWs}
+                      className="text-emerald-700 hover:underline font-medium cursor-pointer inline-flex items-center gap-1"
+                    >
+                      <RefreshCw size={11} className={recoveringWs ? "animate-spin" : ""} />
+                      {recoveringWs ? "Waking..." : "Wake / Ping"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleUpdateCompanionUrl(remoteWorkspaces[0].id)}
+                      className="text-ink-dim hover:text-ink cursor-pointer"
+                    >
+                      Edit URL
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Actions */}
+            <div className="flex items-center justify-between pt-2 border-t border-line">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowDiagnosticsModal(false);
+                  onOpenSettings();
+                }}
+                className="text-xs text-ai hover:underline cursor-pointer"
+              >
+                Edit Coworker Capabilities →
+              </button>
+              <Button onClick={() => setShowDiagnosticsModal(false)}>
+                Done
+              </Button>
+            </div>
+          </div>
         </div>
       )}
 
