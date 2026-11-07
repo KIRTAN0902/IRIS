@@ -12,6 +12,7 @@ import {
   GitCommit,
   HardDrive,
   LineChart,
+  ListChecks,
   Mic,
   MicOff,
   PenTool,
@@ -445,6 +446,22 @@ export function CoworkerChatView({
       onSelectProject(res.id);
     } catch (err: any) {
       alert(`Failed to register workspace: ${err.message || err}`);
+    }
+  };
+
+  // Save coworker recommendation or deliverable as a trackable IRIS Task
+  const handleSaveAsTask = async (turn: MessageTurn) => {
+    try {
+      const firstLine = turn.content.split("\n")[0].replace(/^#+\s*/, "").slice(0, 100);
+      const title = firstLine || `Follow-up from ${coworker.name}`;
+      await api.post("/tasks", {
+        title,
+        description: turn.content.slice(0, 500),
+        area: "STARTUP",
+      });
+      alert(`✨ Task "${title}" created in Tasks & Priorities!`);
+    } catch (err: any) {
+      alert(`Could not create task: ${err.message || err}`);
     }
   };
 
@@ -1059,17 +1076,29 @@ export function CoworkerChatView({
                       </div>
                     )}
 
-                    {/* Expandable Technical Details Drawer */}
+                    {/* Expandable Technical Details Drawer & Quick Actions */}
                     <div className="pt-1">
-                      <button
-                        type="button"
-                        onClick={() => setExpandedTechnical((prev) => ({ ...prev, [turn.id]: !isTechOpen }))}
-                        className="flex items-center gap-1 text-[11px] text-ink-faint hover:text-ink cursor-pointer"
-                      >
-                        <Terminal size={11} />
-                        <span>Technical Details</span>
-                        {isTechOpen ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
-                      </button>
+                      <div className="flex items-center justify-between">
+                        <button
+                          type="button"
+                          onClick={() => setExpandedTechnical((prev) => ({ ...prev, [turn.id]: !isTechOpen }))}
+                          className="flex items-center gap-1 text-[11px] text-ink-faint hover:text-ink cursor-pointer"
+                        >
+                          <Terminal size={11} />
+                          <span>Technical Details</span>
+                          {isTechOpen ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleSaveAsTask(turn)}
+                          className="flex items-center gap-1 text-[11px] text-ink-faint hover:text-ai transition cursor-pointer"
+                          title="Save this coworker deliverable as a trackable task in IRIS Tasks"
+                        >
+                          <ListChecks size={12} />
+                          <span>Save as Task</span>
+                        </button>
+                      </div>
 
                       {isTechOpen && (
                         <div className="mt-2 space-y-2 rounded-xl bg-ops-panel p-3 text-[11px] font-mono text-ink-dim border border-line">
