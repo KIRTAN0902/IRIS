@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { api } from "@/api/client";
 import { Button } from "@/components/ui/Button";
+import { Dialog, DialogContent } from "@/components/ui/Overlay";
 
 export type Coworker = {
   id: string;
@@ -106,7 +107,15 @@ export function CoworkersPage() {
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
-  const [computerDemo, setComputerDemo] = useState<ComputerDemo | null>(null);
+
+  // In-page creation modal state
+  const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [formName, setFormName] = useState("");
+  const [formRole, setFormRole] = useState("Specialist");
+  const [formSpec, setFormSpec] = useState("general");
+  const [formDesc, setFormDesc] = useState("");
+  const [formCapabilities, setFormCapabilities] = useState<string[]>([]);
+  const [isCreating, setIsCreating] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -143,38 +152,48 @@ export function CoworkersPage() {
     }
   };
 
-  const createFrom = (template?: Template) => {
-    const name = window.prompt(
-      template ? `Name this ${template.name.toLowerCase()}:` : "Coworker name:",
-      template?.name ?? ""
-    );
-    if (!name?.trim()) return;
-    const role = template?.role ?? window.prompt("Coworker role:", "Specialist");
-    if (!role) return;
+  const handleOpenCreateModal = (template?: Template) => {
+    if (template) {
+      setFormName(template.name);
+      setFormRole(template.role);
+      setFormSpec(template.specialisation);
+      setFormDesc(template.description);
+      setFormCapabilities(template.allowed_capabilities ?? []);
+    } else {
+      setFormName("");
+      setFormRole("Specialist");
+      setFormSpec("general");
+      setFormDesc("");
+      setFormCapabilities(["web_search", "workspace_read"]);
+    }
+    setCreateModalOpen(true);
+  };
 
-    void act(async () => {
+  const handleCreateSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formName.trim() || !formRole.trim() || isCreating) return;
+
+    setIsCreating(true);
+    setError("");
+    try {
       const c = await api.post<Coworker>("/coworkers", {
-        name: name.trim(),
-        role,
-        description: template?.description ?? "",
-        specialisation: template?.specialisation ?? "general",
-        responsibilities: template?.responsibilities ?? [],
-        allowed_capabilities: template?.allowed_capabilities ?? [],
+        name: formName.trim(),
+        role: formRole.trim(),
+        description: formDesc.trim(),
+        specialisation: formSpec.trim() || "general",
+        responsibilities: [],
+        allowed_capabilities: formCapabilities,
         project_id: null,
         permission_profile: {},
       });
-      // Navigate straight to the new coworker's chat page
+      setCreateModalOpen(false);
       navigate(`/coworkers/${c.id}/chat`);
-    });
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setIsCreating(false);
+    }
   };
-
-  const runComputerDemo = () =>
-    void act(async () => {
-      const result = await api.post<ComputerDemo>("/coworkers/computer-use/demo", {
-        task_id: crypto.randomUUID(),
-      });
-      setComputerDemo(result);
-    });
 
   // Categorisation helper
   const matchesCategory = (roleStr: string, specStr: string, cat: string) => {
@@ -234,17 +253,13 @@ export function CoworkersPage() {
       {/* 1. Header */}
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <p className="label-caps">IRIS / TEAM</p>
-          <h1 className="mt-1 text-3xl font-semibold tracking-tight text-ink">Coworkers</h1>
+          <h1 className="text-3xl font-semibold tracking-tight text-ink">Coworkers</h1>
           <p className="mt-1.5 max-w-2xl text-sm text-ink-dim">
             Your specialised AI team. Each coworker has its own expertise, responsibilities and workspace.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2.5">
-          <Button variant="outline" onClick={runComputerDemo}>
-            Run CUA mock demo
-          </Button>
-          <Button onClick={() => createFrom()}>
+          <Button onClick={() => handleOpenCreateModal()}>
             <Plus size={16} className="mr-1.5" /> Create custom coworker
           </Button>
         </div>
@@ -255,24 +270,6 @@ export function CoworkersPage() {
         <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
           {error}
         </div>
-      )}
-
-      {/* CUA Computer Demo Output */}
-      {computerDemo && (
-        <section className="rounded-2xl border border-ai/30 bg-ai-dim/30 p-4">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <h2 className="font-semibold text-sm">Computer-use contract demonstration</h2>
-            <span className="rounded-full bg-white px-2 py-0.5 text-xs text-amber-800 font-medium">
-              Mock only · no desktop controlled
-            </span>
-          </div>
-          <p className="mt-1 text-xs text-ink-dim">
-            Provider: {computerDemo.provider} · {computerDemo.events.length} recorded events · {computerDemo.status}
-          </p>
-          <pre className="mt-2 max-h-36 overflow-auto whitespace-pre-wrap rounded-lg bg-white p-3 text-xs border border-line">
-            {JSON.stringify(computerDemo.evidence, null, 2)}
-          </pre>
-        </section>
       )}
 
       {/* Actions waiting for approval */}
@@ -502,7 +499,7 @@ export function CoworkersPage() {
                 </span>
                 <button
                   type="button"
-                  onClick={() => createFrom(t)}
+                  onClick={() => handleOpenCreateModal(t)}
                   className="inline-flex items-center gap-1 rounded-xl bg-ai/10 border border-ai/20 px-2.5 py-1 text-xs font-semibold text-ai hover:bg-ai hover:text-white transition cursor-pointer"
                 >
                   <Plus size={13} />
@@ -513,6 +510,70 @@ export function CoworkersPage() {
           ))}
         </div>
       </section>
+
+      {/* Create Coworker Dialog */}
+      <Dialog open={createModalOpen} onOpenChange={setCreateModalOpen}>
+        <DialogContent title="Create Coworker">
+          <form onSubmit={handleCreateSubmit} className="space-y-4 pt-1">
+            <div>
+              <label className="block text-xs font-semibold text-ink mb-1">Coworker Name</label>
+              <input
+                type="text"
+                required
+                value={formName}
+                onChange={(e) => setFormName(e.target.value)}
+                placeholder="e.g. Atlas, Maya, Scribe"
+                className="w-full rounded-xl border border-ops-line bg-ops-panel px-3 py-2 text-sm text-ink outline-none focus:border-ai transition"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-semibold text-ink mb-1">Role Title</label>
+                <input
+                  type="text"
+                  required
+                  value={formRole}
+                  onChange={(e) => setFormRole(e.target.value)}
+                  placeholder="e.g. Lead Engineer"
+                  className="w-full rounded-xl border border-ops-line bg-ops-panel px-3 py-2 text-sm text-ink outline-none focus:border-ai transition"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-ink mb-1">Specialisation</label>
+                <input
+                  type="text"
+                  value={formSpec}
+                  onChange={(e) => setFormSpec(e.target.value)}
+                  placeholder="e.g. frontend, backend, research"
+                  className="w-full rounded-xl border border-ops-line bg-ops-panel px-3 py-2 text-sm text-ink outline-none focus:border-ai transition"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-ink mb-1">Description & Purpose</label>
+              <textarea
+                rows={3}
+                value={formDesc}
+                onChange={(e) => setFormDesc(e.target.value)}
+                placeholder="What does this coworker help you accomplish?"
+                className="w-full rounded-xl border border-ops-line bg-ops-panel px-3 py-2 text-sm text-ink outline-none focus:border-ai transition resize-none"
+              />
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <Button type="button" variant="ghost" onClick={() => setCreateModalOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={!formName.trim() || !formRole.trim() || isCreating}>
+                {isCreating ? "Creating…" : "Create Coworker"}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

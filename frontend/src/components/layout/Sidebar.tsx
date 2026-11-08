@@ -119,39 +119,37 @@ export function Sidebar() {
   );
 }
 
-/** "More" tab that reveals Gym, Finance, and Projects on hover or click. */
+/** "More" navigation group: expandable in full sidebar, compact popover when folded. */
 function MoreNavItem({ folded = false }: { folded?: boolean }) {
   const location = useLocation();
-  const [open, setOpen] = useState(false);
-  const [pinned, setPinned] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
   const isChildActive = MORE_NAV_ITEMS.some(
     (item) => location.pathname === item.route || location.pathname.startsWith(item.route + "/"),
   );
+  const [open, setOpen] = useState(false);
+  const [expanded, setExpanded] = useState(isChildActive);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Close when navigating
+  // Auto-expand if navigating into a nested More route
   useEffect(() => {
-    setOpen(false);
-    setPinned(false);
-  }, [location.pathname]);
+    if (isChildActive) {
+      setExpanded(true);
+    }
+  }, [isChildActive]);
 
-  // Click outside and escape key handling
+  // Click outside and escape key handling for folded popover
   useEffect(() => {
-    if (!open && !pinned) return;
+    if (!folded || !open) return;
 
     const handleOutside = (e: MouseEvent | TouchEvent) => {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
         setOpen(false);
-        setPinned(false);
       }
     };
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         setOpen(false);
-        setPinned(false);
       }
     };
 
@@ -163,56 +161,25 @@ function MoreNavItem({ folded = false }: { folded?: boolean }) {
       document.removeEventListener("touchstart", handleOutside);
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [open, pinned]);
-
-  const handleMouseEnter = () => {
-    if (timerRef.current) {
-      clearTimeout(timerRef.current);
-      timerRef.current = null;
-    }
-    setOpen(true);
-  };
-
-  const handleMouseLeave = () => {
-    if (pinned) return;
-    timerRef.current = setTimeout(() => {
-      setOpen(false);
-    }, 180);
-  };
-
-  const handleClick = (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (pinned) {
-      setPinned(false);
-      setOpen(false);
-    } else {
-      setPinned(true);
-      setOpen(true);
-    }
-  };
-
-  const handleClose = () => {
-    if (timerRef.current) {
-      clearTimeout(timerRef.current);
-      timerRef.current = null;
-    }
-    setOpen(false);
-    setPinned(false);
-  };
+  }, [folded, open]);
 
   if (folded) {
     return (
       <div
         ref={containerRef}
         className="relative"
-        onMouseEnter={handleMouseEnter}
-        onMouseLeave={handleMouseLeave}
+        onMouseEnter={() => {
+          if (timerRef.current) clearTimeout(timerRef.current);
+          setOpen(true);
+        }}
+        onMouseLeave={() => {
+          timerRef.current = setTimeout(() => setOpen(false), 180);
+        }}
       >
         <button
           type="button"
-          onClick={handleClick}
-          title="More"
+          onClick={() => setOpen((v) => !v)}
+          title="More sections"
           aria-label="More sections"
           aria-haspopup="true"
           aria-expanded={open}
@@ -230,9 +197,9 @@ function MoreNavItem({ folded = false }: { folded?: boolean }) {
           <div
             role="menu"
             aria-label="More sections"
-            className="absolute left-[calc(100%+8px)] top-0 z-50 min-w-[175px] rounded-lg border border-ops-line-bright bg-ops-panel/95 backdrop-blur-md p-1.5 shadow-[0_12px_32px_rgba(0,0,0,0.7)] animate-in fade-in zoom-in-95 duration-150 before:absolute before:-left-3 before:inset-y-0 before:w-3 before:content-['']"
+            className="absolute left-[calc(100%+8px)] top-0 z-50 min-w-[190px] rounded-lg border border-ops-line-bright bg-ops-panel/95 backdrop-blur-md p-1.5 shadow-[0_12px_32px_rgba(0,0,0,0.5)] animate-in fade-in zoom-in-95 duration-150 before:absolute before:-left-3 before:inset-y-0 before:w-3 before:content-['']"
           >
-            <p className="px-2 pb-1.5 pt-1 text-[11px] uppercase tracking-[0.18em] text-ink-faint font-medium">
+            <p className="px-2 pb-1.5 pt-1 text-[11px] uppercase tracking-[0.18em] text-ink-faint font-semibold">
               More
             </p>
             <div className="space-y-0.5">
@@ -240,7 +207,7 @@ function MoreNavItem({ folded = false }: { folded?: boolean }) {
                 <NavLink
                   key={item.id}
                   to={item.route}
-                  onClick={handleClose}
+                  onClick={() => setOpen(false)}
                   className={({ isActive }) =>
                     cn(
                       "flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-[13px] transition-colors",
@@ -252,9 +219,6 @@ function MoreNavItem({ folded = false }: { folded?: boolean }) {
                 >
                   <item.icon size={15} strokeWidth={1.75} className="shrink-0 opacity-80" />
                   <span className="flex-1">{item.name}</span>
-                  <span className="text-[11px] text-ink-faint font-mono opacity-50 tnum">
-                    {item.glyph}
-                  </span>
                 </NavLink>
               ))}
             </div>
@@ -265,22 +229,16 @@ function MoreNavItem({ folded = false }: { folded?: boolean }) {
   }
 
   return (
-    <div
-      ref={containerRef}
-      className="relative"
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={handleMouseLeave}
-    >
+    <div className="space-y-0.5 pt-0.5">
       <button
         type="button"
-        onClick={handleClick}
+        onClick={() => setExpanded((v) => !v)}
         aria-label="More sections"
-        aria-haspopup="true"
-        aria-expanded={open}
+        aria-expanded={expanded}
         className={cn(
           "flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-[14px] transition-colors cursor-pointer text-left",
-          isChildActive || open
-            ? "bg-ops-raised text-ink font-medium"
+          isChildActive || expanded
+            ? "bg-ops-raised/70 text-ink font-medium"
             : "text-ink-dim hover:bg-ops-raised/60 hover:text-ink",
         )}
       >
@@ -290,44 +248,31 @@ function MoreNavItem({ folded = false }: { folded?: boolean }) {
           size={14}
           strokeWidth={1.75}
           className={cn(
-            "text-ink-faint transition-transform duration-150",
-            open ? "text-ink translate-x-0.5" : "opacity-60",
+            "text-ink-faint transition-transform duration-200",
+            expanded ? "rotate-90 text-ink" : "opacity-60",
           )}
         />
       </button>
 
-      {open && (
-        <div
-          role="menu"
-          aria-label="More sections"
-          className="absolute left-[calc(100%+8px)] top-0 z-50 min-w-[175px] rounded-lg border border-ops-line-bright bg-ops-panel/95 backdrop-blur-md p-1.5 shadow-[0_12px_32px_rgba(0,0,0,0.7)] animate-in fade-in zoom-in-95 duration-150 before:absolute before:-left-3 before:inset-y-0 before:w-3 before:content-['']"
-        >
-          <p className="px-2 pb-1.5 pt-1 text-[11px] uppercase tracking-[0.18em] text-ink-faint font-medium">
-            More
-          </p>
-          <div className="space-y-0.5">
-            {MORE_NAV_ITEMS.map((item) => (
-              <NavLink
-                key={item.id}
-                to={item.route}
-                onClick={handleClose}
-                className={({ isActive }) =>
-                  cn(
-                    "flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-[13px] transition-colors",
-                    isActive
-                      ? "bg-ops-raised text-ink font-medium"
-                      : "text-ink-dim hover:bg-ops-raised/60 hover:text-ink",
-                  )
-                }
-              >
-                <item.icon size={15} strokeWidth={1.75} className="shrink-0 opacity-80" />
-                <span className="flex-1">{item.name}</span>
-                <span className="text-[11px] text-ink-faint font-mono opacity-50 tnum">
-                  {item.glyph}
-                </span>
-              </NavLink>
-            ))}
-          </div>
+      {expanded && (
+        <div className="ml-3.5 pl-2.5 border-l border-ops-line space-y-0.5 pt-0.5 pb-1 animate-in fade-in slide-in-from-top-1 duration-150">
+          {MORE_NAV_ITEMS.map((item) => (
+            <NavLink
+              key={item.id}
+              to={item.route}
+              className={({ isActive }) =>
+                cn(
+                  "flex items-center gap-2.5 rounded-md px-2 py-1.5 text-[13px] transition-colors",
+                  isActive
+                    ? "bg-ops-raised text-ink font-medium"
+                    : "text-ink-dim hover:bg-ops-raised/50 hover:text-ink",
+                )
+              }
+            >
+              <item.icon size={14} strokeWidth={1.75} className="shrink-0 opacity-75" />
+              <span className="flex-1 truncate">{item.name}</span>
+            </NavLink>
+          ))}
         </div>
       )}
     </div>

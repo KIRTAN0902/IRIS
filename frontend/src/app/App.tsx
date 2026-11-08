@@ -24,9 +24,6 @@ const AgyTerminalDeck = lazy(() => import("@/features/agy/AgyTerminalDeck").then
 const CoworkersPage = lazy(() => import("@/features/coworkers/CoworkersPage").then((m) => ({ default: m.CoworkersPage })));
 const CoworkerChatPage = lazy(() => import("@/features/coworkers/CoworkerChatPage").then((m) => ({ default: m.CoworkerChatPage })));
 const ConversationsPage = lazy(() => import("@/features/chat/ConversationsPage").then((m) => ({ default: m.ConversationsPage })));
-const MemoryPage = lazy(() => import("@/features/home/MemoryPage").then((m) => ({ default: m.MemoryPage })));
-const KnowledgePage = lazy(() => import("@/features/knowledge/KnowledgePage").then((m) => ({ default: m.KnowledgePage })));
-const MeshPage = lazy(() => import("@/features/mesh/MeshPage").then((m) => ({ default: m.MeshPage })));
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
@@ -65,10 +62,13 @@ export function App() {
             <Route path="agy" element={<AgyTerminalDeck />} />
             <Route path="terminal" element={<Navigate to="/agy" replace />} />
             <Route path="settings" element={<SettingsPage />} />
-            <Route path="memory" element={<MemoryPage />} />
-            <Route path="knowledge" element={<KnowledgePage />} />
-            <Route path="devices" element={<MeshPage />} />
-            <Route path="mesh" element={<Navigate to="/devices" replace />} />
+            <Route path="settings/knowledge" element={<Navigate to="/settings?tab=knowledge" replace />} />
+            <Route path="settings/mesh" element={<Navigate to="/settings?tab=mesh" replace />} />
+            <Route path="settings/devices" element={<Navigate to="/settings?tab=mesh" replace />} />
+            <Route path="knowledge" element={<Navigate to="/settings?tab=knowledge" replace />} />
+            <Route path="devices" element={<Navigate to="/settings?tab=mesh" replace />} />
+            <Route path="mesh" element={<Navigate to="/settings?tab=mesh" replace />} />
+            <Route path="memory" element={<Navigate to="/settings?tab=knowledge" replace />} />
             <Route path="startup" element={<StartupPage />} />
             <Route path="college" element={<AreaLensPage area="COLLEGE" title="College" />} />
             <Route path="internship" element={<AreaLensPage area="INTERNSHIP" title="Internship" />} />

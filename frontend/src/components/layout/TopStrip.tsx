@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
-import { CheckSquare, ChevronRight, LayoutGrid } from "lucide-react";
+import { ChevronRight, LayoutGrid } from "lucide-react";
 import { MORE_NAV_ITEMS, PRIMARY_NAV_ITEMS_MOBILE } from "@/modules/registry";
 import { cn } from "@/lib/format";
 
@@ -15,8 +15,8 @@ export function MobileBottomNav() {
   const location = useLocation();
   const [moreOpen, setMoreOpen] = useState(false);
   const tabs = PRIMARY_NAV_ITEMS_MOBILE;
-  const more = [{ id: "tasks", name: "Tasks", route: "/tasks", glyph: "☑", icon: CheckSquare }, ...MORE_NAV_ITEMS];
-  const onMorePage = more.some((item) => location.pathname.startsWith(item.route));
+  const more = MORE_NAV_ITEMS;
+  const onMorePage = more.some((item) => location.pathname === item.route || location.pathname.startsWith(item.route + "/"));
 
   // Collapse after navigating anywhere.
   useEffect(() => setMoreOpen(false), [location.pathname, location.search]);
@@ -35,8 +35,8 @@ export function MobileBottomNav() {
         style={{ bottom: "calc(56px + max(env(safe-area-inset-bottom, 0px), var(--safe-bottom, 0px)))" }}
         aria-hidden={!moreOpen}
       >
-        <p className="px-1 pb-1 text-[11px] uppercase tracking-[0.18em] text-ink-faint">More</p>
-        <ul className="pb-3">
+        <p className="px-1 pb-1 text-[11px] uppercase tracking-[0.18em] text-ink-faint font-semibold">More</p>
+        <ul className="pb-3 space-y-1">
           {more.map((item) => (
             <li key={item.id}>
               <NavLink
@@ -44,14 +44,14 @@ export function MobileBottomNav() {
                 tabIndex={moreOpen ? 0 : -1}
                 className={({ isActive }) =>
                   cn(
-                    "flex items-center gap-3 rounded-xl px-2 py-3 text-[15px] transition-colors",
+                    "flex items-center gap-3 rounded-xl px-2.5 py-2.5 text-[14px] transition-colors",
                     isActive ? "bg-ops-raised text-ink font-medium" : "text-ink-dim hover:bg-ops-raised/60 hover:text-ink",
                   )
                 }
               >
-                <item.icon size={18} strokeWidth={1.75} aria-hidden />
+                <item.icon size={17} strokeWidth={1.75} aria-hidden />
                 <span className="flex-1">{item.name}</span>
-                <ChevronRight size={16} className="text-ink-faint" />
+                <ChevronRight size={15} className="text-ink-faint" />
               </NavLink>
             </li>
           ))}
@@ -60,13 +60,13 @@ export function MobileBottomNav() {
 
       <nav
         aria-label="Primary Mobile Navigation"
-        className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-ops-line bg-ops-panel/95 backdrop-blur md:hidden"
+        className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-6 border-t border-ops-line bg-ops-panel/95 backdrop-blur md:hidden"
         style={{ paddingBottom: "max(env(safe-area-inset-bottom, 0px), var(--safe-bottom, 0px))" }}
       >
         {tabs.map((item) => (
           <NavLink key={item.id} to={item.route} end={item.route === "/"} className={({ isActive }) => tabClass(isActive)}>
-            <item.icon size={18} strokeWidth={1.75} aria-hidden />
-            <span>{item.name}</span>
+            <item.icon size={17} strokeWidth={1.75} aria-hidden />
+            <span className="truncate max-w-[54px] text-[10px]">{item.name}</span>
           </NavLink>
         ))}
         <button
@@ -75,8 +75,8 @@ export function MobileBottomNav() {
           aria-controls="more-sections"
           className={tabClass(moreOpen || onMorePage)}
         >
-          <LayoutGrid size={18} strokeWidth={1.75} aria-hidden />
-          <span>More</span>
+          <LayoutGrid size={17} strokeWidth={1.75} aria-hidden />
+          <span className="text-[10px]">More</span>
         </button>
       </nav>
     </>

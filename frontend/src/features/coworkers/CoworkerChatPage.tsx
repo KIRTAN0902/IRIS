@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { AlertCircle, ArrowLeft, RefreshCw, X } from "lucide-react";
+import { AlertCircle, ArrowLeft, Check, RefreshCw, X } from "lucide-react";
 import { api } from "@/api/client";
 import { Button } from "@/components/ui/Button";
 import { CoworkerChatView, type Coworker, type Project } from "./CoworkerChatView";
@@ -14,6 +14,16 @@ export function CoworkerChatPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
+
+  // Form edit states
+  const [editName, setEditName] = useState("");
+  const [editRole, setEditRole] = useState("");
+  const [editSpec, setEditSpec] = useState("");
+  const [editInstructions, setEditInstructions] = useState("");
+  const [editCapabilities, setEditCapabilities] = useState("");
+  const [editResponsibilities, setEditResponsibilities] = useState("");
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [profileSaveSuccess, setProfileSaveSuccess] = useState(false);
 
   const loadData = useCallback(async () => {
     if (!coworkerId) return;
@@ -42,6 +52,18 @@ export function CoworkerChatPage() {
   useEffect(() => {
     void loadData();
   }, [loadData]);
+
+  useEffect(() => {
+    if (coworker && editing) {
+      setEditName(coworker.name);
+      setEditRole(coworker.role);
+      setEditSpec(coworker.specialisation);
+      setEditInstructions(coworker.system_instructions || "");
+      setEditCapabilities(coworker.allowed_capabilities.join(", "));
+      setEditResponsibilities(coworker.responsibilities.join("\n"));
+      setProfileSaveSuccess(false);
+    }
+  }, [coworker, editing]);
 
   const handleUpdateProject = async (projectId: number | null) => {
     if (!coworker) return;
@@ -72,47 +94,26 @@ export function CoworkerChatPage() {
     }
   };
 
-  const editProfile = async () => {
-    if (!coworker) return;
-    const name = window.prompt("Coworker name:", coworker.name);
-    if (name === null) return;
-    const role = window.prompt("Role:", coworker.role);
-    if (role === null) return;
-    const specialisation = window.prompt("Specialisation:", coworker.specialisation);
-    if (specialisation === null) return;
-    const system_instructions = window.prompt("Additional role instructions:", coworker.system_instructions);
-    if (system_instructions === null) return;
-    const capabilities = window.prompt(
-      "Granted IRIS capability names (comma separated):",
-      coworker.allowed_capabilities.join(", ")
-    );
-    if (capabilities === null) return;
-
+  const handleSaveProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!coworker || isSavingProfile) return;
+    setIsSavingProfile(true);
     try {
       await api.patch(`/coworkers/${coworker.id}`, {
-        name,
-        role,
-        specialisation,
-        system_instructions,
-        allowed_capabilities: capabilities.split(",").map((x) => x.trim()).filter(Boolean),
+        name: editName.trim(),
+        role: editRole.trim(),
+        specialisation: editSpec.trim(),
+        system_instructions: editInstructions.trim(),
+        allowed_capabilities: editCapabilities.split(",").map((x) => x.trim()).filter(Boolean),
+        responsibilities: editResponsibilities.split("\n").map((x) => x.trim()).filter(Boolean),
       });
       await handleRefreshCoworker();
+      setProfileSaveSuccess(true);
+      setTimeout(() => setProfileSaveSuccess(false), 2500);
     } catch (err) {
-      alert("Failed to update coworker profile: " + String(err));
-    }
-  };
-
-  const editResponsibilities = async () => {
-    if (!coworker) return;
-    const value = window.prompt("Responsibilities (one per line):", coworker.responsibilities.join("\n"));
-    if (value === null) return;
-    try {
-      await api.patch(`/coworkers/${coworker.id}`, {
-        responsibilities: value.split("\n").map((x) => x.trim()).filter(Boolean),
-      });
-      await handleRefreshCoworker();
-    } catch (err) {
-      alert("Failed to update responsibilities: " + String(err));
+      console.error("Failed to update profile:", err);
+    } finally {
+      setIsSavingProfile(false);
     }
   };
 
@@ -165,11 +166,11 @@ export function CoworkerChatPage() {
 
       {/* Coworker Profile & Settings Modal */}
       {editing && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4 animate-in fade-in duration-150">
-          <div className="w-full max-w-xl rounded-2xl border border-ops-line bg-white p-6 shadow-xl max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+          <div className="w-full max-w-xl rounded-2xl border border-ops-line bg-ops-ground p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-3 border-b border-ops-line">
               <div>
-                <h3 className="font-semibold text-ink">Coworker Profile & Governance</h3>
+                <h3 className="text-base font-semibold text-ink">Coworker Profile & Settings</h3>
                 <p className="text-xs text-ink-dim">
                   {coworker.name} · {coworker.role}
                 </p>
@@ -177,44 +178,36 @@ export function CoworkerChatPage() {
               <button
                 type="button"
                 onClick={() => setEditing(false)}
-                className="rounded-lg p-1 text-ink-dim hover:text-ink hover:bg-ops-ground transition cursor-pointer"
+                className="rounded-lg p-1 text-ink-faint hover:text-ink hover:bg-ops-raised transition cursor-pointer"
+                aria-label="Close"
               >
                 <X size={18} />
               </button>
             </div>
 
-            <div className="mt-4 grid gap-3 sm:grid-cols-2">
-              <div className="rounded-xl bg-ops-ground p-3">
-                <p className="text-[11px] uppercase tracking-wider text-ink-faint">Availability</p>
-                <p className="mt-1 text-sm font-medium text-ink">
-                  {coworker.availability ? "Available" : "Unavailable"}
+            {/* Quick Status Cards */}
+            <div className="mt-4 grid gap-2.5 sm:grid-cols-2 text-xs">
+              <div className="rounded-xl border border-ops-line bg-ops-panel p-3">
+                <span className="text-[11px] uppercase tracking-wider text-ink-faint">Availability</span>
+                <p className="mt-0.5 text-sm font-semibold text-ink">
+                  {coworker.availability ? "🟢 Active & Available" : "⚪ Offline"}
                 </p>
               </div>
-              <div className="rounded-xl bg-ops-ground p-3">
-                <p className="text-[11px] uppercase tracking-wider text-ink-faint">Configuration</p>
-                <p className="mt-1 text-sm font-medium text-ink">Version {coworker.config_version}</p>
-              </div>
-              <div className="rounded-xl bg-ops-ground p-3">
-                <p className="text-[11px] uppercase tracking-wider text-ink-faint">Provider Preference</p>
-                <p className="mt-1 text-sm font-medium text-ink">
-                  {coworker.preferred_provider ?? "IRIS Default"}
-                  {coworker.preferred_model ? ` · ${coworker.preferred_model}` : ""}
-                </p>
-              </div>
-              <div className="rounded-xl bg-ops-ground p-3">
-                <p className="text-[11px] uppercase tracking-wider text-ink-faint">Workspace Assignment</p>
-                <p className="mt-1 text-sm font-medium text-ink">
-                  {projects.find((p) => p.id === coworker.project_id)?.name ?? "None"}
+              <div className="rounded-xl border border-ops-line bg-ops-panel p-3">
+                <span className="text-[11px] uppercase tracking-wider text-ink-faint">Assigned Codebase</span>
+                <p className="mt-0.5 text-sm font-semibold text-ink truncate">
+                  {projects.find((p) => p.id === coworker.project_id)?.name ?? "None (Global)"}
                 </p>
               </div>
             </div>
 
-            <div className="mt-4 rounded-xl bg-ops-ground p-4">
-              <label className="block text-xs font-medium text-ink-dim">Assigned project workspace</label>
+            {/* Project Workspace Selector */}
+            <div className="mt-4 rounded-xl border border-ops-line bg-ops-panel p-3.5 space-y-2">
+              <label className="block text-xs font-semibold text-ink">Assigned Project Workspace</label>
               <select
                 value={coworker.project_id ?? ""}
                 onChange={(e) => handleUpdateProject(e.target.value ? Number(e.target.value) : null)}
-                className="mt-1.5 w-full rounded-lg border border-ops-line bg-white p-2 text-sm text-ink outline-none"
+                className="w-full rounded-lg border border-ops-line bg-ops-ground p-2 text-xs text-ink outline-none focus:border-ai transition"
               >
                 <option value="">No project assigned</option>
                 {projects.map((p) => (
@@ -223,35 +216,91 @@ export function CoworkerChatPage() {
                   </option>
                 ))}
               </select>
-              <p className="mt-1.5 text-xs text-ink-faint">
-                Project permissions are enforced by the backend. Coworkers do not automatically receive write,
-                command, or network access.
-              </p>
-
-              <div className="mt-4 flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={editProfile}
-                  className="rounded-lg border border-ops-line bg-white px-3 py-2 text-xs font-medium text-ink hover:bg-ops-surface transition cursor-pointer"
-                >
-                  Edit identity & capabilities
-                </button>
-                <button
-                  type="button"
-                  onClick={editResponsibilities}
-                  className="rounded-lg border border-ops-line bg-white px-3 py-2 text-xs font-medium text-ink hover:bg-ops-surface transition cursor-pointer"
-                >
-                  Edit responsibilities
-                </button>
-              </div>
-
-              <div className="mt-4 pt-3 border-t border-ops-line/60">
-                <p className="text-xs text-ink-faint">
-                  <span className="font-medium text-ink-dim">Granted capabilities:</span>{" "}
-                  {coworker.allowed_capabilities.length ? coworker.allowed_capabilities.join(", ") : "none"}.
-                </p>
-              </div>
             </div>
+
+            {/* Profile Edit Form */}
+            <form onSubmit={handleSaveProfile} className="mt-4 space-y-3.5 border-t border-ops-line pt-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-ink mb-1">Name</label>
+                  <input
+                    type="text"
+                    required
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                    className="w-full rounded-lg border border-ops-line bg-ops-ground px-3 py-1.5 text-xs text-ink outline-none focus:border-ai transition"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-ink mb-1">Role Title</label>
+                  <input
+                    type="text"
+                    required
+                    value={editRole}
+                    onChange={(e) => setEditRole(e.target.value)}
+                    className="w-full rounded-lg border border-ops-line bg-ops-ground px-3 py-1.5 text-xs text-ink outline-none focus:border-ai transition"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-ink mb-1">Specialisation</label>
+                <input
+                  type="text"
+                  value={editSpec}
+                  onChange={(e) => setEditSpec(e.target.value)}
+                  className="w-full rounded-lg border border-ops-line bg-ops-ground px-3 py-1.5 text-xs text-ink outline-none focus:border-ai transition"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-ink mb-1">System Instructions</label>
+                <textarea
+                  rows={3}
+                  value={editInstructions}
+                  onChange={(e) => setEditInstructions(e.target.value)}
+                  className="w-full rounded-lg border border-ops-line bg-ops-ground p-2 text-xs text-ink outline-none focus:border-ai transition resize-none font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-ink mb-1">Allowed Capabilities (comma-separated)</label>
+                <input
+                  type="text"
+                  value={editCapabilities}
+                  onChange={(e) => setEditCapabilities(e.target.value)}
+                  placeholder="e.g. workspace_read, workspace_write, web_search"
+                  className="w-full rounded-lg border border-ops-line bg-ops-ground px-3 py-1.5 text-xs text-ink outline-none focus:border-ai transition font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-ink mb-1">Responsibilities (one per line)</label>
+                <textarea
+                  rows={3}
+                  value={editResponsibilities}
+                  onChange={(e) => setEditResponsibilities(e.target.value)}
+                  className="w-full rounded-lg border border-ops-line bg-ops-ground p-2 text-xs text-ink outline-none focus:border-ai transition resize-none"
+                />
+              </div>
+
+              <div className="flex items-center justify-between pt-2">
+                {profileSaveSuccess ? (
+                  <span className="flex items-center gap-1.5 text-xs font-medium text-go">
+                    <Check size={14} /> Profile updated successfully!
+                  </span>
+                ) : <span />}
+
+                <div className="flex gap-2">
+                  <Button type="button" variant="ghost" size="sm" onClick={() => setEditing(false)}>
+                    Close
+                  </Button>
+                  <Button type="submit" size="sm" disabled={isSavingProfile}>
+                    {isSavingProfile ? "Saving…" : "Save Changes"}
+                  </Button>
+                </div>
+              </div>
+            </form>
           </div>
         </div>
       )}

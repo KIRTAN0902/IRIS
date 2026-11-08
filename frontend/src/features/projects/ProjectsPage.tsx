@@ -174,10 +174,9 @@ export function ProjectsPage() {
       {/* Header */}
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <p className="label-caps">IRIS / REPOSITORIES</p>
-          <h1 className="mt-1 text-3xl font-semibold tracking-tight">Codebase Workspaces</h1>
+          <h1 className="text-3xl font-semibold tracking-tight">Projects</h1>
           <p className="mt-1.5 text-sm text-ink-dim">
-            Registered repositories, security permission boundaries, and active coding tasks.
+            Registered codebase repositories, security permission boundaries, and active coding tasks.
           </p>
         </div>
         <Link

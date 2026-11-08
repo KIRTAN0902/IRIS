@@ -107,8 +107,16 @@ export const AGY_NAV_ITEM: NavItem = {
   icon: SquareTerminal,
 };
 
+export const PROJECTS_NAV_ITEM: NavItem = {
+  id: "projects",
+  name: "Projects",
+  route: "/projects",
+  glyph: "⌁",
+  icon: FolderTree,
+};
+
 /**
- * Mobile navigation: Home, Schedule, Tasks, Laptop (and More).
+ * Mobile navigation: Home, Chats, Coworkers, Schedule, Tasks (and More).
  */
 export const PRIMARY_NAV_ITEMS_MOBILE: NavItem[] = [
   {
@@ -126,6 +134,13 @@ export const PRIMARY_NAV_ITEMS_MOBILE: NavItem[] = [
     icon: MessageSquare,
   },
   {
+    id: "coworkers",
+    name: "Coworkers",
+    route: "/coworkers",
+    glyph: "✦",
+    icon: UsersRound,
+  },
+  {
     id: "schedule",
     name: "Schedule",
     route: "/schedule",
@@ -133,16 +148,17 @@ export const PRIMARY_NAV_ITEMS_MOBILE: NavItem[] = [
     icon: CalendarDays,
   },
   {
-    id: "coworkers",
-    name: "Work",
-    route: "/coworkers",
-    glyph: "✦",
-    icon: UsersRound,
+    id: "tasks",
+    name: "Tasks",
+    route: "/tasks",
+    glyph: "☑",
+    icon: ListChecks,
   },
 ];
 
 /**
- * Desktop workspace navigation: the core nine IRIS destinations.
+ * Desktop primary navigation: the core 5 IRIS destinations.
+ * (More is rendered as the 6th navigation group containing Projects, Settings, etc.)
  */
 export const PRIMARY_NAV_ITEMS_DESKTOP: NavItem[] = [
   {
@@ -154,7 +170,6 @@ export const PRIMARY_NAV_ITEMS_DESKTOP: NavItem[] = [
   },
   { id: "conversations", name: "Conversations", route: "/conversations", glyph: "◉", icon: MessageSquare },
   { id: "coworkers", name: "Coworkers", route: "/coworkers", glyph: "✦", icon: UsersRound },
-  { id: "projects", name: "Projects", route: "/projects", glyph: "⌁", icon: FolderTree },
   {
     id: "schedule",
     name: "Schedule",
@@ -169,26 +184,17 @@ export const PRIMARY_NAV_ITEMS_DESKTOP: NavItem[] = [
     glyph: "☷",
     icon: ListChecks,
   },
-  { id: "devices", name: "Devices & Mesh", route: "/devices", glyph: "◎", icon: Radio },
-  { id: "memory", name: "Memory", route: "/memory", glyph: "◈", icon: BrainCircuit },
-  KNOWLEDGE_NAV_ITEM,
-  SETTINGS_NAV_ITEM,
 ];
 
 export const PRIMARY_NAV_ITEMS: NavItem[] = PRIMARY_NAV_ITEMS_DESKTOP;
 
+/**
+ * Expandable More menu destinations: Projects, Settings, and secondary life hubs.
+ */
 export const MORE_NAV_ITEMS: NavItem[] = [
-  LAPTOP_NAV_ITEM,
-  PHONE_NAV_ITEM,
-  AGY_NAV_ITEM,
+  PROJECTS_NAV_ITEM,
+  SETTINGS_NAV_ITEM,
   DIARY_NAV_ITEM,
-  {
-    id: "gym",
-    name: "Gym & Yoga",
-    route: "/gym",
-    glyph: "◆",
-    icon: Dumbbell,
-  },
   {
     id: "finance",
     name: "Finance",
@@ -196,12 +202,22 @@ export const MORE_NAV_ITEMS: NavItem[] = [
     glyph: "₹",
     icon: Wallet,
   },
+  {
+    id: "gym",
+    name: "Gym & Yoga",
+    route: "/gym",
+    glyph: "◆",
+    icon: Dumbbell,
+  },
+  LAPTOP_NAV_ITEM,
+  PHONE_NAV_ITEM,
+  AGY_NAV_ITEM,
 ];
 
 export const ALL_NAV_ITEMS: NavItem[] = [
   ...PRIMARY_NAV_ITEMS_DESKTOP,
-  LAPTOP_NAV_ITEM,
   ...MORE_NAV_ITEMS,
+  KNOWLEDGE_NAV_ITEM,
 ];
 
 export const MODULES: ModuleDefinition[] = [
