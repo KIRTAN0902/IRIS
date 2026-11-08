@@ -4,25 +4,23 @@ import {
   CheckCircle2,
   ChevronRight,
   Command,
-  Moon,
   Search,
   Settings2,
   ShieldAlert,
   Square,
-  Sun,
   Users,
   Wifi,
   WifiOff,
   X,
   Compass,
   Database,
+  Calendar,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/api/client";
 import { useAIStatus, useAttentionItems } from "@/hooks/queries";
 import { useUiStore } from "@/stores";
 import { useLensStore, type IrisLens } from "@/stores/lensStore";
-import { useUIState, useSaveUIPreferences } from "@/features/home/useUIOrchestrator";
 import { cn } from "@/lib/format";
 import { IrisMark } from "@/components/layout/Sidebar";
 
@@ -46,8 +44,6 @@ type ComputerStatus = {
 export function IrisTopHUD() {
   const { activeLens, setActiveLens, setSettingsOpen } = useLensStore();
   const setAskOpen = useUiStore((s) => s.setAskOpen);
-  const uiState = useUIState();
-  const saveUiPreferences = useSaveUIPreferences();
 
   const [panel, setPanel] = useState<"health" | "notifications" | null>(null);
 
@@ -90,7 +86,7 @@ export function IrisTopHUD() {
   const approvalCount = approvals.data?.length ?? 0;
   const totalCount = attentionCount + approvalCount;
 
-  // Global hotkeys for lenses: Alt+1 / Alt+2 / Alt+3 / Alt+4
+  // Global hotkeys for lenses: Alt+1 (Home) / Alt+2 (Chat) / Alt+3 (Horizon) / Alt+4 (Fleet) / Alt+5 (Vault)
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
@@ -99,17 +95,21 @@ export function IrisTopHUD() {
       }
       if (e.altKey && e.key === "1") {
         e.preventDefault();
-        setActiveLens("studio");
+        setActiveLens("home");
       }
       if (e.altKey && e.key === "2") {
         e.preventDefault();
-        setActiveLens("horizon");
+        setActiveLens("studio");
       }
       if (e.altKey && e.key === "3") {
         e.preventDefault();
-        setActiveLens("fleet");
+        setActiveLens("horizon");
       }
       if (e.altKey && e.key === "4") {
+        e.preventDefault();
+        setActiveLens("fleet");
+      }
+      if (e.altKey && e.key === "5") {
         e.preventDefault();
         setActiveLens("vault");
       }
@@ -154,25 +154,15 @@ export function IrisTopHUD() {
   const isComputerActive = computer.data?.session?.state === "active";
   const isKillSwitchEngaged = Boolean(computer.data?.session?.kill_switch_engaged);
 
-  const currentTheme = uiState.data?.preferences.theme ?? "dark";
-  const toggleTheme = () => {
-    if (!uiState.data) return;
-    const next = currentTheme === "dark" ? "light" : "dark";
-    saveUiPreferences.mutate({
-      version: uiState.data.version,
-      preferences: { theme: next },
-    });
-  };
-
   return (
     <header className="sticky top-0 z-40 flex h-14 shrink-0 items-center justify-between border-b border-ops-line bg-ops-panel/90 px-3.5 backdrop-blur-md transition-colors sm:px-6">
       {/* 1. Left: Brand & Ambient Orb */}
       <div className="flex items-center gap-3">
         <button
           type="button"
-          onClick={() => setActiveLens("studio")}
+          onClick={() => setActiveLens("home")}
           className="group flex items-center gap-2.5 cursor-pointer text-left focus:outline-none"
-          title="IRIS Intelligence Operating System"
+          title="IRIS Personal AI Operating System"
         >
           <div className="relative flex h-8 w-8 items-center justify-center rounded-xl bg-ai/10 border border-ai/25 group-hover:border-ai/50 transition">
             <IrisMark size={20} />
@@ -196,20 +186,28 @@ export function IrisTopHUD() {
         className="flex items-center rounded-xl bg-ops-raised/60 p-1 border border-ops-line gap-0.5"
       >
         <LensTab
+          id="home"
+          label="Home"
+          icon={Compass}
+          active={activeLens === "home"}
+          onClick={() => setActiveLens("home")}
+          shortcut="Alt 1"
+        />
+        <LensTab
           id="studio"
-          label="Studio"
+          label="Chat"
           icon={Command}
           active={activeLens === "studio"}
           onClick={() => setActiveLens("studio")}
-          shortcut="Alt 1"
+          shortcut="Alt 2"
         />
         <LensTab
           id="horizon"
           label="Horizon"
-          icon={Compass}
+          icon={Calendar}
           active={activeLens === "horizon"}
           onClick={() => setActiveLens("horizon")}
-          shortcut="Alt 2"
+          shortcut="Alt 3"
         />
         <LensTab
           id="fleet"
@@ -217,7 +215,7 @@ export function IrisTopHUD() {
           icon={Users}
           active={activeLens === "fleet"}
           onClick={() => setActiveLens("fleet")}
-          shortcut="Alt 3"
+          shortcut="Alt 4"
           badge={approvalCount > 0 ? approvalCount : undefined}
         />
         <LensTab
@@ -226,7 +224,7 @@ export function IrisTopHUD() {
           icon={Database}
           active={activeLens === "vault"}
           onClick={() => setActiveLens("vault")}
-          shortcut="Alt 4"
+          shortcut="Alt 5"
         />
       </nav>
 
@@ -294,17 +292,6 @@ export function IrisTopHUD() {
             <WifiOff size={14} className="text-amber-400" />
           )}
           <span className="hidden md:inline font-medium">{connected ? "Online" : "Offline"}</span>
-        </button>
-
-        {/* Theme Toggle Button */}
-        <button
-          type="button"
-          onClick={toggleTheme}
-          aria-label="Toggle theme"
-          className="grid h-8 w-8 place-items-center rounded-lg text-ink-dim hover:bg-ops-raised transition cursor-pointer"
-          title={`Switch to ${currentTheme === "dark" ? "light" : "dark"} mode`}
-        >
-          {currentTheme === "dark" ? <Sun size={15} /> : <Moon size={15} />}
         </button>
 
         {/* Settings Hub Trigger */}

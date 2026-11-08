@@ -2,12 +2,12 @@ import { lazy, Suspense, useEffect } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { IrisTopHUD } from "@/components/layout/IrisTopHUD";
 import { IrisBottomHUD } from "@/components/layout/IrisBottomHUD";
+import { PersistentIrisSphere } from "@/components/layout/PersistentIrisSphere";
 import { SettingsOverlay } from "@/components/layout/SettingsOverlay";
 import { AgyDrawer } from "@/features/agy/AgyDrawer";
 import { useFocusSessions } from "@/hooks/queries";
 import { useUiStore } from "@/stores";
 import { VoiceSessionProvider } from "@/features/home/VoiceSession";
-import { useUIState } from "@/features/home/useUIOrchestrator";
 
 const AskIrisConsole = lazy(() =>
   import("@/features/ai/AskIrisConsole").then((m) => ({ default: m.AskIrisConsole })),
@@ -22,19 +22,12 @@ export function AppShell() {
   const location = useLocation();
   const navigate = useNavigate();
   const setAskOpen = useUiStore((s) => s.setAskOpen);
-  const uiState = useUIState();
 
   useEffect(() => {
-    const preference = uiState.data?.preferences.theme ?? "dark";
-    const media = window.matchMedia("(prefers-color-scheme: dark)");
-    const apply = () => {
-      document.documentElement.dataset.theme =
-        preference === "system" ? (media.matches ? "dark" : "light") : preference;
-    };
-    apply();
-    if (preference === "system") media.addEventListener("change", apply);
-    return () => media.removeEventListener("change", apply);
-  }, [uiState.data?.preferences.theme]);
+    document.documentElement.dataset.theme = "light";
+    document.documentElement.style.colorScheme = "light";
+    document.documentElement.classList.remove("dark");
+  }, []);
 
   // Hydrate any running focus session once at boot.
   useFocusSessions();
@@ -156,6 +149,9 @@ export function AppShell() {
         <main className="flex flex-1 flex-col overflow-hidden">
           <Outlet />
         </main>
+
+        {/* Persistent IRIS Ambient Intelligence Sphere */}
+        <PersistentIrisSphere />
 
         {/* Mobile Navigation Dock */}
         <IrisBottomHUD />

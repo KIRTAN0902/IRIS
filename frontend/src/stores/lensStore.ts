@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-export type IrisLens = "studio" | "horizon" | "fleet" | "vault";
+export type IrisLens = "home" | "studio" | "horizon" | "fleet" | "vault";
 
 interface LensStoreState {
   activeLens: IrisLens;
@@ -27,7 +27,7 @@ interface LensStoreState {
 }
 
 export const useLensStore = create<LensStoreState>((set) => ({
-  activeLens: "studio",
+  activeLens: "home",
   setActiveLens: (lens) => set({ activeLens: lens }),
   horizonTab: "overview",
   setHorizonTab: (tab) => set({ horizonTab: tab }),

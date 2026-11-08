@@ -14,26 +14,26 @@
  */
 @theme {
   --color-ops-void: #ffffff;
-  --color-ops-ground: #f8fafc;
+  --color-ops-ground: #f8fafb;
   --color-ops-panel: #ffffff;
-  --color-ops-raised: #f1f5f9;
-  --color-ops-line: #e2e8f0;
-  --color-ops-line-bright: #cbd5e1;
+  --color-ops-raised: #f1f4f6;
+  --color-ops-line: #e5e8ec;
+  --color-ops-line-bright: #d2d7df;
 
-  --color-ink: #0f172a;
-  --color-ink-dim: #334155;
-  --color-ink-faint: #64748b;
+  --color-ink: #111827;
+  --color-ink-dim: #374151;
+  --color-ink-faint: #6b7280;
 
-  --color-ai: #6366f1;
-  --color-ai-dim: #eef2ff;
+  --color-ai: #1f645f;
+  --color-ai-dim: #eaf3f2;
 
-  --color-go: #10b981;
+  --color-go: #059669;
   --color-go-dim: #ecfdf5;
 
-  --color-caution: #f59e0b;
+  --color-caution: #d97706;
   --color-caution-dim: #fffbeb;
 
-  --color-critical: #ef4444;
+  --color-critical: #dc2626;
   --color-critical-dim: #fef2f2;
 
   --font-display: -apple-system, BlinkMacSystemFont, "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
@@ -70,23 +70,11 @@
   .home-assistant-dock { bottom: 12px; }
 }
 
-[data-theme="dark"] {
-  color-scheme: dark;
-  --color-ops-void: #0b0e14;
-  --color-ops-ground: #07090e;
-  --color-ops-panel: #111622;
-  --color-ops-raised: #182030;
-  --color-ops-line: rgba(255, 255, 255, 0.08);
-  --color-ops-line-bright: rgba(255, 255, 255, 0.16);
-  --color-ink: #f8fafc;
-  --color-ink-dim: #cbd5e1;
-  --color-ink-faint: #8191a6;
-  --color-ai: #7c72f8;
-  --color-ai-dim: rgba(124, 114, 248, 0.15);
-  --color-go-dim: rgba(16, 185, 129, 0.15);
-  --color-caution-dim: rgba(245, 158, 11, 0.15);
-  --color-critical-dim: rgba(239, 68, 68, 0.15);
-}
+/*
+ * NOTE: Dark theme removed for light-only milestone.
+ * Preserved as reference tokens for a future dedicated dark mode milestone:
+ * --color-ops-ground: #07090e; --color-ops-panel: #111622;
+ */
 
 @layer base {
 

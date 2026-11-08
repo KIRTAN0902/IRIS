@@ -57,6 +57,8 @@ export function App() {
               <Route index element={<IrisOSStage />} />
 
               {/* Seamless URL mappings to Operating Lenses */}
+              <Route path="home" element={<Navigate to="/?lens=home" replace />} />
+              <Route path="chat" element={<Navigate to="/?lens=studio" replace />} />
               <Route path="conversations" element={<Navigate to="/?lens=studio" replace />} />
               <Route path="today" element={<Navigate to="/?lens=horizon&tab=overview" replace />} />
               <Route path="tasks" element={<Navigate to="/?lens=horizon&tab=priorities" replace />} />

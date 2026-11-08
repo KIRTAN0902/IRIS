@@ -1,12 +1,9 @@
-import { Command, Compass, Database, Mic, Users } from "lucide-react";
+import { Calendar, Command, Compass, Database, Users } from "lucide-react";
 import { useLensStore, type IrisLens } from "@/stores/lensStore";
-import { useVoiceSession } from "@/features/home/VoiceSession";
 import { cn } from "@/lib/format";
 
 export function IrisBottomHUD() {
   const { activeLens, setActiveLens } = useLensStore();
-  const voice = useVoiceSession();
-  const isListening = voice.phase === "listening" || voice.phase === "speaking";
 
   return (
     <nav
@@ -15,8 +12,15 @@ export function IrisBottomHUD() {
     >
       <div className="flex items-center justify-around px-2">
         <MobileTab
+          id="home"
+          label="Home"
+          icon={Compass}
+          active={activeLens === "home"}
+          onClick={() => setActiveLens("home")}
+        />
+        <MobileTab
           id="studio"
-          label="Studio"
+          label="Chat"
           icon={Command}
           active={activeLens === "studio"}
           onClick={() => setActiveLens("studio")}
@@ -24,29 +28,10 @@ export function IrisBottomHUD() {
         <MobileTab
           id="horizon"
           label="Horizon"
-          icon={Compass}
+          icon={Calendar}
           active={activeLens === "horizon"}
           onClick={() => setActiveLens("horizon")}
         />
-
-        {/* Center Floating Voice Action Button */}
-        <button
-          type="button"
-          onClick={() => (isListening ? voice.end() : voice.start())}
-          aria-label={isListening ? "Stop voice" : "Talk to IRIS"}
-          className={cn(
-            "relative -top-2 flex h-11 w-11 items-center justify-center rounded-full border shadow-md transition-all cursor-pointer",
-            isListening
-              ? "bg-critical border-critical text-white animate-pulse"
-              : "bg-ai border-ai/50 text-white hover:scale-105 active:scale-95",
-          )}
-        >
-          <Mic size={18} />
-          {isListening && (
-            <span className="absolute -inset-1 rounded-full border-2 border-critical/50 animate-ping pointer-events-none" />
-          )}
-        </button>
-
         <MobileTab
           id="fleet"
           label="Fleet"

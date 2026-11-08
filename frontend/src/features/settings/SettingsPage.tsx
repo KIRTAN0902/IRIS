@@ -20,7 +20,6 @@ import { api } from "@/api/client";
 import { cn } from "@/lib/format";
 import type { AIStatusOut } from "@/types/api";
 import { PermissionsPanel } from "@/features/settings/PermissionsPanel";
-import { useUIState, useSaveUIPreferences } from "@/features/home/useUIOrchestrator";
 import { KnowledgePage } from "@/features/knowledge/KnowledgePage";
 import { MeshPage } from "@/features/mesh/MeshPage";
 
@@ -37,8 +36,6 @@ const SETTINGS_SECTIONS: { id: SettingsTab; label: string; icon: typeof Settings
 export function SettingsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const currentTab = (searchParams.get("tab") as SettingsTab) || "general";
-  const uiState = useUIState();
-  const saveUiPreferences = useSaveUIPreferences();
 
   // --- AI Settings State ---
   const [aiStatus, setAiStatus] = useState<AIStatusOut | null>(null);
@@ -108,41 +105,20 @@ export function SettingsPage() {
       {/* --- Section 1: General Preferences --- */}
       {currentTab === "general" && (
         <div className="space-y-6">
-          <Panel title="Appearance & Theme">
+          <Panel title="Appearance & Visual Identity">
             <div className="space-y-4 pt-2 text-[13px]">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <p className="font-semibold text-ink text-[14px]">Theme</p>
-                  <p className="mt-0.5 text-xs text-ink-faint">Choose your preferred visual palette across devices.</p>
+                  <p className="font-semibold text-ink text-[14px]">Operating Visual Theme</p>
+                  <p className="mt-0.5 text-xs text-ink-faint">
+                    Precision light palette with Alpine Sage accents and ceramic alabaster surfaces.
+                  </p>
                 </div>
-                <select
-                  aria-label="Theme"
-                  value={uiState.data?.preferences.theme ?? "light"}
-                  disabled={!uiState.data || saveUiPreferences.isPending}
-                  onChange={(e) =>
-                    uiState.data &&
-                    saveUiPreferences.mutate({
-                      version: uiState.data.version,
-                      preferences: { theme: e.target.value as "light" | "dark" | "system" },
-                    })
-                  }
-                  className="min-h-11 rounded-xl border border-ops-line-bright bg-ops-void px-3 text-ink text-sm outline-none focus:border-ai"
-                >
-                  <option value="light">Light (Daylight)</option>
-                  <option value="dark">Dark</option>
-                  <option value="system">Follow System</option>
-                </select>
+                <div className="flex items-center gap-2 rounded-xl border border-ops-line-bright bg-ops-raised px-3 py-2 text-ink text-xs font-semibold">
+                  <span className="h-2.5 w-2.5 rounded-full bg-ai" />
+                  <span>Daylight Palette (Light Only)</span>
+                </div>
               </div>
-              {uiState.isError && (
-                <p className="text-caution text-xs" role="status">
-                  Could not load saved preferences. Reconnect to change this setting.
-                </p>
-              )}
-              {saveUiPreferences.isError && (
-                <p className="text-critical text-xs" role="alert">
-                  Theme was not saved. Please try again.
-                </p>
-              )}
             </div>
           </Panel>
         </div>
