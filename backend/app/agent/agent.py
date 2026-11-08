@@ -116,6 +116,7 @@ class IrisAgent:
         context: dict[str, Any] | None = None
         personal_model: dict[str, Any] | None = None
         situation: dict[str, Any] | None = None
+        knowledge_context = ""
 
         def _ensure_context() -> dict[str, Any]:
             nonlocal context, personal_model, situation
@@ -158,6 +159,21 @@ class IrisAgent:
                 mark_accessed=True,
                 commit=False,
             )
+
+            # Hybrid, permission-filtered durable knowledge. Failures must never
+            # break a chat turn; the context is bounded by configuration.
+            try:
+                from app.knowledge.retrieval import knowledge_retrieval
+
+                knowledge_context = knowledge_retrieval.build_context(
+                    db,
+                    user_id=user.id,
+                    query=user_message,
+                    principal="iris_core",
+                )
+            except Exception as exc:  # noqa: BLE001 - knowledge is additive
+                logger.debug("knowledge_context_skipped error_type=%s", type(exc).__name__)
+                knowledge_context = ""
 
             # 4. Generate the reply through sub-agents, AI harness, or fall back
             provider = get_ai_provider()
@@ -271,6 +287,7 @@ class IrisAgent:
                                     personal_model=render_personal_model(personal_model, detail),
                                     situation=render_situation(situation, detail),
                                     shared=conversation_memory.render_conversations(recent, related),
+                                    knowledge=knowledge_context,
                                 )
                                 + (_VOICE_MODE if voice else ""),
                                 history=history,
@@ -404,6 +421,24 @@ class IrisAgent:
             fast_path=is_fast_path,
             visual_context=extra.get("visual_context"),
         )
+        # 10. Silent, durable knowledge capture. This only registers provenance
+        # and enqueues a job; it adds no model call and no approval dialog to the
+        # reply path, and it never blocks the response.
+        if not skip_memory:
+            try:
+                from app.knowledge.pipeline import capture_conversation_turn
+
+                capture_conversation_turn(
+                    db,
+                    user_id=user.id,
+                    user_message=user_message,
+                    assistant_message=response_schema.message,
+                    conversation_id=conversation.id,
+                    message_id=assistant_msg_row.id,
+                )
+            except Exception as exc:  # noqa: BLE001 - knowledge is additive
+                logger.debug("knowledge_capture_skipped error_type=%s", type(exc).__name__)
+                db.rollback()
         return out, conversation
 
     async def remember_turn(self, db: Session, user: User, message_id: int) -> list[dict[str, Any]]:
@@ -485,6 +520,7 @@ class IrisAgent:
         personal_model: str = "",
         situation: str = "",
         shared: str = "",
+        knowledge: str = "",
     ) -> str:
         memory_section = memory_service.format_memories_for_prompt(memories or [])
         bottlenecks = (context.get("startup_state", {}) or {}).get("bottlenecks") or []
@@ -565,6 +601,8 @@ HOW YOU OPERATE:
             sections.append(situation)
         if shared:
             sections.append(shared)
+        if knowledge:
+            sections.append(knowledge)
         if bottlenecks or attention:
             extra = ["SIGNALS:"]
             if bottlenecks:

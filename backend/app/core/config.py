@@ -155,6 +155,34 @@ class Settings(BaseSettings):
     remote_companion_url: str = "https://irisforgecode.dpdns.org"
     iris_companion_secret: str = "iris_colab_secret_2026"
 
+    # --- Knowledge System ---
+    # Automatic, silent capture is on by default. It never asks for approval.
+    knowledge_capture_enabled: bool = True
+    # Durable background jobs run in the long-lived backend; serverless drains
+    # them on demand through the jobs endpoint.
+    knowledge_worker_enabled: bool = True
+    knowledge_worker_batch: int = 5
+    knowledge_worker_poll_seconds: float = 5.0
+    knowledge_job_lease_seconds: int = 120
+    # Semantic retrieval abstraction. The local provider is deterministic and
+    # free; a remote embedding provider can be added behind the same interface.
+    knowledge_embeddings_enabled: bool = True
+    knowledge_embedding_model: str = "iris-hash-v1"
+    knowledge_embedding_dimensions: int = 256
+    knowledge_max_context_chars: int = 6000
+    knowledge_default_principal: str = "iris_core"
+    # Existing Supabase project. Storage is used through the Storage REST API;
+    # when the service key is absent IRIS falls back to a local vault for
+    # development and tests. Production must set these values.
+    supabase_url: str | None = None
+    supabase_service_role_key: str | None = None
+    supabase_anon_key: str | None = None
+    knowledge_vault_bucket: str = "iris-knowledge-vault"
+    knowledge_vault_local_dir: str | None = None
+    # Optional pgvector. The service checks availability at runtime; it never
+    # assumes the extension exists.
+    knowledge_pgvector_enabled: bool = True
+
     @property
     def is_development(self) -> bool:
         return self.environment.lower() == "development"

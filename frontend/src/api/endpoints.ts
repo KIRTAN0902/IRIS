@@ -4,6 +4,7 @@
  */
 
 import { api } from "@/api/client";
+import type { QueryValue } from "@/api/client";
 import type {
   AIStatusOut,
   AskIRISResponse,
@@ -75,6 +76,19 @@ import type {
   WorkoutIn,
   WorkoutOut,
   Behavior,
+  KnowledgeCaptureResult,
+  KnowledgeClaim,
+  KnowledgeGraph,
+  KnowledgeHealth,
+  KnowledgeInsights,
+  KnowledgeJobs,
+  KnowledgeNode,
+  KnowledgeNote,
+  KnowledgeNoteDetail,
+  KnowledgeOverview,
+  KnowledgePermission,
+  KnowledgeSearch,
+  KnowledgeVersion,
 } from "@/types/api";
 
 // --- Users ---------------------------------------------------------------------
@@ -434,3 +448,159 @@ export const diaryApi = {
   delete: (id: number) => api.delete<void>(`/diary/entries/${id}`),
 };
 
+
+// --- IRIS Knowledge System -----------------------------------------------------
+
+export interface KnowledgeNodeFilters extends Record<string, QueryValue> {
+  node_type?: string;
+  query?: string;
+  include_archived?: boolean;
+  limit?: number;
+  offset?: number;
+}
+
+export interface KnowledgeClaimFilters extends Record<string, QueryValue> {
+  node_id?: string;
+  claim_type?: string;
+  category?: string;
+  include_history?: boolean;
+  limit?: number;
+  offset?: number;
+}
+
+export interface KnowledgeNoteFilters extends Record<string, QueryValue> {
+  note_type?: string;
+  query?: string;
+  include_archived?: boolean;
+  limit?: number;
+  offset?: number;
+}
+
+export interface KnowledgeHistoryFilters extends Record<string, QueryValue> {
+  entity_type?: string;
+  entity_id?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export const knowledgeApi = {
+  health: () => api.get<KnowledgeHealth>("/knowledge/health"),
+  overview: () => api.get<KnowledgeOverview>("/knowledge/overview"),
+
+  nodes: (filters: KnowledgeNodeFilters = {}) =>
+    api.get<KnowledgeNode[]>("/knowledge/nodes", filters),
+  node: (id: string) => api.get<KnowledgeNode>(`/knowledge/nodes/${id}`),
+  createNode: (body: {
+    name: string;
+    node_type?: string;
+    description?: string | null;
+    aliases?: string[];
+    sensitivity?: string | null;
+    access_level?: string | null;
+  }) => api.post<KnowledgeNode>("/knowledge/nodes", body),
+  updateNode: (
+    id: string,
+    body: {
+      canonical_name?: string;
+      description?: string;
+      status?: "active" | "archived";
+      sensitivity?: string;
+      access_level?: string;
+      aliases?: string[];
+    },
+  ) => api.patch<KnowledgeNode>(`/knowledge/nodes/${id}`, body),
+  archiveNode: (id: string) => api.post<KnowledgeNode>(`/knowledge/nodes/${id}/archive`),
+  deleteNode: (id: string) => api.delete<void>(`/knowledge/nodes/${id}`),
+  graph: (id: string, params: { depth?: number; limit?: number } = {}) =>
+    api.get<KnowledgeGraph>(`/knowledge/nodes/${id}/graph`, params),
+
+  claims: (filters: KnowledgeClaimFilters = {}) =>
+    api.get<KnowledgeClaim[]>("/knowledge/claims", filters),
+  claim: (id: string) => api.get<KnowledgeClaim>(`/knowledge/claims/${id}`),
+  createClaim: (body: {
+    node_id: string;
+    text: string;
+    claim_type?: string;
+    category?: string;
+    confidence?: number;
+    verification_status?: string;
+    sensitivity?: string | null;
+    evidence_text?: string | null;
+  }) => api.post<KnowledgeClaim>("/knowledge/claims", body),
+  updateClaim: (
+    id: string,
+    body: {
+      claim_text?: string;
+      verification_status?: string;
+      confidence?: number;
+      sensitivity?: string;
+    },
+  ) => api.patch<KnowledgeClaim>(`/knowledge/claims/${id}`, body),
+  archiveClaim: (id: string) => api.post<KnowledgeClaim>(`/knowledge/claims/${id}/archive`),
+  deleteClaim: (id: string) => api.delete<void>(`/knowledge/claims/${id}`),
+
+  search: (body: {
+    query: string;
+    limit?: number;
+    categories?: string[];
+    node_types?: string[];
+    include_history?: boolean;
+    as_of?: string | null;
+  }) => api.post<KnowledgeSearch>("/knowledge/search", body),
+  capture: (body: {
+    text: string;
+    title?: string;
+    source_type?: string;
+    source_ref?: string;
+    origin?: string;
+    process_now?: boolean;
+  }) => api.post<KnowledgeCaptureResult>("/knowledge/capture", body),
+
+  notes: (filters: KnowledgeNoteFilters = {}) =>
+    api.get<KnowledgeNote[]>("/knowledge/notes", filters),
+  note: (id: string) => api.get<KnowledgeNoteDetail>(`/knowledge/notes/${id}`),
+  noteForNode: (nodeId: string) =>
+    api.get<KnowledgeNoteDetail>(`/knowledge/nodes/${nodeId}/note`),
+  createNote: (body: {
+    title: string;
+    content?: string;
+    category?: string;
+    tags?: string[];
+    node_id?: string | null;
+  }) => api.post<KnowledgeNote>("/knowledge/notes", body),
+  updateNote: (id: string, body: { content: string; expected_hash?: string | null }) =>
+    api.patch<KnowledgeNote>(`/knowledge/notes/${id}`, body),
+  renameNote: (id: string, body: { title?: string; category?: string }) =>
+    api.post<KnowledgeNote>(`/knowledge/notes/${id}/rename`, body),
+  archiveNote: (id: string) => api.post<KnowledgeNote>(`/knowledge/notes/${id}/archive`),
+  restoreNote: (id: string) => api.post<KnowledgeNote>(`/knowledge/notes/${id}/restore`),
+  deleteNote: (id: string) => api.delete<void>(`/knowledge/notes/${id}`),
+  importNote: (body: { path: string; content?: string }) =>
+    api.post<Record<string, unknown>>("/knowledge/notes/import", body),
+  reconcile: (limit = 200) =>
+    api.post<Record<string, unknown>>("/knowledge/vault/reconcile", undefined, { limit }),
+  rebuildIndex: () =>
+    api.post<Record<string, unknown>>("/knowledge/vault/rebuild-index"),
+
+  history: (filters: KnowledgeHistoryFilters = {}) =>
+    api.get<KnowledgeVersion[]>("/knowledge/history", filters),
+  insights: () => api.get<KnowledgeInsights>("/knowledge/insights"),
+  jobs: () => api.get<KnowledgeJobs>("/knowledge/jobs"),
+  drainJobs: (limit = 5) => api.post<Record<string, unknown>>("/knowledge/jobs/drain", { limit }),
+  consolidate: (limit = 100) =>
+    api.post<Record<string, unknown>>("/knowledge/consolidate", undefined, { limit }),
+
+  permissions: () => api.get<KnowledgePermission[]>("/knowledge/permissions"),
+  grantPermission: (body: {
+    principal_type?: string;
+    principal_id?: string;
+    access_level?: string;
+    knowledge_type?: string;
+    knowledge_id?: string | null;
+    can_read?: boolean;
+    can_write?: boolean;
+  }) => api.post<KnowledgePermission>("/knowledge/permissions", body),
+
+  migrateMemory: (body: { dry_run?: boolean; limit?: number }) =>
+    api.post<Record<string, unknown>>("/knowledge/migrate-memory", body),
+};

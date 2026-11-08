@@ -1156,3 +1156,210 @@ export interface Behavior {
   engagement: { active_days: number; of_days: number };
   adapt: { iris: string; you: string }[];
 }
+
+// --- IRIS Knowledge System -----------------------------------------------------
+
+export interface KnowledgeNode {
+  id: string;
+  node_type: string;
+  canonical_name: string;
+  normalized_name: string;
+  description: string | null;
+  aliases: string[];
+  metadata: Record<string, unknown>;
+  status: string;
+  sensitivity: string;
+  access_level: string;
+  claim_count: number;
+  created_at: string | null;
+  updated_at: string | null;
+  archived_at: string | null;
+}
+
+export interface KnowledgeClaim {
+  id: string;
+  node_id: string;
+  node_name: string | null;
+  node_type: string | null;
+  claim_text: string;
+  claim_type: string;
+  category: string;
+  confidence: number;
+  verification_status: string;
+  source_id: string | null;
+  valid_from: string | null;
+  valid_until: string | null;
+  observed_at: string | null;
+  recorded_at: string | null;
+  supersedes_claim_id: string | null;
+  superseded_by_claim_id: string | null;
+  sensitivity: string;
+  access_level: string;
+  metadata: Record<string, unknown>;
+  archived_at: string | null;
+}
+
+export interface KnowledgeRelationship {
+  id: string;
+  source_node_id: string;
+  target_node_id: string;
+  relationship_type: string;
+  confidence: number;
+  valid_from: string | null;
+  valid_until: string | null;
+  metadata: Record<string, unknown>;
+}
+
+export interface KnowledgeGraph {
+  nodes: KnowledgeNode[];
+  relationships: KnowledgeRelationship[];
+  truncated: boolean;
+}
+
+export interface KnowledgeNote {
+  id: string;
+  node_id: string | null;
+  title: string;
+  note_type: string;
+  storage_path: string;
+  content_hash: string;
+  db_version: number;
+  sync_status: string;
+  conflict_path: string | null;
+  sensitivity: string;
+  access_level: string;
+  metadata: Record<string, unknown>;
+  last_synced_at: string | null;
+  archived_at: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface KnowledgeNoteDetail {
+  note: KnowledgeNote;
+  content: string;
+  content_hash: string;
+  missing: boolean;
+}
+
+export interface KnowledgeVersion {
+  id: string;
+  entity_type: string;
+  entity_id: string;
+  version_number: number;
+  change_type: string;
+  change_reason: string | null;
+  actor: string;
+  snapshot: Record<string, unknown>;
+  created_at: string | null;
+}
+
+export interface KnowledgeReview {
+  id: string;
+  review_type: string;
+  target_type: string;
+  target_id: string;
+  status: string;
+  reason: string | null;
+  details: Record<string, unknown>;
+  created_at: string | null;
+}
+
+export interface KnowledgeOverview {
+  recent_nodes: KnowledgeNode[];
+  recent_claims: KnowledgeClaim[];
+  important_projects: KnowledgeNode[];
+  recent_insights: KnowledgeClaim[];
+  reviews: KnowledgeReview[];
+  categories: { key: string; label: string }[];
+  counts_by_type: Record<string, number>;
+  totals: Record<string, number>;
+  health: KnowledgeHealth;
+}
+
+export interface KnowledgeSearchResult {
+  claim_id: string;
+  node_id: string;
+  node_name: string;
+  node_type: string;
+  claim_text: string;
+  claim_type: string;
+  category: string;
+  confidence: number;
+  verification_status: string;
+  sensitivity: string;
+  score: number;
+  signals: string[];
+  source: string | null;
+  valid_from: string | null;
+  valid_until: string | null;
+  superseded_by_claim_id: string | null;
+}
+
+export interface KnowledgeSearch {
+  query: string;
+  as_of: string | null;
+  results: KnowledgeSearchResult[];
+  count: number;
+  candidate_count: number;
+  truncated: boolean;
+}
+
+export interface KnowledgeCaptureResult {
+  source_id: string;
+  job_id: string | null;
+}
+
+export interface KnowledgeJob {
+  id: string;
+  job_type: string;
+  status: string;
+  attempts: number;
+  max_attempts: number;
+  last_error: string | null;
+  result: Record<string, unknown> | null;
+  created_at: string | null;
+  completed_at: string | null;
+}
+
+export interface KnowledgeJobs {
+  by_status: Record<string, number>;
+  queued: number;
+  running: number;
+  failed: number;
+  dead: number;
+  oldest_queued_at: string | null;
+  worker_id: string;
+  recent: KnowledgeJob[];
+}
+
+export interface KnowledgeHealth {
+  state: string;
+  counts: Record<string, number>;
+  jobs_by_status: Record<string, number>;
+  queued_jobs: number;
+  oldest_queued_at: string | null;
+  embedding_coverage: number;
+  vault: { backend: string; bucket: string; configured: boolean };
+  pgvector: { enabled: boolean; available: boolean };
+  generated_at: string;
+}
+
+export interface KnowledgePermission {
+  id: string;
+  knowledge_type: string;
+  knowledge_id: string | null;
+  principal_type: string;
+  principal_id: string;
+  access_level: string;
+  can_read: boolean;
+  can_write: boolean;
+  expires_at: string | null;
+  created_at: string | null;
+}
+
+export interface KnowledgeInsights {
+  insights: KnowledgeClaim[];
+  reviews: KnowledgeReview[];
+  counts: { inferences: number; understanding: number; open_reviews: number };
+}

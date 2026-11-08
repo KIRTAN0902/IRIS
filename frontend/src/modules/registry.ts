@@ -21,6 +21,7 @@ import {
   HeartPulse,
   Laptop,
   LayoutGrid,
+  Library,
   ListChecks,
   Mail,
   MessageSquare,
@@ -88,6 +89,14 @@ export const DIARY_NAV_ITEM: NavItem = {
   route: "/diary",
   glyph: "📖",
   icon: BookOpen,
+};
+
+export const KNOWLEDGE_NAV_ITEM: NavItem = {
+  id: "knowledge",
+  name: "Knowledge",
+  route: "/knowledge",
+  glyph: "◈",
+  icon: Library,
 };
 
 export const AGY_NAV_ITEM: NavItem = {
@@ -162,6 +171,7 @@ export const PRIMARY_NAV_ITEMS_DESKTOP: NavItem[] = [
   },
   { id: "devices", name: "Devices & Mesh", route: "/devices", glyph: "◎", icon: Radio },
   { id: "memory", name: "Memory", route: "/memory", glyph: "◈", icon: BrainCircuit },
+  KNOWLEDGE_NAV_ITEM,
   SETTINGS_NAV_ITEM,
 ];
 
@@ -213,6 +223,16 @@ export const MODULES: ModuleDefinition[] = [
     category: "command",
     enabled: true,
     glyph: "◎",
+  },
+  {
+    id: "knowledge",
+    name: "Knowledge",
+    icon: Library,
+    route: "/knowledge",
+    category: "command",
+    enabled: true,
+    glyph: "◈",
+    brief: "Persistent, evolving knowledge base, vault, graph and insights.",
   },
   {
     id: "agy",

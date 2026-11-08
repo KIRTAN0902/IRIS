@@ -16,6 +16,7 @@ import {
   focusApi,
   goalsApi,
   intelligenceApi,
+  knowledgeApi,
   memoriesApi,
   projectsApi,
   reviewsApi,
@@ -721,3 +722,228 @@ export const useDeleteDiaryEntry = () => {
   });
 };
 
+
+// --- IRIS Knowledge System -----------------------------------------------------
+
+function useInvalidateKnowledge() {
+  const qc = useQueryClient();
+  return () => {
+    qc.invalidateQueries({ queryKey: ["knowledge-overview"] });
+    qc.invalidateQueries({ queryKey: ["knowledge-nodes"] });
+    qc.invalidateQueries({ queryKey: ["knowledge-node"] });
+    qc.invalidateQueries({ queryKey: ["knowledge-graph"] });
+    qc.invalidateQueries({ queryKey: ["knowledge-claims"] });
+    qc.invalidateQueries({ queryKey: ["knowledge-notes"] });
+    qc.invalidateQueries({ queryKey: ["knowledge-note"] });
+    qc.invalidateQueries({ queryKey: ["knowledge-history"] });
+    qc.invalidateQueries({ queryKey: ["knowledge-insights"] });
+    qc.invalidateQueries({ queryKey: ["knowledge-jobs"] });
+    qc.invalidateQueries({ queryKey: ["knowledge-health"] });
+    qc.invalidateQueries({ queryKey: ["knowledge-permissions"] });
+  };
+}
+
+export const useKnowledgeHealth = () =>
+  useQuery({
+    queryKey: qk.knowledgeHealth(),
+    queryFn: knowledgeApi.health,
+    staleTime: 30_000,
+  });
+
+export const useKnowledgeOverview = () =>
+  useQuery({
+    queryKey: qk.knowledgeOverview(),
+    queryFn: knowledgeApi.overview,
+    staleTime: 15_000,
+  });
+
+export const useKnowledgeNodes = (filters: Parameters<typeof knowledgeApi.nodes>[0] = {}) =>
+  useQuery({
+    queryKey: qk.knowledgeNodes(filters),
+    queryFn: () => knowledgeApi.nodes(filters),
+    staleTime: 15_000,
+  });
+
+export const useKnowledgeGraph = (nodeId: string | null, depth = 1, limit = 40) =>
+  useQuery({
+    queryKey: qk.knowledgeGraph(nodeId ?? "", depth, limit),
+    queryFn: () => knowledgeApi.graph(nodeId as string, { depth, limit }),
+    enabled: Boolean(nodeId),
+    staleTime: 15_000,
+  });
+
+export const useKnowledgeClaims = (filters: Parameters<typeof knowledgeApi.claims>[0] = {}) =>
+  useQuery({
+    queryKey: qk.knowledgeClaims(filters),
+    queryFn: () => knowledgeApi.claims(filters),
+    staleTime: 15_000,
+  });
+
+export const useKnowledgeNotes = (filters: Parameters<typeof knowledgeApi.notes>[0] = {}) =>
+  useQuery({
+    queryKey: qk.knowledgeNotes(filters),
+    queryFn: () => knowledgeApi.notes(filters),
+    staleTime: 15_000,
+  });
+
+export const useKnowledgeNote = (noteId: string | null) =>
+  useQuery({
+    queryKey: qk.knowledgeNote(noteId ?? ""),
+    queryFn: () => knowledgeApi.note(noteId as string),
+    enabled: Boolean(noteId),
+    staleTime: 5_000,
+  });
+
+export const useKnowledgeHistory = (filters: Parameters<typeof knowledgeApi.history>[0] = {}) =>
+  useQuery({
+    queryKey: qk.knowledgeHistory(filters),
+    queryFn: () => knowledgeApi.history(filters),
+    staleTime: 15_000,
+  });
+
+export const useKnowledgeInsights = () =>
+  useQuery({
+    queryKey: qk.knowledgeInsights(),
+    queryFn: knowledgeApi.insights,
+    staleTime: 15_000,
+  });
+
+export const useKnowledgeJobs = () =>
+  useQuery({
+    queryKey: qk.knowledgeJobs(),
+    queryFn: knowledgeApi.jobs,
+    staleTime: 5_000,
+  });
+
+export const useKnowledgePermissions = () =>
+  useQuery({
+    queryKey: qk.knowledgePermissions(),
+    queryFn: knowledgeApi.permissions,
+    staleTime: 30_000,
+  });
+
+export const useSearchKnowledge = () => useMutation({ mutationFn: knowledgeApi.search });
+
+export const useCaptureKnowledge = () => {
+  const invalidate = useInvalidateKnowledge();
+  return useMutation({
+    mutationFn: knowledgeApi.capture,
+    onSuccess: invalidate,
+  });
+};
+
+export const useCreateKnowledgeNode = () => {
+  const invalidate = useInvalidateKnowledge();
+  return useMutation({ mutationFn: knowledgeApi.createNode, onSuccess: invalidate });
+};
+
+export const useUpdateKnowledgeNode = () => {
+  const invalidate = useInvalidateKnowledge();
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Parameters<typeof knowledgeApi.updateNode>[1] }) =>
+      knowledgeApi.updateNode(id, data),
+    onSuccess: invalidate,
+  });
+};
+
+export const useArchiveKnowledgeNode = () => {
+  const invalidate = useInvalidateKnowledge();
+  return useMutation({ mutationFn: knowledgeApi.archiveNode, onSuccess: invalidate });
+};
+
+export const useDeleteKnowledgeNode = () => {
+  const invalidate = useInvalidateKnowledge();
+  return useMutation({ mutationFn: knowledgeApi.deleteNode, onSuccess: invalidate });
+};
+
+export const useCreateKnowledgeClaim = () => {
+  const invalidate = useInvalidateKnowledge();
+  return useMutation({ mutationFn: knowledgeApi.createClaim, onSuccess: invalidate });
+};
+
+export const useUpdateKnowledgeClaim = () => {
+  const invalidate = useInvalidateKnowledge();
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Parameters<typeof knowledgeApi.updateClaim>[1] }) =>
+      knowledgeApi.updateClaim(id, data),
+    onSuccess: invalidate,
+  });
+};
+
+export const useArchiveKnowledgeClaim = () => {
+  const invalidate = useInvalidateKnowledge();
+  return useMutation({ mutationFn: knowledgeApi.archiveClaim, onSuccess: invalidate });
+};
+
+export const useDeleteKnowledgeClaim = () => {
+  const invalidate = useInvalidateKnowledge();
+  return useMutation({ mutationFn: knowledgeApi.deleteClaim, onSuccess: invalidate });
+};
+
+export const useCreateKnowledgeNote = () => {
+  const invalidate = useInvalidateKnowledge();
+  return useMutation({ mutationFn: knowledgeApi.createNote, onSuccess: invalidate });
+};
+
+export const useUpdateKnowledgeNote = () => {
+  const invalidate = useInvalidateKnowledge();
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Parameters<typeof knowledgeApi.updateNote>[1] }) =>
+      knowledgeApi.updateNote(id, data),
+    onSuccess: invalidate,
+  });
+};
+
+export const useRenameKnowledgeNote = () => {
+  const invalidate = useInvalidateKnowledge();
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Parameters<typeof knowledgeApi.renameNote>[1] }) =>
+      knowledgeApi.renameNote(id, data),
+    onSuccess: invalidate,
+  });
+};
+
+export const useArchiveKnowledgeNote = () => {
+  const invalidate = useInvalidateKnowledge();
+  return useMutation({ mutationFn: knowledgeApi.archiveNote, onSuccess: invalidate });
+};
+
+export const useRestoreKnowledgeNote = () => {
+  const invalidate = useInvalidateKnowledge();
+  return useMutation({ mutationFn: knowledgeApi.restoreNote, onSuccess: invalidate });
+};
+
+export const useDeleteKnowledgeNote = () => {
+  const invalidate = useInvalidateKnowledge();
+  return useMutation({ mutationFn: knowledgeApi.deleteNote, onSuccess: invalidate });
+};
+
+export const useReconcileKnowledgeVault = () => {
+  const invalidate = useInvalidateKnowledge();
+  return useMutation({ mutationFn: () => knowledgeApi.reconcile(), onSuccess: invalidate });
+};
+
+export const useRebuildKnowledgeIndex = () => {
+  const invalidate = useInvalidateKnowledge();
+  return useMutation({ mutationFn: knowledgeApi.rebuildIndex, onSuccess: invalidate });
+};
+
+export const useDrainKnowledgeJobs = () => {
+  const invalidate = useInvalidateKnowledge();
+  return useMutation({ mutationFn: () => knowledgeApi.drainJobs(), onSuccess: invalidate });
+};
+
+export const useConsolidateKnowledge = () => {
+  const invalidate = useInvalidateKnowledge();
+  return useMutation({ mutationFn: () => knowledgeApi.consolidate(), onSuccess: invalidate });
+};
+
+export const useGrantKnowledgePermission = () => {
+  const invalidate = useInvalidateKnowledge();
+  return useMutation({ mutationFn: knowledgeApi.grantPermission, onSuccess: invalidate });
+};
+
+export const useMigrateMemoryToKnowledge = () => {
+  const invalidate = useInvalidateKnowledge();
+  return useMutation({ mutationFn: knowledgeApi.migrateMemory, onSuccess: invalidate });
+};

@@ -6,6 +6,7 @@ from app.agent.agents.base_agent import BaseSubAgent
 from app.agent.tools.diary import diary_tools
 from app.agent.tools.finance import finance_tools
 from app.agent.tools.habits import habit_tools
+from app.agent.tools.knowledge import SearchKnowledgeTool
 from app.agent.tools.startup import GetOutreachStatusTool, GetStartupStatusTool, LogOutreachTool
 from app.agent.tools.tasks import task_tools
 from app.agent.tools.workouts import workout_tools
@@ -71,7 +72,12 @@ class ScribeAgent(BaseSubAgent):
             + workout_tools()
             + finance_tools()
             + task_tools()
-            + [GetStartupStatusTool(), GetOutreachStatusTool(), LogOutreachTool()]
+            + [
+                GetStartupStatusTool(),
+                GetOutreachStatusTool(),
+                LogOutreachTool(),
+                SearchKnowledgeTool(principal="coworker:scribe"),
+            ]
         )
         super().__init__(
             name="Scribe",

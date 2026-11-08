@@ -25,6 +25,7 @@ const CoworkersPage = lazy(() => import("@/features/coworkers/CoworkersPage").th
 const CoworkerChatPage = lazy(() => import("@/features/coworkers/CoworkerChatPage").then((m) => ({ default: m.CoworkerChatPage })));
 const ConversationsPage = lazy(() => import("@/features/chat/ConversationsPage").then((m) => ({ default: m.ConversationsPage })));
 const MemoryPage = lazy(() => import("@/features/home/MemoryPage").then((m) => ({ default: m.MemoryPage })));
+const KnowledgePage = lazy(() => import("@/features/knowledge/KnowledgePage").then((m) => ({ default: m.KnowledgePage })));
 const MeshPage = lazy(() => import("@/features/mesh/MeshPage").then((m) => ({ default: m.MeshPage })));
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -65,6 +66,7 @@ export function App() {
             <Route path="terminal" element={<Navigate to="/agy" replace />} />
             <Route path="settings" element={<SettingsPage />} />
             <Route path="memory" element={<MemoryPage />} />
+            <Route path="knowledge" element={<KnowledgePage />} />
             <Route path="devices" element={<MeshPage />} />
             <Route path="mesh" element={<Navigate to="/devices" replace />} />
             <Route path="startup" element={<StartupPage />} />

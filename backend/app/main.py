@@ -57,8 +57,33 @@ async def lifespan(app: FastAPI):
     session_persistence_task = asyncio.create_task(persist_headless_loop())
     await relay_daemon.start()
 
+    # Durable knowledge jobs run off the request path and survive restarts via
+    # leased database rows. Serverless deployments never start this loop and
+    # instead drain a bounded batch through POST /api/knowledge/jobs/drain.
+    knowledge_stop = asyncio.Event()
+    knowledge_task = None
+    if settings.knowledge_worker_enabled:
+        from app.core.database import SessionLocal
+        from app.knowledge.jobs import recover_stale_jobs, worker_loop
+
+        try:
+            db = SessionLocal()
+            try:
+                recover_stale_jobs(db)
+            finally:
+                db.close()
+        except Exception as exc:  # noqa: BLE001 - migration may be pending
+            logging.getLogger(__name__).warning(
+                "knowledge_job_recovery_skipped error_type=%s", type(exc).__name__
+            )
+        knowledge_task = asyncio.create_task(worker_loop(knowledge_stop))
+
     yield
 
+    if knowledge_task is not None:
+        knowledge_stop.set()
+        knowledge_task.cancel()
+        await asyncio.gather(knowledge_task, return_exceptions=True)
     session_persistence_task.cancel()
     await asyncio.gather(session_persistence_task, return_exceptions=True)
     await asyncio.to_thread(persist_headless_sessions)
@@ -140,6 +165,7 @@ def create_app() -> FastAPI:
         chat,
         coding,
         coding_execution,
+        # computer,
         coworkers,
         diary,
         drive,
@@ -162,6 +188,7 @@ def create_app() -> FastAPI:
         vision,
         voice,
         workouts,
+        knowledge,
     )
 
     api = settings.api_prefix
@@ -177,6 +204,7 @@ def create_app() -> FastAPI:
     app.include_router(startup.router, prefix=api)
     app.include_router(analytics.router, prefix=api)
     app.include_router(ai.router, prefix=api)
+    app.include_router(knowledge.router, prefix=api)
     app.include_router(intelligence.router, prefix=api)
     app.include_router(chat.router, prefix=api)
     app.include_router(assistant.router, prefix=api)
@@ -196,6 +224,7 @@ def create_app() -> FastAPI:
     app.include_router(habits.router, prefix=api)
     app.include_router(workouts.router, prefix=api)
     app.include_router(diary.router, prefix=api)
+    # app.include_router(computer.router, prefix=api)
 
     from fastapi.responses import HTMLResponse
 

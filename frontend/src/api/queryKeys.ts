@@ -47,5 +47,21 @@ export const qk = {
   // --- Diary & Notes Notebook ---
   diary: (filters?: Record<string, unknown>) => ["diary-entries", filters] as const,
   diarySummary: () => ["diary-summary"] as const,
+
+  // --- IRIS Knowledge System ---
+  knowledgeHealth: () => ["knowledge-health"] as const,
+  knowledgeOverview: () => ["knowledge-overview"] as const,
+  knowledgeNodes: (filters?: Record<string, unknown>) => ["knowledge-nodes", filters] as const,
+  knowledgeNode: (id: string) => ["knowledge-node", id] as const,
+  knowledgeGraph: (id: string, depth: number, limit: number) =>
+    ["knowledge-graph", id, depth, limit] as const,
+  knowledgeClaims: (filters?: Record<string, unknown>) => ["knowledge-claims", filters] as const,
+  knowledgeNote: (id: string) => ["knowledge-note", id] as const,
+  knowledgeNotes: (filters?: Record<string, unknown>) => ["knowledge-notes", filters] as const,
+  knowledgeHistory: (filters?: Record<string, unknown>) =>
+    ["knowledge-history", filters] as const,
+  knowledgeInsights: () => ["knowledge-insights"] as const,
+  knowledgeJobs: () => ["knowledge-jobs"] as const,
+  knowledgePermissions: () => ["knowledge-permissions"] as const,
 };
 

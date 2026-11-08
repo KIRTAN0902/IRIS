@@ -17,12 +17,14 @@ from app.agent.tools.awareness import (
 from app.agent.tools.actions import action_tools
 from app.agent.tools.base import Tool
 from app.agent.tools.coding import coding_tools
+# from app.agent.tools.computer import computer_tools
 from app.agent.tools.desktop import desktop_tools
 from app.agent.tools.diary import diary_tools
 from app.agent.tools.drive import drive_tools
 from app.agent.tools.email import email_tools
 from app.agent.tools.finance import finance_tools
 from app.agent.tools.habits import habit_tools
+from app.agent.tools.knowledge import knowledge_tools
 from app.agent.tools.mesh import mesh_tools
 from app.agent.tools.workouts import workout_tools
 from app.agent.tools.goals import CreateGoalTool, GetGoalsTool, UpdateGoalTool
@@ -201,6 +203,10 @@ def create_default_registry() -> ToolRegistry:
     for tool in desktop_tools():
         registry.register(tool)
 
+    # Windows Real-Time Computer Control & GUI Automation
+    # for tool in computer_tools():
+    #     registry.register(tool)
+
     # Universal Device Intelligence & Execution
     from app.devices.tools import device_tools
     for tool in device_tools():
@@ -208,6 +214,10 @@ def create_default_registry() -> ToolRegistry:
 
     # Diary & Notes notebook
     for tool in diary_tools():
+        registry.register(tool)
+
+    # Durable knowledge retrieval and explicit capture
+    for tool in knowledge_tools():
         registry.register(tool)
 
     return registry

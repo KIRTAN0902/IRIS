@@ -12,6 +12,19 @@ from app.models.finance import FinanceBill, FinanceBudget, FinanceTransaction, S
 from app.models.focus_session import FocusSession
 from app.models.goal import Goal
 from app.models.habit import Habit, HabitLog
+from app.models.knowledge import (
+    KnowledgeClaim,
+    KnowledgeEmbedding,
+    KnowledgeEvidence,
+    KnowledgeJob,
+    KnowledgeNode,
+    KnowledgeNote,
+    KnowledgePermission,
+    KnowledgeRelationship,
+    KnowledgeReview,
+    KnowledgeSource,
+    KnowledgeVersion,
+)
 from app.models.lead import Lead
 from app.models.mesh_pairing import MeshPairing, MeshRelayMessage
 from app.models.metric import Metric
@@ -47,6 +60,17 @@ __all__ = [
     "Goal",
     "Habit",
     "HabitLog",
+    "KnowledgeClaim",
+    "KnowledgeEmbedding",
+    "KnowledgeEvidence",
+    "KnowledgeJob",
+    "KnowledgeNode",
+    "KnowledgeNote",
+    "KnowledgePermission",
+    "KnowledgeRelationship",
+    "KnowledgeReview",
+    "KnowledgeSource",
+    "KnowledgeVersion",
     "Lead",
     "MeshPairing",
     "MeshRelayMessage",

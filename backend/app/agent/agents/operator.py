@@ -6,6 +6,7 @@ from app.agent.agents.base_agent import BaseSubAgent
 from app.agent.tools.agy import agy_tools
 from app.agent.tools.coding import coding_tools
 from app.agent.tools.desktop import desktop_tools
+from app.agent.tools.knowledge import SearchKnowledgeTool
 from app.agent.tools.mesh import mesh_tools
 from app.core.config import settings
 
@@ -63,7 +64,13 @@ class OperatorAgent(BaseSubAgent):
 
     def __init__(self, model_spec: str | None = None) -> None:
         spec = model_spec or settings.ai_operator_model
-        tools = mesh_tools() + coding_tools() + agy_tools() + desktop_tools()
+        tools = (
+            mesh_tools()
+            + coding_tools()
+            + agy_tools()
+            + desktop_tools()
+            + [SearchKnowledgeTool(principal="coworker:developer")]
+        )
         super().__init__(
             name="Operator",
             role="Workstation & Code Execution Engine",

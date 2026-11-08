@@ -5,6 +5,7 @@ from __future__ import annotations
 from app.agent.agents.base_agent import BaseSubAgent
 from app.agent.tools.drive import drive_tools
 from app.agent.tools.email import email_tools
+from app.agent.tools.knowledge import SearchKnowledgeTool
 from app.core.config import settings
 
 BUBBA_SYSTEM_PROMPT = """You are BUBBA, the Google Workspace & Communications intelligence agent for IRIS.
@@ -36,7 +37,7 @@ class BubbaAgent(BaseSubAgent):
 
     def __init__(self, model_spec: str | None = None) -> None:
         spec = model_spec or settings.ai_bubba_model
-        tools = email_tools() + drive_tools()
+        tools = email_tools() + drive_tools() + [SearchKnowledgeTool(principal="coworker:workspace")]
         super().__init__(
             name="BUBBA",
             role="Google Workspace & Communications Intelligence",
