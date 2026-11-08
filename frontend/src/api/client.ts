@@ -66,6 +66,8 @@ async function request<T>(
     asStream?: boolean;
     /** Per-request deadline; defaults to 90 seconds for AI/provider-backed routes. */
     timeoutMs?: number;
+    /** Optional custom headers. */
+    headers?: Record<string, string>;
   } = {},
 ): Promise<T> {
   let response: Response;
@@ -74,13 +76,16 @@ async function request<T>(
   const timeoutId = globalThis.setTimeout(() => controller.abort(), timeoutMs);
   try {
     const json = opts.body !== undefined;
+    const baseHeaders: Record<string, string> = {};
+    if (json) {
+      baseHeaders["Content-Type"] = "application/json";
+    } else if (opts.blob) {
+      baseHeaders["Content-Type"] = opts.blob.type || "application/octet-stream";
+    }
+    const combinedHeaders = opts.headers ? { ...baseHeaders, ...opts.headers } : baseHeaders;
     response = await fetch(buildUrl(path, opts.query), {
       method,
-      headers: opts.blob
-        ? { "Content-Type": opts.blob.type || "application/octet-stream" }
-        : json
-          ? { "Content-Type": "application/json" }
-          : undefined,
+      headers: Object.keys(combinedHeaders).length > 0 ? combinedHeaders : undefined,
       body: opts.blob ?? (json ? JSON.stringify(opts.body) : undefined),
       signal: controller.signal,
     });
@@ -146,8 +151,17 @@ async function request<T>(
 
 export const api = {
   get: <T>(path: string, query?: Record<string, QueryValue>) => request<T>("GET", path, { query }),
-  post: <T>(path: string, body?: unknown, query?: Record<string, QueryValue>) =>
-    request<T>("POST", path, { body, query }),
+  post: <T>(
+    path: string,
+    body?: unknown,
+    optionsOrQuery?: Record<string, QueryValue> | { query?: Record<string, QueryValue>; headers?: Record<string, string> },
+  ) => {
+    if (optionsOrQuery && ("query" in optionsOrQuery || "headers" in optionsOrQuery)) {
+      const opts = optionsOrQuery as { query?: Record<string, QueryValue>; headers?: Record<string, string> };
+      return request<T>("POST", path, { body, query: opts.query, headers: opts.headers });
+    }
+    return request<T>("POST", path, { body, query: optionsOrQuery as Record<string, QueryValue> | undefined });
+  },
   patch: <T>(path: string, body?: unknown) => request<T>("PATCH", path, { body }),
   put: <T>(path: string, body?: unknown) => request<T>("PUT", path, { body }),
   delete: <T>(path: string) => request<T>("DELETE", path),

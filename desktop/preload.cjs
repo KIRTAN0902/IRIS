@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld('irisDesktop', {
   openExternal: (url) => ipcRenderer.invoke('open-external', String(url)),
   selectProjectDirectory: () => ipcRenderer.invoke('coding-select-directory'),
   triggerKillSwitch: (source) => ipcRenderer.invoke('computer-trigger-kill-switch', source),
+  resetKillSwitch: () => ipcRenderer.invoke('computer-reset-kill-switch'),
   onKillSwitchEngaged: (callback) => {
     const handler = (_event, data) => callback(data);
     ipcRenderer.on('computer-kill-switch-engaged', handler);

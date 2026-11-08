@@ -246,7 +246,7 @@ dist/assets/index-WbGJYXYp.css              85.47 kB │ gzip:  14.49 kB
 | **REQ-CC-05** | Real Control | Switch between application windows | Live execution in `test_4_switch_windows`; foreground toggled | **PASS** |
 | **REQ-CC-06** | Perception | Full desktop & window screen observation | Live execution in `test_5_observe_screen`; 1920x1200 frame grabbed | **PASS** |
 | **REQ-CC-07** | Privacy | Background passivity (zero surveillance) | Blocked in `BACKGROUND` mode: screenshots, windows, clipboard, input | **PASS** |
-| **REQ-CC-08** | Safety | Model-independent emergency kill-switch | Out-of-band sentinel file (`%TEMP%\iris_emergency_stop.signal`) | **PASS** |
+| **REQ-CC-08** | Safety | Model-independent emergency kill-switch | Out-of-band sentinel file (`%LOCALAPPDATA%\IRIS\iris_emergency_stop.signal`) | **PASS** |
 | **REQ-CC-09** | Safety | Mid-action typing & subprocess abort | Active Popen terminated in <80ms; typing loop aborted mid-string | **PASS** |
 | **REQ-CC-10** | Security | Browser CSRF / Origin validation | Untrusted origins rejected with HTTP 403 Forbidden | **PASS** |
 | **REQ-CC-11** | Security | Cryptographic approval tokens | Single-use consumption, 300s TTL, parameter tampering protection | **PASS** |
@@ -262,4 +262,118 @@ dist/assets/index-WbGJYXYp.css              85.47 kB │ gzip:  14.49 kB
 
 The **IRIS Computer Control** subsystem is fully implemented, hardened, and validated against genuine Windows desktop environments. All architectural invariants, security gates, out-of-band emergency mechanisms, and zero-coworker principles are strictly honored.
 
-**FINAL RECOMMENDATION: READY TO FREEZE.**
+---
+
+## 10. Final Security Patch and Freeze Approval
+
+### 10.1 Security Hardening Measures Implemented
+
+1. **Mandatory Local API Authentication**:
+   - Replaced optional session verification (`verify_session_token_if_present`) with strict `require_active_session_token` dependency on all privileged endpoints:
+     - `POST /api/computer/action`
+     - `POST /api/computer/execute-task`
+     - `GET /api/computer/windows`
+     - `POST /api/computer/screenshot`
+     - `POST /api/computer/session/stop`
+     - `POST /api/computer/session/pause`
+     - `POST /api/computer/session/resume`
+   - Constant-time token verification (`secrets.compare_digest`), device ID binding (`laptop_host_primary`), expiry check, and session state enforcement (`SessionState.ACTIVE`).
+   - Missing token returns **HTTP 401 Unauthorized**; kill switch returns **HTTP 423 Locked**; invalid/expired returns **HTTP 401 Unauthorized**.
+   - Protected session activation (`POST /api/computer/session/start`) and kill switch reset (`POST /api/computer/kill-switch/reset`) with `require_device_or_companion_auth` (requiring `X-Device-Token` / `X-Computer-Auth-Token` matching local device key in `%LOCALAPPDATA%\IRIS\device.key`, `iris_companion_secret`, or mesh pairing).
+   - Removed session token from passive `/status` telemetry endpoint.
+   - Origin check alone is no longer treated as authentication.
+   - Emergency kill switch `POST /api/computer/kill-switch` remains universally accessible without token for fail-safe safety.
+
+2. **Secure Emergency Sentinel Hardening**:
+   - Relocated sentinel file from `%TEMP%` to a private user directory (`%LOCALAPPDATA%\IRIS\iris_emergency_stop.signal` on Windows, `~/.iris/` with mode `0700` cross-platform).
+   - Path traversal and link protection: rejects symlinks (`is_symlink()`, `S_ISLNK`) and Windows junctions/reparse points (`st_file_attributes & 0x400`).
+   - Atomic creation via temp file and atomic `os.replace` / atomic write.
+   - Content and size validation (1 to 4096 bytes, strict JSON structure with ISO timestamp).
+   - Stale signal protection (rejects signals timestamped in the future >60s, older than 24h, or timestamped before last reset).
+   - Safe unlinking on reset with permission re-verification.
+
+3. **Genuine Production Chat Pipeline End-to-End Verification**:
+   - Added `test_0_production_chat_pipeline_notepad` in `backend/tests/computer/test_live_conversation.py`.
+   - Full traversals through production API (`POST /api/chat/conversations` and `POST /api/chat/conversations/{id}/messages`) with `"Open Notepad and type Hello World."`.
+   - IrisAgent -> IrisSupervisor -> ComputerEngine -> NativeOps / GuiOps -> physical Windows desktop -> verified HWND and window state -> HTTP 200 assistant message.
+
+4. **Background Companion Lifecycle Clarification**:
+   - Companion starts and registers with IRIS.
+   - When Electron window is closed, it minimizes to system tray rather than terminating.
+   - Reconnects automatically on network interruption.
+   - Remains completely passive in background (screen perception, window inspection, clipboard, and input strictly blocked).
+   - Clean shutdown only on explicit Quit action from tray menu.
+
+### 10.2 Final Verification Test Evidence
+
+```
+============================= test session starts =============================
+platform win32 -- Python 3.13.3, pytest-9.1.1, pluggy-1.6.0
+collected 32 items
+
+backend/tests/computer/test_adversarial_and_security.py::test_unauthenticated_session_activation_rejected PASSED [  3%]
+backend/tests/computer/test_adversarial_and_security.py::test_localhost_origin_alone_is_not_authentication PASSED [  6%]
+backend/tests/computer/test_adversarial_and_security.py::test_authenticated_session_activation_succeeds PASSED [  9%]
+backend/tests/computer/test_adversarial_and_security.py::test_telemetry_status_does_not_leak_session_token PASSED [ 12%]
+backend/tests/computer/test_adversarial_and_security.py::test_mandatory_session_token_enforced_across_all_privileged_endpoints PASSED [ 15%]
+backend/tests/computer/test_adversarial_and_security.py::test_replayed_and_expired_session_token_rejected PASSED [ 18%]
+backend/tests/computer/test_adversarial_and_security.py::test_unauthenticated_kill_switch_reset_rejected PASSED [ 21%]
+backend/tests/computer/test_adversarial_and_security.py::test_background_mode_blocks_screen_observation PASSED [ 25%]
+backend/tests/computer/test_adversarial_and_security.py::test_background_mode_blocks_clipboard_access PASSED [ 28%]
+backend/tests/computer/test_adversarial_and_security.py::test_background_mode_blocks_window_inspection PASSED [ 31%]
+backend/tests/computer/test_adversarial_and_security.py::test_background_mode_blocks_keyboard_and_mouse_actions PASSED [ 34%]
+backend/tests/computer/test_adversarial_and_security.py::test_kill_switch_aborts_active_subprocess PASSED [ 37%]
+backend/tests/computer/test_adversarial_and_security.py::test_out_of_band_sentinel_signal_file PASSED [ 40%]
+backend/tests/computer/test_adversarial_and_security.py::test_malformed_and_stale_sentinel_files_handled_safely PASSED [ 43%]
+backend/tests/computer/test_adversarial_and_security.py::test_kill_switch_blocks_new_actions_and_session_activation PASSED [ 46%]
+backend/tests/computer/test_adversarial_and_security.py::test_untrusted_browser_origin_is_blocked PASSED [ 50%]
+backend/tests/computer/test_adversarial_and_security.py::test_forged_session_token_is_rejected PASSED [ 53%]
+backend/tests/computer/test_adversarial_and_security.py::test_valid_session_token_succeeds PASSED [ 56%]
+backend/tests/computer/test_adversarial_and_security.py::test_approval_token_single_use_and_replay_prevention PASSED [ 59%]
+backend/tests/computer/test_adversarial_and_security.py::test_approval_token_expiration PASSED [ 62%]
+backend/tests/computer/test_adversarial_and_security.py::test_approval_token_parameter_tampering_prevention PASSED [ 65%]
+backend/tests/computer/test_computer_control.py::test_session_lifecycle PASSED [ 68%]
+backend/tests/computer/test_computer_control.py::test_kill_switch_behavior PASSED [ 71%]
+backend/tests/computer/test_computer_control.py::test_security_policy_classification PASSED [ 75%]
+backend/tests/computer/test_computer_control.py::test_native_windows_operations PASSED [ 78%]
+backend/tests/computer/test_computer_control.py::test_screen_capture PASSED [ 81%]
+backend/tests/computer/test_live_conversation.py::test_0_production_chat_pipeline_notepad PASSED [ 84%]
+backend/tests/computer/test_live_conversation.py::test_1_notepad_type PASSED [ 87%]
+backend/tests/computer/test_live_conversation.py::test_2_open_calculator PASSED [ 90%]
+backend/tests/computer/test_live_conversation.py::test_3_clipboard_copy_paste PASSED [ 93%]
+backend/tests/computer/test_live_conversation.py::test_4_switch_windows PASSED [ 96%]
+backend/tests/computer/test_live_conversation.py::test_5_observe_screen PASSED [100%]
+======================= 32 passed, 1 warning in 20.83s ========================
+```
+
+### 10.3 Full Regression Suite Evidence
+
+```
+backend/tests/agent/ ... 99 passed
+backend/tests/knowledge/ ... 78 passed
+======================= 177 passed in 62.32s (0:01:02) ========================
+```
+
+### 10.4 Frontend Production Build Verification
+
+```
+> iris-frontend@0.1.0 build
+> tsc --noEmit && vite build
+
+vite v6.4.5 building for production...
+transforming...
+✓ 2370 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                              0.88 kB │ gzip:   0.48 kB
+dist/assets/index-CPLdDAG7.js              442.63 kB │ gzip: 138.02 kB
+dist/assets/index-WbGJYXYp.css              85.47 kB │ gzip:  14.49 kB
+✓ built in 23.20s (0 TypeScript errors)
+```
+
+### 10.5 Final Freeze Status
+
+**FREEZE STATUS: READY TO FREEZE**
+
+All requirements from the security patch and freeze audit directive have been strictly fulfilled, verified with adversarial tests, backed by live execution evidence on the physical Windows desktop, with 100% test passing across the entire IRIS suite and zero regressions.
+

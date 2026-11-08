@@ -14,6 +14,53 @@ from app.computer.gui_ops import GuiOps
 from app.computer.screen_perception import ScreenPerception
 
 
+def test_0_production_chat_pipeline_notepad(client):
+    """GENUINE PRODUCTION PIPELINE INTEGRATION TEST:
+    Traverses the full request path:
+    HTTP Client -> POST /api/chat/conversations/{id}/messages -> Chat Controller
+    -> IrisAgent -> IrisSupervisor -> ComputerEngine -> NativeOps / GuiOps
+    -> Physical Windows Desktop -> ScreenPerception (UI Automation verification)
+    -> HTTP 200 response with assistant message.
+    """
+    print("\n=======================================================")
+    print("TEST 0: GENUINE PRODUCTION CHAT PIPELINE 'Open Notepad and type Hello World.'")
+    print("=======================================================")
+    session_manager.reset_kill_switch()
+
+    # 1. Create a genuine conversation thread via production API
+    r_conv = client.post("/api/chat/conversations", params={"title": "Production Desktop Test"})
+    assert r_conv.status_code == 201
+    conv_id = r_conv.json()["id"]
+
+    # 2. Dispatch user prompt through production chat endpoint
+    prompt = "Open Notepad and type Hello World."
+    start = time.perf_counter()
+    r_msg = client.post(
+        f"/api/chat/conversations/{conv_id}/messages",
+        json={"content": prompt},
+    )
+    dur = time.perf_counter() - start
+    print(f"Production chat turn completed in {dur:.2f}s")
+    assert r_msg.status_code == 200, f"Expected 200 OK, got {r_msg.status_code}: {r_msg.text}"
+
+    data = r_msg.json()
+    print(f"Assistant Message: {data.get('content')}")
+    assert "notepad" in data.get("content", "").lower() or "hello world" in data.get("content", "").lower()
+
+    # 3. Verify actual physical Windows desktop state
+    win = NativeOps.find_window("Notepad", timeout_seconds=4.0)
+    assert win is not None, "Notepad window was not found on physical Windows desktop!"
+    print(f"Verified Physical Desktop Window HWND: {win['hwnd']}, Title: '{win['title']}'")
+
+    # 4. Verify text or state inside real Notepad window via UI Automation
+    res_verify = ScreenPerception.verify_window_text_contains(win["hwnd"], "Hello World")
+    print(f"UI Automation Verification: {res_verify}")
+    assert res_verify.get("success") is True, f"Screen perception check failed: {res_verify}"
+    assert win["hwnd"] > 0
+    NativeOps.close_window(win["hwnd"])
+    print("✅ TEST 0 PASSED: Genuine production chat pipeline to physical Windows desktop verified.")
+
+
 async def test_1_notepad_type():
     print("\n=======================================================")
     print("TEST 1: 'Open Notepad and type Hello World.'")

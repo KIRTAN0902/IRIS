@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import os
+import secrets
 from typing import Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session
 
 from app.api.deps import current_user
 from app.computer.contracts import (
@@ -24,16 +26,37 @@ from app.computer.screen_perception import ScreenPerception
 from app.computer.session import (
     KillSwitchTriggeredError,
     SessionSecurityError,
+    get_secure_sentinel_dir,
     session_manager,
 )
 from app.core.config import settings
+from app.core.database import get_db
 from app.core.execution_provider import is_serverless_runtime
 from app.core.logging import get_logger
+from app.models.mesh_pairing import MeshPairing
 from app.models.user import User
 
 logger = get_logger("iris.api.computer")
 
 router = APIRouter(prefix="/computer", tags=["computer"])
+
+
+def get_local_device_key() -> str:
+    """Read or create the private local device key for sovereign machine authentication."""
+    key_file = get_secure_sentinel_dir() / "device.key"
+    if not key_file.exists():
+        key = f"devk_{secrets.token_hex(32)}"
+        try:
+            key_file.write_text(key, encoding="utf-8")
+            if os.name != "nt":
+                key_file.chmod(0o600)
+        except Exception:
+            return key
+        return key
+    try:
+        return key_file.read_text(encoding="utf-8").strip()
+    except Exception:
+        return ""
 
 
 def verify_trusted_origin(request: Request) -> None:
@@ -58,16 +81,79 @@ def verify_trusted_origin(request: Request) -> None:
             )
 
 
-def verify_session_token_if_present(
-    x_computer_session_token: str | None = Header(default=None),
-) -> None:
-    """Verify that if a session token header is supplied, it matches the active authorized session."""
-    if x_computer_session_token is not None:
-        if not session_manager.validate_session_token(x_computer_session_token):
+def require_device_or_companion_auth(
+    db: Session = Depends(get_db),
+    user: User = Depends(current_user),
+    x_device_token: str | None = Header(default=None, alias="X-Device-Token"),
+    x_auth_token: str | None = Header(default=None, alias="X-Computer-Auth-Token"),
+    authorization: str | None = Header(default=None, alias="Authorization"),
+) -> str:
+    """Authenticate device/companion access for session activation and kill-switch reset."""
+    token = x_auth_token or x_device_token
+    if not token and authorization and authorization.lower().startswith("bearer "):
+        token = authorization[7:].strip()
+
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required: Missing device authentication token (X-Device-Token or X-Computer-Auth-Token).",
+        )
+
+    # 1. Match local machine key
+    local_key = get_local_device_key()
+    if local_key and secrets.compare_digest(token, local_key):
+        return "local_device"
+
+    # 2. Match companion secret
+    if settings.iris_companion_secret and secrets.compare_digest(token, settings.iris_companion_secret):
+        return "companion_secret"
+
+    # 3. Match user's active mesh pairing token in database
+    pairing = (
+        db.query(MeshPairing)
+        .filter(
+            MeshPairing.user_id == user.id,
+            MeshPairing.pairing_token == token,
+            MeshPairing.is_active == True,
+        )
+        .first()
+    )
+    if pairing:
+        return pairing.device_id
+
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Authentication failed: Invalid or untrusted device token.",
+    )
+
+
+def require_active_session_token(
+    x_computer_session_token: str | None = Header(default=None, alias="X-Computer-Session-Token"),
+    authorization: str | None = Header(default=None, alias="Authorization"),
+) -> str:
+    """Enforce mandatory session token authentication on all privileged computer control endpoints."""
+    token = x_computer_session_token
+    if not token and authorization and authorization.lower().startswith("bearer "):
+        token = authorization[7:].strip()
+
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required: Mandatory 'X-Computer-Session-Token' header is missing.",
+        )
+
+    valid, err_msg = session_manager.verify_session_token_detailed(token)
+    if not valid:
+        if session_manager.is_kill_switch_engaged:
             raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid, expired, or forged computer session token.",
+                status_code=status.HTTP_423_LOCKED,
+                detail=err_msg or "Emergency kill-switch is engaged.",
             )
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=err_msg or "Invalid, expired, or revoked computer session token.",
+        )
+    return token
 
 
 # --- Request/Response Schemas ---
@@ -76,6 +162,7 @@ def verify_session_token_if_present(
 class ActivateSessionRequest(BaseModel):
     reason: str = Field(..., description="Purpose or task description for desktop control session")
     expiry_minutes: int | None = Field(default=5, ge=1, le=60, description="Session TTL in minutes")
+    device_id: str | None = Field(default=None, description="Optional caller device ID")
 
 
 class SessionStopRequest(BaseModel):
@@ -109,7 +196,7 @@ def get_computer_status(
     _user: User = Depends(current_user),
 ) -> ComputerStatusResponse:
     """Get real-time state of the computer-control subsystem, active sessions, and hardware availability."""
-    session_info = session_manager.get_info()
+    session_info = session_manager.get_info(include_token=False)
     is_win = os.name == "nt"
     serverless = is_serverless_runtime()
     interactive_available = is_win and not serverless
@@ -145,14 +232,16 @@ def get_computer_status(
 def start_session(
     body: ActivateSessionRequest,
     user: User = Depends(current_user),
+    device_id: str = Depends(require_device_or_companion_auth),
     _origin: None = Depends(verify_trusted_origin),
 ) -> SessionInfo:
-    """Explicitly activate a computer-control session."""
+    """Explicitly activate a computer-control session upon verified device authorization."""
     try:
         session = session_manager.activate_session(
             reason=body.reason,
             expiry_minutes=body.expiry_minutes,
             authorized_by=user.email or "authorized_user",
+            device_id=body.device_id or device_id,
         )
         return session
     except KillSwitchTriggeredError as exc:
@@ -170,7 +259,7 @@ def start_session(
 @router.post("/session/stop", response_model=SessionInfo)
 def stop_session(
     body: SessionStopRequest,
-    _user: User = Depends(current_user),
+    _token: str = Depends(require_active_session_token),
     _origin: None = Depends(verify_trusted_origin),
 ) -> SessionInfo:
     """Terminate the active session and return to background idle mode."""
@@ -179,7 +268,7 @@ def stop_session(
 
 @router.post("/session/pause", response_model=SessionInfo)
 def pause_session(
-    _user: User = Depends(current_user),
+    _token: str = Depends(require_active_session_token),
     _origin: None = Depends(verify_trusted_origin),
 ) -> SessionInfo:
     """Temporarily pause active computer control execution."""
@@ -188,7 +277,7 @@ def pause_session(
 
 @router.post("/session/resume", response_model=SessionInfo)
 def resume_session(
-    _user: User = Depends(current_user),
+    _token: str = Depends(require_active_session_token),
     _origin: None = Depends(verify_trusted_origin),
 ) -> SessionInfo:
     """Resume a paused computer control session."""
@@ -216,7 +305,7 @@ def trigger_kill_switch(
 
 @router.post("/kill-switch/reset", response_model=SessionInfo)
 def reset_kill_switch(
-    _user: User = Depends(current_user),
+    _device_id: str = Depends(require_device_or_companion_auth),
     _origin: None = Depends(verify_trusted_origin),
 ) -> SessionInfo:
     """Reset the emergency kill switch and return subsystem to background mode."""
@@ -228,7 +317,7 @@ def execute_single_action(
     action: ComputerAction,
     _user: User = Depends(current_user),
     _origin: None = Depends(verify_trusted_origin),
-    _token_check: None = Depends(verify_session_token_if_present),
+    _token: str = Depends(require_active_session_token),
 ) -> ActionResult:
     """Execute a single atomic computer-control primitive within active session boundaries."""
     try:
@@ -257,7 +346,7 @@ def execute_task(
     req: ComputerTaskRequest,
     _user: User = Depends(current_user),
     _origin: None = Depends(verify_trusted_origin),
-    _token_check: None = Depends(verify_session_token_if_present),
+    _token: str = Depends(require_active_session_token),
 ) -> ComputerTaskResult:
     """Execute a high-level natural language computer automation task (observe -> plan -> act -> verify)."""
     try:
@@ -288,7 +377,7 @@ def list_desktop_windows(
     visible_only: bool = Query(default=True),
     _user: User = Depends(current_user),
     _origin: None = Depends(verify_trusted_origin),
-    _token_check: None = Depends(verify_session_token_if_present),
+    _token: str = Depends(require_active_session_token),
 ) -> list[dict[str, Any]]:
     """List open application windows on the desktop (requires active session)."""
     try:
@@ -311,8 +400,24 @@ def take_screenshot(
     req: ScreenshotRequest,
     _user: User = Depends(current_user),
     _origin: None = Depends(verify_trusted_origin),
-    _token_check: None = Depends(verify_session_token_if_present),
+    _token: str = Depends(require_active_session_token),
 ) -> dict[str, Any]:
+    """Capture a screenshot of the desktop or a specific window."""
+    info = session_manager.get_info()
+    if info.kill_switch_engaged:
+        raise HTTPException(
+            status_code=status.HTTP_423_LOCKED,
+            detail="Emergency kill-switch is engaged.",
+        )
+    if info.state != SessionState.ACTIVE:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Screen observation is disabled in background mode. Activate a computer-control session first.",
+        )
+
+    if req.window:
+        return ScreenPerception.capture_window_screenshot(req.window, quality=req.quality)
+    return ScreenPerception.capture_screenshot(max_width=req.max_width, quality=req.quality)
     """Capture a screenshot of the desktop or a specific window."""
     info = session_manager.get_info()
     if info.kill_switch_engaged:

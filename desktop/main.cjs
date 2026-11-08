@@ -278,17 +278,103 @@ function loadApp() {
   ensureServices().catch(() => {});
 }
 
+function getSecureSentinelDir() {
+  const localAppData = process.env.LOCALAPPDATA;
+  const baseDir = (localAppData && process.platform === 'win32')
+    ? path.join(localAppData, 'IRIS')
+    : path.join(os.homedir(), '.iris');
+  if (!fs.existsSync(baseDir)) {
+    try {
+      fs.mkdirSync(baseDir, { recursive: true, mode: 0o700 });
+    } catch (e) {}
+  }
+  return baseDir;
+}
+
+function writeSecureSentinel(source = 'electron_global') {
+  try {
+    const sentinelDir = getSecureSentinelDir();
+    const signalFile = path.join(sentinelDir, 'iris_emergency_stop.signal');
+    const tmpFile = path.join(sentinelDir, `emergency_${Date.now()}_${process.pid}.tmp`);
+
+    // Guard against symlink attacks: do not follow, remove link directly if present
+    if (fs.existsSync(signalFile)) {
+      try {
+        const stats = fs.lstatSync(signalFile);
+        if (stats.isSymbolicLink()) {
+          log('Warning: Sentinel signal file is a symlink; unlinking untrusted link before write.');
+          fs.unlinkSync(signalFile);
+        }
+      } catch (e) {}
+    }
+
+    const payload = JSON.stringify({
+      signal: 'EMERGENCY_STOP',
+      source: String(source).slice(0, 100),
+      timestamp: Date.now() / 1000,
+      nonce: Math.random().toString(36).slice(2),
+      pid: process.pid,
+    });
+
+    fs.writeFileSync(tmpFile, payload, 'utf-8');
+    fs.renameSync(tmpFile, signalFile);
+    log(`Out-of-band secure sentinel signal written atomically to: ${signalFile}`);
+    return true;
+  } catch (err) {
+    log(`Warning: Failed to write emergency signal file: ${err.message}`);
+    return false;
+  }
+}
+
+function resetEmergencyKillSwitch() {
+  log('[EMERGENCY KILL SWITCH] Resetting kill switch...');
+  // 1. Remove sentinel file safely
+  try {
+    const sentinelDir = getSecureSentinelDir();
+    const signalFile = path.join(sentinelDir, 'iris_emergency_stop.signal');
+    if (fs.existsSync(signalFile)) {
+      fs.unlinkSync(signalFile);
+      log(`Removed sentinel signal file: ${signalFile}`);
+    }
+  } catch (err) {
+    log(`Warning: Failed to remove emergency signal file: ${err.message}`);
+  }
+
+  // 2. HTTP dispatch to backend with companion auth token
+  try {
+    const postData = JSON.stringify({});
+    const req = http.request(
+      {
+        hostname: '127.0.0.1',
+        port: 8000,
+        path: '/api/computer/kill-switch/reset',
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(postData),
+          'X-Computer-Auth-Token': 'iris_colab_secret_2026',
+        },
+        timeout: 3000,
+      },
+      (res) => {
+        log(`Kill switch reset HTTP response: status ${res.statusCode}`);
+      }
+    );
+    req.on('error', (err) => {
+      log(`Kill switch reset HTTP request error: ${err.message}`);
+    });
+    req.write(postData);
+    req.end();
+  } catch (err) {
+    log(`Kill switch reset invocation error: ${err}`);
+  }
+}
+
 function triggerEmergencyKillSwitch(source = 'electron_global') {
   log(`[EMERGENCY KILL SWITCH] Triggered from: ${source}`);
 
   // 1. Direct local out-of-band sentinel signal (guaranteed <1ms, independent of HTTP/network)
-  try {
-    const signalFile = path.join(os.tmpdir(), 'iris_emergency_stop.signal');
-    fs.writeFileSync(signalFile, JSON.stringify({ source, timestamp: Date.now() }), 'utf-8');
-    log(`Out-of-band sentinel signal written to: ${signalFile}`);
-  } catch (err) {
-    log(`Warning: Failed to write emergency signal file: ${err.message}`);
-  }
+  writeSecureSentinel(source);
 
   // 2. HTTP secondary dispatch to local backend
   try {
@@ -492,6 +578,12 @@ ipcMain.handle('open-external', async (event, rawUrl) => {
 ipcMain.handle('computer-trigger-kill-switch', async (event, source) => {
   if (!isTrustedIpcSender(event)) return false;
   triggerEmergencyKillSwitch(source || 'renderer_ui');
+  return true;
+});
+
+ipcMain.handle('computer-reset-kill-switch', async (event) => {
+  if (!isTrustedIpcSender(event)) return false;
+  resetEmergencyKillSwitch();
   return true;
 });
 

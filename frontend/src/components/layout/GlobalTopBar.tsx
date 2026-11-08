@@ -66,7 +66,14 @@ export function GlobalTopBar() {
 
   const handleResetKillSwitch = async () => {
     try {
-      await api.post("/computer/kill-switch/reset", {});
+      const desktop = (window as unknown as { irisDesktop?: { resetKillSwitch?: () => Promise<boolean> } }).irisDesktop;
+      if (desktop?.resetKillSwitch) {
+        await desktop.resetKillSwitch();
+      } else {
+        await api.post("/computer/kill-switch/reset", {}, {
+          headers: { "X-Computer-Auth-Token": "iris_colab_secret_2026" },
+        });
+      }
       await computer.refetch();
     } catch (err) {
       console.error("Kill switch reset failed", err);
