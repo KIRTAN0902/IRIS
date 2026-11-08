@@ -45,16 +45,38 @@ def upgrade() -> None:
     op.create_index("ix_remote_workspaces_project_id", "remote_workspaces", ["project_id"])
     op.create_index("ix_remote_workspaces_status", "remote_workspaces", ["status"])
 
-    # 2. Add workspace_id column to coworkers
-    op.add_column("coworkers", sa.Column("workspace_id", sa.String(36), sa.ForeignKey("remote_workspaces.id", ondelete="SET NULL"), nullable=True))
+    # 2. Add workspace_id column to coworkers. SQLite cannot ALTER constraints,
+    # so batch mode copies the table when the dialect requires it.
+    with op.batch_alter_table("coworkers") as batch_op:
+        batch_op.add_column(sa.Column("workspace_id", sa.String(36), nullable=True))
+        batch_op.create_foreign_key(
+            "fk_coworkers_workspace_id",
+            "remote_workspaces",
+            ["workspace_id"],
+            ["id"],
+            ondelete="SET NULL",
+        )
 
     # 3. Add remote_workspace_id column to coworker_tasks
-    op.add_column("coworker_tasks", sa.Column("remote_workspace_id", sa.String(36), sa.ForeignKey("remote_workspaces.id", ondelete="SET NULL"), nullable=True))
+    with op.batch_alter_table("coworker_tasks") as batch_op:
+        batch_op.add_column(
+            sa.Column("remote_workspace_id", sa.String(36), nullable=True)
+        )
+        batch_op.create_foreign_key(
+            "fk_coworker_tasks_remote_workspace_id",
+            "remote_workspaces",
+            ["remote_workspace_id"],
+            ["id"],
+            ondelete="SET NULL",
+        )
     op.create_index("ix_coworker_tasks_remote_workspace_id", "coworker_tasks", ["remote_workspace_id"])
 
     # 4. Add git_repo_url and default_branch to coding_projects
-    op.add_column("coding_projects", sa.Column("git_repo_url", sa.String(512), nullable=True))
-    op.add_column("coding_projects", sa.Column("default_branch", sa.String(128), nullable=True, server_default="main"))
+    with op.batch_alter_table("coding_projects") as batch_op:
+        batch_op.add_column(sa.Column("git_repo_url", sa.String(512), nullable=True))
+        batch_op.add_column(
+            sa.Column("default_branch", sa.String(128), nullable=True, server_default="main")
+        )
 
 
 def downgrade() -> None:
