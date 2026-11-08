@@ -165,7 +165,7 @@ def create_app() -> FastAPI:
         chat,
         coding,
         coding_execution,
-        # computer,
+        computer,
         coworkers,
         diary,
         drive,
@@ -224,7 +224,7 @@ def create_app() -> FastAPI:
     app.include_router(habits.router, prefix=api)
     app.include_router(workouts.router, prefix=api)
     app.include_router(diary.router, prefix=api)
-    # app.include_router(computer.router, prefix=api)
+    app.include_router(computer.router, prefix=api)
 
     from fastapi.responses import HTMLResponse
 

@@ -8,6 +8,12 @@ contextBridge.exposeInMainWorld('irisDesktop', {
   close: () => ipcRenderer.send('window-close'),
   openExternal: (url) => ipcRenderer.invoke('open-external', String(url)),
   selectProjectDirectory: () => ipcRenderer.invoke('coding-select-directory'),
+  triggerKillSwitch: (source) => ipcRenderer.invoke('computer-trigger-kill-switch', source),
+  onKillSwitchEngaged: (callback) => {
+    const handler = (_event, data) => callback(data);
+    ipcRenderer.on('computer-kill-switch-engaged', handler);
+    return () => ipcRenderer.removeListener('computer-kill-switch-engaged', handler);
+  },
   onOpenAgyDrawer: (callback) => {
     const handler = () => callback();
     ipcRenderer.on('open-agy-drawer', handler);

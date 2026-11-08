@@ -60,6 +60,17 @@ class IrisSupervisor:
     def recommend_coworker(self, db: Session, user: User, instruction: str,
                            required_capabilities: list[str] | None = None) -> dict[str, Any] | None:
         """Select an available configured worker; IRIS Supervisor retains routing authority."""
+        # Computer control is strictly an IRIS Core tool, not a coworker
+        inst_lower = instruction.lower()
+        comp_phrases = {
+            "notepad", "calculator", "calc", "calc.exe", "type ", "click ", "press key", "press enter", "hotkey",
+            "screenshot", "screen capture", "focus window", "close window", "minimize window",
+            "maximize window", "computer control", "open application", "open app", "paste clipboard",
+            "copy to clipboard", "clipboard", "switch between", "switch window", "observe screen",
+        }
+        if any(p in inst_lower for p in comp_phrases):
+            return None
+
         from app.models.coworker import Coworker, CoworkerTask
 
         required = set(required_capabilities or [])
@@ -154,7 +165,7 @@ class IrisSupervisor:
             clean_msg,
             re.IGNORECASE | re.DOTALL,
         )
-        if bare_attach_match:
+        if bare_attach_match and not any(w in clean_msg.lower() for w in ("between", "window", "windows", "notepad", "calculator")):
             target_arg = bare_attach_match.group(1).strip()
             if target_arg.lower() in {
                 "antigravity",
@@ -229,6 +240,68 @@ class IrisSupervisor:
                 ),
                 [{"tool_name": "approve_command", "success": exec_res.is_success, "summary": f"Executed {rec['command']}"}],
             )
+
+        # A0.1 Windows Computer Control Emergency Stop and Direct Task Interceptor
+        if norm_msg in {
+            "emergency stop",
+            "kill switch",
+            "emergency stop computer",
+            "stop computer control",
+            "abort computer control",
+            "kill computer control",
+        }:
+            from app.computer.session import session_manager
+            session_manager.trigger_kill_switch(source="chat_emergency_stop")
+            return (
+                AgentResponseSchema(
+                    thought="Emergency kill switch triggered by user chat command.",
+                    actions=[],
+                    message="🚨 **Emergency Kill-Switch Engaged**: Computer control terminated immediately. All active sessions revoked.",
+                    actions_summary=["Triggered emergency kill switch"],
+                    evidence=["Kill-switch source: chat_emergency_stop"],
+                ),
+                [{"tool_name": "emergency_computer_stop", "success": True, "summary": "Kill switch engaged"}],
+            )
+
+        # Pattern 1: Open app and type
+        comp_open_type_match = re.match(
+            r"^(?:open|launch)\s+([a-zA-Z0-9_\-\.\s]+?)\s+(?:and\s+)?type\s+(.+)$",
+            user_message.strip(),
+            re.IGNORECASE | re.DOTALL,
+        )
+        if comp_open_type_match:
+            app_target = comp_open_type_match.group(1).strip()
+            text_target = comp_open_type_match.group(2).strip()
+            if app_target.lower() in {"notepad", "calculator", "calc", "wordpad", "paint", "mspaint", "chrome", "edge"}:
+                return self._fast_computer_task(f"open {app_target} and type {text_target}")
+
+        # Pattern 2: Open desktop app
+        comp_open_match = re.match(
+            r"^(?:open|launch|start)\s+([a-zA-Z0-9_\-\.\s]+?)$",
+            user_message.strip(),
+            re.IGNORECASE,
+        )
+        if comp_open_match:
+            app_target = comp_open_match.group(1).strip()
+            if app_target.lower() in {"notepad", "calculator", "calc", "wordpad", "paint", "mspaint", "chrome", "edge"}:
+                return self._fast_computer_task(f"open {app_target}")
+
+        # Pattern 3: Copy to clipboard
+        comp_copy_match = re.match(
+            r"^(?:copy|set clipboard)\s+['\"]?(.+?)['\"]?(?:\s+(?:to|into)\s+(?:the\s+|my\s+)?clipboard)?$",
+            user_message.strip(),
+            re.IGNORECASE,
+        )
+        if comp_copy_match and not norm_msg.startswith("copy file"):
+            return self._fast_computer_task(user_message.strip())
+
+        # Pattern 4: Paste into app
+        if re.match(r"(?i)^(?:paste(?:\s+clipboard(?:\s+text)?)?\s+(?:in|into|to)\s+([a-z0-9_\-\.\s]+?))$", norm_msg):
+            return self._fast_computer_task(user_message.strip())
+
+        # Pattern 5: Switch between windows
+        if re.search(r"(?i)\bswitch between (?:two |two application |open )*windows\b", norm_msg) or re.match(r"(?i)^switch\s+(?:between\s+)?[a-z0-9_\-\.\s]+?\s+and\s+[a-z0-9_\-\.\s]+?$", norm_msg):
+            return self._fast_computer_task(user_message.strip())
 
         # A. Quick Time / Date queries
         time_triggers = {
@@ -1054,15 +1127,41 @@ class IrisSupervisor:
         ]
         if any(mq in msg_lower for mq in mem_queries):
             recalled = memory_service.search_relevant_memories(db, user.id, user_message, limit=6)
+            k_claims: list[dict[str, Any]] = []
+            try:
+                from app.knowledge.retrieval import knowledge_retrieval
+
+                k_res = knowledge_retrieval.search(
+                    db,
+                    user_id=user.id,
+                    query=user_message,
+                    principal="iris_core",
+                    limit=6,
+                )
+                k_claims = k_res.get("results", [])
+            except Exception:
+                k_claims = []
+
+            items: list[str] = []
             if recalled:
-                bullets = "\n".join(f"- [{m.category}] {m.content}" for m in recalled)
+                items.extend([f"- [{m.category}] {m.content}" for m in recalled])
+            if k_claims:
+                items.extend(
+                    [
+                        f"- [{c['claim_type'].title()} · {c['verification_status']}] {c['claim_text']}"
+                        for c in k_claims
+                    ]
+                )
+
+            if items:
+                bullets = "\n".join(items)
                 return (
                     AgentResponseSchema(
-                        thought="Returned stored memories.",
+                        thought="Returned stored memories and knowledge.",
                         actions=[],
-                        message=f"Here is what I currently remember from our conversations:\n{bullets}",
-                        actions_summary=["Recalled memories"],
-                        evidence=[f"Recalled {len(recalled)} memories"],
+                        message=f"Here is what I currently know and remember from our conversations:\n{bullets}",
+                        actions_summary=["Recalled memories and knowledge"],
+                        evidence=[f"Recalled {len(items)} items"],
                     ),
                     [],
                 )
@@ -1093,6 +1192,19 @@ class IrisSupervisor:
                     )
                     for item in extracted
                 ]
+                try:
+                    from app.knowledge.pipeline import capture_text
+
+                    capture_text(
+                        db,
+                        user_id=user.id,
+                        text=user_message,
+                        source_type="user_explicit",
+                        title=user_message[:60],
+                        origin="user",
+                    )
+                except Exception:
+                    pass
                 content_preview = "; ".join(f"'{m.content}'" for m in saved)
                 return (
                     AgentResponseSchema(
@@ -1450,6 +1562,43 @@ class IrisSupervisor:
             ],
         )
 
+    def _fast_computer_task(
+        self,
+        instruction: str,
+    ) -> tuple[AgentResponseSchema, list[dict[str, Any]]]:
+        """Execute a desktop computer control task directly through the ComputerControlEngine."""
+        from app.computer.contracts import ComputerTaskRequest
+        from app.computer.engine import computer_engine
+
+        req = ComputerTaskRequest(
+            instruction=instruction,
+            auto_activate=True,
+            verify_result=True,
+        )
+        res = computer_engine.execute_task(req)
+        status_icon = "✅" if res.status == "success" else "❌"
+        msg = f"{status_icon} **Desktop Operation Completed**\n\n{res.summary}"
+        if res.verified and res.verification_summary:
+            msg += f"\n\n🔍 **Verification**: {res.verification_summary}"
+
+        return (
+            AgentResponseSchema(
+                thought=f"Executed computer control task: {instruction}",
+                actions=[],
+                message=msg,
+                actions_summary=[res.summary],
+                evidence=[res.verification_summary or "Action executed"],
+            ),
+            [
+                {
+                    "tool_name": "computer_control",
+                    "success": res.status == "success",
+                    "summary": res.summary,
+                    "data": res.to_dict(),
+                }
+            ],
+        )
+
     # --- 2. Intent Routing ----------------------------------------------------
 
     def route_intent(self, user_message: str) -> list[str]:
@@ -1459,6 +1608,17 @@ class IrisSupervisor:
         Empty list means general turn handled directly by the Orchestrator.
         """
         msg = user_message.lower()
+
+        # Computer control is strictly an IRIS Core capability; never delegate to subagents
+        comp_phrases = {
+            "notepad", "calculator", "calc", "type ", "click ", "press key", "press enter", "hotkey",
+            "computer control", "open application", "open app", "paste clipboard",
+            "copy to clipboard", "switch window", "focus window", "switch between",
+            "observe screen", "describe screen"
+        }
+        if any(p in msg for p in comp_phrases):
+            return []
+
         matched: list[str] = []
 
         # Operator triggers: Terminal, PowerShell, OS files, App launchers, Coding
@@ -1685,6 +1845,20 @@ class IrisSupervisor:
                     ],
                 }
             )
+            try:
+                from app.knowledge.retrieval import knowledge_retrieval
+                inst = (context.get("instruction") if context else "") or "software architecture and technical decisions"
+                tech_ctx = knowledge_retrieval.build_context(
+                    db,
+                    user_id=user.id,
+                    query=inst,
+                    principal="coworker:developer",
+                    limit=5,
+                )
+                if tech_ctx:
+                    shared["knowledge_context"] = tech_ctx
+            except Exception:
+                pass
         elif domain == "planner":
             from app.services import schedule_service
 
@@ -1758,6 +1932,20 @@ class IrisSupervisor:
                     "crm_pipeline": lead_counts,
                 }
             )
+            try:
+                from app.knowledge.retrieval import knowledge_retrieval
+                inst = (context.get("instruction") if context else "") or "project documentation notes"
+                scribe_ctx = knowledge_retrieval.build_context(
+                    db,
+                    user_id=user.id,
+                    query=inst,
+                    principal="coworker:scribe",
+                    limit=5,
+                )
+                if scribe_ctx:
+                    shared["knowledge_context"] = scribe_ctx
+            except Exception:
+                pass
         elif domain == "bubba":
             from app.models.email_account import EmailAccount
             from app.models.lead import Lead
@@ -1804,6 +1992,20 @@ class IrisSupervisor:
                     ],
                 }
             )
+            try:
+                from app.knowledge.retrieval import knowledge_retrieval
+                inst = (context.get("instruction") if context else "") or "workspace documents and projects"
+                bubba_ctx = knowledge_retrieval.build_context(
+                    db,
+                    user_id=user.id,
+                    query=inst,
+                    principal="coworker:workspace",
+                    limit=5,
+                )
+                if bubba_ctx:
+                    shared["knowledge_context"] = bubba_ctx
+            except Exception:
+                pass
 
         if context:
             for key in ("force_agent", "conversation_id"):
@@ -1910,8 +2112,14 @@ class IrisSupervisor:
             "inspect my screen",
             "examine my screen",
             "describe my screen",
+            "describe the screen",
+            "describe current screen",
             "read my screen",
             "see my screen",
+            "observe the current screen",
+            "observe my screen",
+            "observe the screen",
+            "observe screen",
         ]
         if any(p in clean_msg for p in screen_patterns):
             success, msg, vision_res = await screen_perception_service.capture_and_analyze(

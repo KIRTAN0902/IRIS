@@ -14,6 +14,12 @@ from app.agent.tools.coding import (
     StartAutonomousCodingTool,
     coding_tools,
 )
+from app.agent.tools.computer import (
+    ComputerControlTool,
+    EmergencyComputerStopTool,
+    ObserveScreenTool,
+    computer_tools,
+)
 from app.agent.tools.diary import diary_tools
 from app.agent.tools.desktop import (
     CancelBackgroundJobTool,
@@ -162,4 +168,9 @@ __all__ = [
     "CancelBackgroundJobTool",
     "InspectDesktopProcessTool",
     "FindLatestLaptopFileTool",
+    # Computer Control
+    "computer_tools",
+    "ComputerControlTool",
+    "ObserveScreenTool",
+    "EmergencyComputerStopTool",
 ]

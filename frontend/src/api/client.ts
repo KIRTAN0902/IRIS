@@ -37,7 +37,7 @@ export class ApiError extends Error {
   }
 }
 
-type QueryValue = string | number | boolean | null | undefined;
+export type QueryValue = string | number | boolean | null | undefined;
 
 function buildUrl(path: string, query?: Record<string, QueryValue>): string {
   const url = `${BASE}${path}`;

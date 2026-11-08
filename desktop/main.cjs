@@ -1,5 +1,6 @@
 const { app, BrowserWindow, Tray, Menu, globalShortcut, ipcMain, shell, Notification, protocol, net, dialog } = require('electron');
 const path = require('path');
+const os = require('os');
 const http = require('http');
 const { spawn } = require('child_process');
 const fs = require('fs');
@@ -277,6 +278,61 @@ function loadApp() {
   ensureServices().catch(() => {});
 }
 
+function triggerEmergencyKillSwitch(source = 'electron_global') {
+  log(`[EMERGENCY KILL SWITCH] Triggered from: ${source}`);
+
+  // 1. Direct local out-of-band sentinel signal (guaranteed <1ms, independent of HTTP/network)
+  try {
+    const signalFile = path.join(os.tmpdir(), 'iris_emergency_stop.signal');
+    fs.writeFileSync(signalFile, JSON.stringify({ source, timestamp: Date.now() }), 'utf-8');
+    log(`Out-of-band sentinel signal written to: ${signalFile}`);
+  } catch (err) {
+    log(`Warning: Failed to write emergency signal file: ${err.message}`);
+  }
+
+  // 2. HTTP secondary dispatch to local backend
+  try {
+    const postData = JSON.stringify({ source });
+    const req = http.request(
+      {
+        hostname: '127.0.0.1',
+        port: 8000,
+        path: '/api/computer/kill-switch',
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(postData),
+        },
+        timeout: 2000,
+      },
+      (res) => {
+        log(`Kill switch HTTP response: status ${res.statusCode}`);
+      }
+    );
+    req.on('error', (err) => {
+      log(`Kill switch HTTP request error: ${err.message}`);
+    });
+    req.write(postData);
+    req.end();
+  } catch (err) {
+    log(`Kill switch invocation error: ${err}`);
+  }
+
+  if (Notification.isSupported()) {
+    try {
+      new Notification({
+        title: '🚨 IRIS Computer Control STOPPED',
+        body: 'Emergency Kill-Switch triggered. All active desktop operations aborted.',
+        icon: PNG_ICON_PATH,
+      }).show();
+    } catch {}
+  }
+
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('computer-kill-switch-engaged', { source });
+  }
+}
+
 function createTray() {
   try {
     tray = new Tray(ICON_PATH);
@@ -300,6 +356,12 @@ function createTray() {
       click: () => {
         if (mainWindow) mainWindow.hide();
       },
+    },
+    { type: 'separator' },
+    {
+      label: '🚨 EMERGENCY KILL-SWITCH (Ctrl+Alt+K)',
+      type: 'normal',
+      click: () => triggerEmergencyKillSwitch('tray_menu'),
     },
     { type: 'separator' },
     {
@@ -427,6 +489,12 @@ ipcMain.handle('open-external', async (event, rawUrl) => {
   }
 });
 
+ipcMain.handle('computer-trigger-kill-switch', async (event, source) => {
+  if (!isTrustedIpcSender(event)) return false;
+  triggerEmergencyKillSwitch(source || 'renderer_ui');
+  return true;
+});
+
 app.whenReady().then(() => {
   // Register custom protocol handler for native iris://app execution
   protocol.handle('iris', async (request) => {
@@ -493,6 +561,15 @@ app.whenReady().then(() => {
     showWindow();
     if (mainWindow) mainWindow.webContents.send('open-agy-drawer');
     log('Alt+G: requested Antigravity drawer');
+  });
+
+  // Emergency Kill-Switch global shortcuts (model-independent hard stop)
+  globalShortcut.register('CommandOrControl+Alt+K', () => {
+    triggerEmergencyKillSwitch('global_shortcut_ctrl_alt_k');
+  });
+
+  globalShortcut.register('Pause', () => {
+    triggerEmergencyKillSwitch('global_shortcut_pause');
   });
 
   app.on('activate', () => {
