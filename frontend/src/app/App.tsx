@@ -3,27 +3,30 @@ import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ApiError } from "@/api/client";
 import { AppShell } from "@/components/layout/AppShell";
-import { HomePage } from "@/features/home/HomePage";
+import { IrisOSStage } from "@/components/layout/IrisOSStage";
 
-const TodayPage = lazy(() => import("@/features/today/TodayPage").then((m) => ({ default: m.TodayPage })));
-const TasksPage = lazy(() => import("@/features/tasks/TasksPage").then((m) => ({ default: m.TasksPage })));
-const GoalsPage = lazy(() => import("@/features/goals/GoalsPage").then((m) => ({ default: m.GoalsPage })));
-const SchedulePage = lazy(() => import("@/features/schedule/SchedulePage").then((m) => ({ default: m.SchedulePage })));
-const ProjectsPage = lazy(() => import("@/features/projects/ProjectsPage").then((m) => ({ default: m.ProjectsPage })));
-const DiaryPage = lazy(() => import("@/features/diary/DiaryPage").then((m) => ({ default: m.DiaryPage })));
-const FinancePage = lazy(() => import("@/features/finance/FinancePage").then((m) => ({ default: m.FinancePage })));
-const WorkoutsPage = lazy(() => import("@/features/gym/WorkoutsPage").then((m) => ({ default: m.WorkoutsPage })));
-const StartupPage = lazy(() => import("@/features/startup/StartupPage").then((m) => ({ default: m.StartupPage })));
-const AreaLensPage = lazy(() => import("@/features/areas/AreaLensPage").then((m) => ({ default: m.AreaLensPage })));
-const InsightsPage = lazy(() => import("@/features/insights/InsightsPage").then((m) => ({ default: m.InsightsPage })));
-const ModulesPage = lazy(() => import("@/features/modules/ModulesPage").then((m) => ({ default: m.ModulesPage })));
-const FocusPage = lazy(() => import("@/features/focus/FocusPage").then((m) => ({ default: m.FocusPage })));
-const SettingsPage = lazy(() => import("@/features/settings/SettingsPage").then((m) => ({ default: m.SettingsPage })));
-const ContinuityPage = lazy(() => import("@/features/continuity/ContinuityPage").then((m) => ({ default: m.ContinuityPage })));
-const AgyTerminalDeck = lazy(() => import("@/features/agy/AgyTerminalDeck").then((m) => ({ default: m.AgyTerminalDeck })));
-const CoworkersPage = lazy(() => import("@/features/coworkers/CoworkersPage").then((m) => ({ default: m.CoworkersPage })));
-const CoworkerChatPage = lazy(() => import("@/features/coworkers/CoworkerChatPage").then((m) => ({ default: m.CoworkerChatPage })));
-const ConversationsPage = lazy(() => import("@/features/chat/ConversationsPage").then((m) => ({ default: m.ConversationsPage })));
+const CoworkerChatPage = lazy(() =>
+  import("@/features/coworkers/CoworkerChatPage").then((m) => ({ default: m.CoworkerChatPage })),
+);
+const AgyTerminalDeck = lazy(() =>
+  import("@/features/agy/AgyTerminalDeck").then((m) => ({ default: m.AgyTerminalDeck })),
+);
+const SettingsPage = lazy(() =>
+  import("@/features/settings/SettingsPage").then((m) => ({ default: m.SettingsPage })),
+);
+const StartupPage = lazy(() =>
+  import("@/features/startup/StartupPage").then((m) => ({ default: m.StartupPage })),
+);
+const AreaLensPage = lazy(() =>
+  import("@/features/areas/AreaLensPage").then((m) => ({ default: m.AreaLensPage })),
+);
+const InsightsPage = lazy(() =>
+  import("@/features/insights/InsightsPage").then((m) => ({ default: m.InsightsPage })),
+);
+const ModulesPage = lazy(() =>
+  import("@/features/modules/ModulesPage").then((m) => ({ default: m.ModulesPage })),
+);
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
@@ -41,42 +44,53 @@ export function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
-        <Suspense fallback={<div className="mx-auto w-full max-w-5xl p-4" role="status">Loading IRIS…</div>}><Routes>
-          <Route element={<AppShell />}>
-            <Route index element={<HomePage />} />
-            <Route path="conversations" element={<ConversationsPage />} />
-            <Route path="today" element={<TodayPage />} />
-            <Route path="tasks" element={<TasksPage />} />
-            <Route path="goals" element={<GoalsPage />} />
-            <Route path="schedule" element={<SchedulePage />} />
-            <Route path="projects" element={<ProjectsPage />} />
-            <Route path="coworkers" element={<CoworkersPage />} />
-            <Route path="coworkers/:coworkerId/chat" element={<CoworkerChatPage />} />
-            <Route path="coworkers/:coworkerId" element={<CoworkerChatPage />} />
-            <Route path="diary" element={<DiaryPage />} />
-            <Route path="finance" element={<FinancePage />} />
-            <Route path="gym" element={<WorkoutsPage />} />
-            <Route path="focus" element={<FocusPage />} />
-            <Route path="laptop" element={<ContinuityPage initialView="laptop" />} />
-            <Route path="phone" element={<ContinuityPage initialView="phone" />} />
-            <Route path="agy" element={<AgyTerminalDeck />} />
-            <Route path="terminal" element={<Navigate to="/agy" replace />} />
-            <Route path="settings" element={<SettingsPage />} />
-            <Route path="settings/knowledge" element={<Navigate to="/settings?tab=knowledge" replace />} />
-            <Route path="settings/mesh" element={<Navigate to="/settings?tab=mesh" replace />} />
-            <Route path="settings/devices" element={<Navigate to="/settings?tab=mesh" replace />} />
-            <Route path="knowledge" element={<Navigate to="/settings?tab=knowledge" replace />} />
-            <Route path="devices" element={<Navigate to="/settings?tab=mesh" replace />} />
-            <Route path="mesh" element={<Navigate to="/settings?tab=mesh" replace />} />
-            <Route path="memory" element={<Navigate to="/settings?tab=knowledge" replace />} />
-            <Route path="startup" element={<StartupPage />} />
-            <Route path="college" element={<AreaLensPage area="COLLEGE" title="College" />} />
-            <Route path="internship" element={<AreaLensPage area="INTERNSHIP" title="Internship" />} />
-            <Route path="insights" element={<InsightsPage />} />
-            <Route path="modules" element={<ModulesPage />} />
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Route>
-        </Routes></Suspense>
+        <Suspense
+          fallback={
+            <div className="flex h-screen items-center justify-center bg-ops-ground text-ink-faint text-sm">
+              Initializing IRIS Personal OS…
+            </div>
+          }
+        >
+          <Routes>
+            <Route element={<AppShell />}>
+              {/* Sovereign Operating System Canvas */}
+              <Route index element={<IrisOSStage />} />
+
+              {/* Seamless URL mappings to Operating Lenses */}
+              <Route path="conversations" element={<Navigate to="/?lens=studio" replace />} />
+              <Route path="today" element={<Navigate to="/?lens=horizon&tab=overview" replace />} />
+              <Route path="tasks" element={<Navigate to="/?lens=horizon&tab=priorities" replace />} />
+              <Route path="goals" element={<Navigate to="/?lens=horizon&tab=projects" replace />} />
+              <Route path="schedule" element={<Navigate to="/?lens=horizon&tab=schedule" replace />} />
+              <Route path="projects" element={<Navigate to="/?lens=horizon&tab=projects" replace />} />
+              <Route path="coworkers" element={<Navigate to="/?lens=fleet" replace />} />
+              <Route path="coworkers/:coworkerId/chat" element={<CoworkerChatPage />} />
+              <Route path="coworkers/:coworkerId" element={<CoworkerChatPage />} />
+              <Route path="diary" element={<Navigate to="/?lens=horizon&tab=diary" replace />} />
+              <Route path="finance" element={<Navigate to="/?lens=horizon&tab=finance" replace />} />
+              <Route path="gym" element={<Navigate to="/?lens=horizon&tab=fitness" replace />} />
+              <Route path="focus" element={<Navigate to="/?lens=horizon&tab=overview" replace />} />
+              <Route path="laptop" element={<Navigate to="/?lens=vault&tab=mesh" replace />} />
+              <Route path="phone" element={<Navigate to="/?lens=vault&tab=mesh" replace />} />
+              <Route path="agy" element={<AgyTerminalDeck />} />
+              <Route path="terminal" element={<Navigate to="/agy" replace />} />
+              <Route path="settings" element={<SettingsPage />} />
+              <Route path="settings/knowledge" element={<Navigate to="/?lens=vault&tab=graph" replace />} />
+              <Route path="settings/mesh" element={<Navigate to="/?lens=vault&tab=mesh" replace />} />
+              <Route path="settings/devices" element={<Navigate to="/?lens=vault&tab=mesh" replace />} />
+              <Route path="knowledge" element={<Navigate to="/?lens=vault&tab=graph" replace />} />
+              <Route path="devices" element={<Navigate to="/?lens=vault&tab=mesh" replace />} />
+              <Route path="mesh" element={<Navigate to="/?lens=vault&tab=mesh" replace />} />
+              <Route path="memory" element={<Navigate to="/?lens=vault&tab=memories" replace />} />
+              <Route path="startup" element={<StartupPage />} />
+              <Route path="college" element={<AreaLensPage area="COLLEGE" title="College" />} />
+              <Route path="internship" element={<AreaLensPage area="INTERNSHIP" title="Internship" />} />
+              <Route path="insights" element={<InsightsPage />} />
+              <Route path="modules" element={<ModulesPage />} />
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Route>
+          </Routes>
+        </Suspense>
       </BrowserRouter>
     </QueryClientProvider>
   );

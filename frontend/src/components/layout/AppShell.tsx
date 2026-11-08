@@ -1,19 +1,22 @@
 import { lazy, Suspense, useEffect } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
-import { MobileBottomNav } from "@/components/layout/TopStrip";
-import { Sidebar } from "@/components/layout/Sidebar";
-import { GlobalTopBar } from "@/components/layout/GlobalTopBar";
+import { IrisTopHUD } from "@/components/layout/IrisTopHUD";
+import { IrisBottomHUD } from "@/components/layout/IrisBottomHUD";
+import { SettingsOverlay } from "@/components/layout/SettingsOverlay";
 import { AgyDrawer } from "@/features/agy/AgyDrawer";
 import { useFocusSessions } from "@/hooks/queries";
 import { useUiStore } from "@/stores";
 import { VoiceSessionProvider } from "@/features/home/VoiceSession";
 import { useUIState } from "@/features/home/useUIOrchestrator";
 
-const AskIrisConsole = lazy(() => import("@/features/ai/AskIrisConsole").then((m) => ({ default: m.AskIrisConsole })));
+const AskIrisConsole = lazy(() =>
+  import("@/features/ai/AskIrisConsole").then((m) => ({ default: m.AskIrisConsole })),
+);
 
 /**
- * Notes-style shell: a quiet sidebar and one centred reading column.
- * Cmd/Ctrl+K opens Ask IRIS from anywhere.
+ * IRIS OS Shell:
+ * An ambient, edge-to-edge personal AI operating system surface.
+ * Replaces the traditional SaaS sidebar with the Top Intelligence HUD and Mobile Dock.
  */
 export function AppShell() {
   const location = useLocation();
@@ -22,9 +25,12 @@ export function AppShell() {
   const uiState = useUIState();
 
   useEffect(() => {
-    const preference = uiState.data?.preferences.theme ?? "light";
+    const preference = uiState.data?.preferences.theme ?? "dark";
     const media = window.matchMedia("(prefers-color-scheme: dark)");
-    const apply = () => document.documentElement.dataset.theme = preference === "system" ? (media.matches ? "dark" : "light") : preference;
+    const apply = () => {
+      document.documentElement.dataset.theme =
+        preference === "system" ? (media.matches ? "dark" : "light") : preference;
+    };
     apply();
     if (preference === "system") media.addEventListener("change", apply);
     return () => media.removeEventListener("change", apply);
@@ -35,9 +41,12 @@ export function AppShell() {
 
   useEffect(() => {
     // Detect Capacitor native shell or Android PWA / mobile standalone mode
-    const isCapacitor = typeof window !== "undefined" && Boolean((window as unknown as { Capacitor?: unknown }).Capacitor);
+    const isCapacitor =
+      typeof window !== "undefined" &&
+      Boolean((window as unknown as { Capacitor?: unknown }).Capacitor);
     const isAndroid = typeof navigator !== "undefined" && /android/i.test(navigator.userAgent);
-    const isStandalone = typeof window !== "undefined" && window.matchMedia("(display-mode: standalone)").matches;
+    const isStandalone =
+      typeof window !== "undefined" && window.matchMedia("(display-mode: standalone)").matches;
 
     // Check if the browser natively supplies a non-zero CSS safe-area-inset-top
     let hasNativeTopInset = false;
@@ -50,7 +59,6 @@ export function AppShell() {
     }
 
     if (!hasNativeTopInset && (isCapacitor || isAndroid || isStandalone)) {
-      // 38px provides comfortable clearance below mobile status bars and camera punch-holes
       document.documentElement.style.setProperty("--safe-top", "38px");
       document.documentElement.style.setProperty("--safe-bottom", "14px");
     }
@@ -60,8 +68,12 @@ export function AppShell() {
     const viewport = window.visualViewport;
     if (!viewport) return;
     const update = () => {
-      const focused = document.activeElement instanceof HTMLTextAreaElement || document.activeElement instanceof HTMLInputElement;
-      const keyboard = focused ? Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop) : 0;
+      const focused =
+        document.activeElement instanceof HTMLTextAreaElement ||
+        document.activeElement instanceof HTMLInputElement;
+      const keyboard = focused
+        ? Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop)
+        : 0;
       document.documentElement.style.setProperty("--keyboard-height", `${keyboard}px`);
     };
     viewport.addEventListener("resize", update);
@@ -89,12 +101,17 @@ export function AppShell() {
       if (location.pathname !== "/") {
         navigate("/?mode=voice");
       } else {
-        const voiceButton = document.querySelector<HTMLButtonElement>('button[aria-label="Talk to IRIS"]');
+        const voiceButton = document.querySelector<HTMLButtonElement>(
+          'button[aria-label="Talk to IRIS"]',
+        );
         voiceButton?.click();
       }
     };
 
-    if (typeof window !== "undefined" && (window as unknown as { __IRIS_AUTO_VOICE__?: boolean }).__IRIS_AUTO_VOICE__) {
+    if (
+      typeof window !== "undefined" &&
+      (window as unknown as { __IRIS_AUTO_VOICE__?: boolean }).__IRIS_AUTO_VOICE__
+    ) {
       (window as unknown as { __IRIS_AUTO_VOICE__?: boolean }).__IRIS_AUTO_VOICE__ = false;
       setTimeout(onAutoVoice, 200);
     }
@@ -102,7 +119,15 @@ export function AppShell() {
     // Query native pending assistant trigger if running in Capacitor
     const checkNativePending = async () => {
       try {
-        const cap = (window as unknown as { Capacitor?: { Plugins?: { AppLauncher?: { isVoicePending: () => Promise<{ pending: boolean }> } } } }).Capacitor;
+        const cap = (
+          window as unknown as {
+            Capacitor?: {
+              Plugins?: {
+                AppLauncher?: { isVoicePending: () => Promise<{ pending: boolean }> };
+              };
+            };
+          }
+        ).Capacitor;
         const res = await cap?.Plugins?.AppLauncher?.isVoicePending?.();
         if (res?.pending) {
           onAutoVoice();
@@ -123,18 +148,25 @@ export function AppShell() {
 
   return (
     <VoiceSessionProvider>
-    <div className="flex min-h-dvh bg-ops-ground">
-      <Sidebar />
-      <div className="flex min-w-0 flex-1 flex-col">
-        <GlobalTopBar />
-        <main className="flex w-full min-w-0 flex-1 flex-col overflow-y-auto px-4 pb-28 pt-5 md:px-8 md:pb-10 md:pt-7">
+      <div className="flex min-h-dvh flex-col bg-ops-ground text-ink selection:bg-ai/20 selection:text-ink">
+        {/* Top Ambient Intelligence HUD */}
+        <IrisTopHUD />
+
+        {/* Operating Surface Canvas */}
+        <main className="flex flex-1 flex-col overflow-hidden">
           <Outlet />
         </main>
+
+        {/* Mobile Navigation Dock */}
+        <IrisBottomHUD />
+
+        {/* Universal Dialogs & Drawers */}
+        <SettingsOverlay />
+        <Suspense fallback={null}>
+          <AskIrisConsole />
+        </Suspense>
+        <AgyDrawer />
       </div>
-      <MobileBottomNav />
-      <Suspense fallback={null}><AskIrisConsole /></Suspense>
-      <AgyDrawer />
-    </div>
     </VoiceSessionProvider>
   );
 }
