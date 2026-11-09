@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Bell,
   CheckCircle2,
@@ -42,8 +43,14 @@ type ComputerStatus = {
 };
 
 export function IrisTopHUD() {
+  const navigate = useNavigate();
   const { activeLens, setActiveLens, setSettingsOpen } = useLensStore();
   const setAskOpen = useUiStore((s) => s.setAskOpen);
+
+  const handleSelectLens = (lens: IrisLens) => {
+    setActiveLens(lens);
+    navigate(lens === "home" ? "/" : `/?lens=${lens}`);
+  };
 
   const [panel, setPanel] = useState<"health" | "notifications" | null>(null);
 
@@ -160,7 +167,7 @@ export function IrisTopHUD() {
       <div className="flex items-center gap-3">
         <button
           type="button"
-          onClick={() => setActiveLens("home")}
+          onClick={() => handleSelectLens("home")}
           className="group flex items-center gap-2.5 cursor-pointer text-left focus:outline-none"
           title="IRIS Personal AI Operating System"
         >
@@ -190,7 +197,7 @@ export function IrisTopHUD() {
           label="Home"
           icon={Compass}
           active={activeLens === "home"}
-          onClick={() => setActiveLens("home")}
+          onClick={() => handleSelectLens("home")}
           shortcut="Alt 1"
         />
         <LensTab
@@ -198,7 +205,7 @@ export function IrisTopHUD() {
           label="Chat"
           icon={Command}
           active={activeLens === "studio"}
-          onClick={() => setActiveLens("studio")}
+          onClick={() => handleSelectLens("studio")}
           shortcut="Alt 2"
         />
         <LensTab
@@ -206,7 +213,7 @@ export function IrisTopHUD() {
           label="Horizon"
           icon={Calendar}
           active={activeLens === "horizon"}
-          onClick={() => setActiveLens("horizon")}
+          onClick={() => handleSelectLens("horizon")}
           shortcut="Alt 3"
         />
         <LensTab
@@ -214,7 +221,7 @@ export function IrisTopHUD() {
           label="Fleet"
           icon={Users}
           active={activeLens === "fleet"}
-          onClick={() => setActiveLens("fleet")}
+          onClick={() => handleSelectLens("fleet")}
           shortcut="Alt 4"
           badge={approvalCount > 0 ? approvalCount : undefined}
         />
@@ -223,7 +230,7 @@ export function IrisTopHUD() {
           label="Vault"
           icon={Database}
           active={activeLens === "vault"}
-          onClick={() => setActiveLens("vault")}
+          onClick={() => handleSelectLens("vault")}
           shortcut="Alt 5"
         />
       </nav>

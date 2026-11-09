@@ -1,9 +1,16 @@
+import { useNavigate } from "react-router-dom";
 import { Calendar, Command, Compass, Database, Users } from "lucide-react";
 import { useLensStore, type IrisLens } from "@/stores/lensStore";
 import { cn } from "@/lib/format";
 
 export function IrisBottomHUD() {
+  const navigate = useNavigate();
   const { activeLens, setActiveLens } = useLensStore();
+
+  const handleSelectLens = (lens: IrisLens) => {
+    setActiveLens(lens);
+    navigate(lens === "home" ? "/" : `/?lens=${lens}`);
+  };
 
   return (
     <nav
@@ -16,35 +23,35 @@ export function IrisBottomHUD() {
           label="Home"
           icon={Compass}
           active={activeLens === "home"}
-          onClick={() => setActiveLens("home")}
+          onClick={() => handleSelectLens("home")}
         />
         <MobileTab
           id="studio"
           label="Chat"
           icon={Command}
           active={activeLens === "studio"}
-          onClick={() => setActiveLens("studio")}
+          onClick={() => handleSelectLens("studio")}
         />
         <MobileTab
           id="horizon"
           label="Horizon"
           icon={Calendar}
           active={activeLens === "horizon"}
-          onClick={() => setActiveLens("horizon")}
+          onClick={() => handleSelectLens("horizon")}
         />
         <MobileTab
           id="fleet"
           label="Fleet"
           icon={Users}
           active={activeLens === "fleet"}
-          onClick={() => setActiveLens("fleet")}
+          onClick={() => handleSelectLens("fleet")}
         />
         <MobileTab
           id="vault"
           label="Vault"
           icon={Database}
           active={activeLens === "vault"}
-          onClick={() => setActiveLens("vault")}
+          onClick={() => handleSelectLens("vault")}
         />
       </div>
     </nav>

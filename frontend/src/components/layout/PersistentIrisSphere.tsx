@@ -9,24 +9,31 @@ import { cn } from "@/lib/format";
  * PersistentIrisSphere:
  * A single, persistent application-level ambient intelligence presence.
  *
- * Clean Transparent 3D Intelligence Core:
- * - On Home: Positioned prominently at bottom-center with substantial size (220px desktop / 150px mobile).
- * - On Other Lenses (Chat, Horizon, Fleet, Vault, etc.): Glides smoothly
- *   into the bottom-right corner at compact 64px.
- * - Completely transparent background (zero white circular bezel, zero white card disc).
- * - Canvas internal state and 60fps kinetic rotation are NEVER interrupted.
+ * Smooth Route-Aware Physical Travel:
+ * - On Home: Anchored at bottom-centre directly above the global chat composer.
+ *   Visual size: 100px diameter (matching user reference screenshot).
+ * - On Other Lenses (Chat, Horizon, Fleet, Vault, etc.): Physically travels to
+ *   bottom-right corner at compact secondary size (60px diameter).
+ * - Interpolates position, elevation, and scale continuously over 650ms.
+ * - Internal kinetic rotation and 3D geometric state are NEVER interrupted.
+ * - 100% transparent background (zero white circular disc, zero borders).
  */
 export function PersistentIrisSphere() {
   const location = useLocation();
   const { activeLens } = useLensStore();
   const voice = useVoiceSession();
   const [isMobile, setIsMobile] = useState(false);
+  const [reduceMotion, setReduceMotion] = useState(false);
 
   useEffect(() => {
     const checkMobile = () => {
       setIsMobile(window.innerWidth < 768);
     };
+    const checkMotion = () => {
+      setReduceMotion(window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false);
+    };
     checkMobile();
+    checkMotion();
     window.addEventListener("resize", checkMobile);
     return () => window.removeEventListener("resize", checkMobile);
   }, []);
@@ -35,10 +42,6 @@ export function PersistentIrisSphere() {
   const isHome =
     (activeLens === "home" || !activeLens) &&
     (location.pathname === "/" || location.pathname === "");
-
-  // On Home, the prominent 220px 3D sphere is showcased in the Homepage Hero.
-  // On all other views (Chat, Horizon, Fleet, Vault), PersistentIrisSphere provides the universal ambient presence.
-  if (isHome) return null;
 
   const active = voice.phase !== "off";
   const label =
@@ -60,13 +63,28 @@ export function PersistentIrisSphere() {
     }
   };
 
-  // Clean fixed position in the bottom-right corner
+  // Coordinated physical positions:
+  // Home: Bottom-centre directly above the chat composer (118px bottom, 100px visual size)
+  // Other Pages: Bottom-right corner (1.5rem bottom, 60px compact visual size)
   const sphereStyle: React.CSSProperties = {
     position: "fixed",
     zIndex: 40,
-    right: isMobile ? "1.25rem" : "1.75rem",
-    bottom: isMobile ? "5.25rem" : "1.75rem",
-    transition: "transform 200ms ease-out",
+    left: isHome ? "50%" : isMobile ? "calc(100% - 2.5rem)" : "calc(100% - 3.25rem)",
+    bottom: isHome
+      ? isMobile
+        ? "124px"
+        : "118px"
+      : isMobile
+      ? "5.25rem" // above mobile dock
+      : "1.5rem",
+    transform: isHome
+      ? "translate3d(-50%, 0, 0) scale(1)"
+      : "translate3d(-50%, 0, 0) scale(0.6)",
+    transformOrigin: "center center",
+    transition: reduceMotion
+      ? "none"
+      : "left 650ms cubic-bezier(0.16, 1, 0.3, 1), bottom 650ms cubic-bezier(0.16, 1, 0.3, 1), transform 650ms cubic-bezier(0.16, 1, 0.3, 1)",
+    willChange: "left, bottom, transform",
   };
 
   return (
@@ -103,15 +121,15 @@ export function PersistentIrisSphere() {
             />
           )}
 
-          {/* 3D IRIS Sphere: Compact 64px ambient dock on other views */}
-          <IrisSphere phase={voice.phase} level={voice.level} size={64} />
+          {/* Constant 100px native canvas resolution: never remounted or resized during route travel */}
+          <IrisSphere phase={voice.phase} level={voice.level} size={100} />
         </div>
       </button>
 
       {/* Status caption shown under sphere in Homepage mode */}
       <div
         className={cn(
-          "mt-1.5 flex items-center gap-1.5 rounded-full bg-ops-panel/85 backdrop-blur-xs px-3 py-1 text-[11px] font-medium text-ink-dim border border-ops-line/60 shadow-2xs transition-all duration-300",
+          "mt-1 flex items-center gap-1.5 rounded-full bg-ops-panel/90 backdrop-blur-xs px-2.5 py-0.5 text-[10.5px] font-medium text-ink-dim border border-ops-line/60 shadow-2xs transition-all duration-300 whitespace-nowrap",
           isHome
             ? "opacity-100 translate-y-0"
             : "opacity-0 -translate-y-2 pointer-events-none h-0 overflow-hidden",

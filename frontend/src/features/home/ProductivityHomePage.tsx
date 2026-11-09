@@ -1,5 +1,7 @@
+import { useState, useRef, type FormEvent } from "react";
 import {
   ArrowRight,
+  ArrowUp,
   Bot,
   Brain,
   Calendar,
@@ -13,6 +15,8 @@ import {
   ShieldAlert,
   Sparkles,
   StopCircle,
+  UploadCloud,
+  X,
   Zap,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
@@ -21,16 +25,24 @@ import {
   useCheckHabit,
   useCompleteFocus,
   useCompleteTask,
+  useCreateConversation,
   useHabits,
   useMe,
+  useSendMessage,
   useSituation,
   useStartFocus,
 } from "@/hooks/queries";
 import { useFocusStore } from "@/stores";
 import { useLensStore } from "@/stores/lensStore";
 import { useVoiceSession } from "@/features/home/VoiceSession";
-import { IrisSphere } from "@/features/home/IrisSphere";
+import { captureCurrentScreen } from "@/lib/screenCapture";
 import { cn } from "@/lib/format";
+
+interface AttachedImage {
+  id: string;
+  file: File;
+  preview: string;
+}
 
 export function ProductivityHomePage() {
   const { setActiveLens, setHorizonTab, setVaultTab } = useLensStore();
@@ -42,6 +54,8 @@ export function ProductivityHomePage() {
   const runningFocus = useFocusStore((s) => s.running);
   const startFocus = useStartFocus();
   const completeFocus = useCompleteFocus();
+  const createConversation = useCreateConversation();
+  const sendMessage = useSendMessage();
   const voice = useVoiceSession();
 
   // Desktop companion & autonomy state
@@ -64,6 +78,13 @@ export function ProductivityHomePage() {
     queryFn: () => api.get<any[]>("/coworkers"),
     refetchInterval: 30_000,
   });
+
+  // Chat composer state
+  const [prompt, setPrompt] = useState("");
+  const [attachedImages, setAttachedImages] = useState<AttachedImage[]>([]);
+  const [capturingScreen, setCapturingScreen] = useState(false);
+  const [sending, setSending] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const s = situation.data;
   const nowBlock = s?.now?.current_block;
@@ -101,26 +122,86 @@ export function ProductivityHomePage() {
     year: "numeric",
   }).format(new Date());
 
-  const voiceActive = voice.phase !== "off";
-  const voiceLabel =
-    voice.phase === "off"
-      ? "Ready · tap to speak"
-      : voice.phase === "paused"
-      ? "Paused · tap to resume"
-      : voice.phase === "listening"
-      ? "Listening…"
-      : voice.phase === "speaking"
-      ? "Speaking…"
-      : voice.phase;
+  // Handle composer submission
+  const handleComposerSubmit = async (e?: FormEvent) => {
+    if (e) e.preventDefault();
+    const trimmed = prompt.trim();
+    if (!trimmed && attachedImages.length === 0) return;
+
+    setSending(true);
+    try {
+      // 1. Create a fresh conversation
+      const title = trimmed ? trimmed.slice(0, 48) : "Visual Inquiry";
+      const conv = await createConversation.mutateAsync(title);
+
+      // 2. Prepare images if any
+      const imagesPayload = await Promise.all(
+        attachedImages.map(async (img) => {
+          return new Promise<{ image_base64: string; mime_type: string }>((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () => {
+              const res = (reader.result as string) || "";
+              const base64 = res.includes(",") ? res.split(",")[1] : res;
+              resolve({ image_base64: base64, mime_type: img.file.type });
+            };
+            reader.readAsDataURL(img.file);
+          });
+        }),
+      );
+
+      // 3. Send message
+      await sendMessage.mutateAsync({
+        conversationId: conv.id,
+        content: trimmed || "Please inspect this attached screen/image.",
+        images: imagesPayload.length > 0 ? imagesPayload : undefined,
+      });
+
+      // 4. Smoothly switch to Studio lens to view the live conversation
+      setActiveLens("studio");
+      window.history.pushState({}, "", `/?lens=studio&c=${conv.id}`);
+    } catch (err) {
+      console.error("Failed to send message from home composer:", err);
+    } finally {
+      setSending(false);
+      setPrompt("");
+      setAttachedImages([]);
+    }
+  };
+
+  const handleCaptureScreen = async () => {
+    try {
+      setCapturingScreen(true);
+      const b64 = await captureCurrentScreen();
+      if (!b64) return;
+      const res = await fetch(`data:image/png;base64,${b64}`);
+      const blob = await res.blob();
+      const file = new File([blob], `screen-${Date.now()}.png`, { type: "image/png" });
+      setAttachedImages((prev) => [
+        ...prev,
+        { id: `screen-${Date.now()}`, file, preview: `data:image/png;base64,${b64}` },
+      ]);
+    } catch (err) {
+      console.error("Screen capture error:", err);
+    } finally {
+      setCapturingScreen(false);
+    }
+  };
+
+  const handleQuickPrompt = (text: string) => {
+    if (text.includes("Start 25m focus")) {
+      startFocus.mutate({ planned_duration: 25, notes: "Sprint started from Home command bar" });
+      return;
+    }
+    setPrompt(text);
+  };
 
   return (
     <div className="relative min-h-[calc(100vh-3.5rem)] w-full overflow-y-auto bg-ops-ground">
       {/* 1. Main Structured Productivity Canvas */}
-      <div className="mx-auto max-w-6xl px-4 py-6 md:px-8 space-y-6 pb-12 md:pb-16">
-        {/* Header Hero: Date, Greeting, Ambient Presence & 3D Signature Sphere */}
-        <header className="rounded-3xl border border-ops-line/80 bg-ops-panel p-6 sm:p-8 shadow-xs flex flex-col md:flex-row items-center justify-between gap-6 relative overflow-hidden">
-          {/* Left Column: Greeting, Sovereign OS & Temporal State */}
-          <div className="space-y-4 max-w-xl z-10 w-full md:w-auto">
+      <div className="mx-auto max-w-6xl px-4 py-6 md:px-8 space-y-6 pb-64">
+        {/* Header: Date, Greeting & System Presence */}
+        <header className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-ops-line/80 pb-5">
+          <div>
             <div className="flex items-center gap-2">
               <span className="inline-flex items-center gap-1.5 rounded-full bg-ai/10 px-2.5 py-0.5 text-[11px] font-semibold text-ai border border-ai/20">
                 <span className="h-1.5 w-1.5 rounded-full bg-ai animate-pulse" />
@@ -129,93 +210,29 @@ export function ProductivityHomePage() {
               <span className="text-xs text-ink-faint">·</span>
               <span className="text-xs text-ink-dim font-medium">{currentDateFormatted}</span>
             </div>
-
-            <div>
-              <h1 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold tracking-tight text-ink font-display">
-                {greeting()}
-              </h1>
-              <p className="text-xs sm:text-sm text-ink-dim mt-2 leading-relaxed">
-                {nowBlock ? `Active temporal focus: ${nowBlock}.` : "Free flow & strategic focus."}{" "}
-                {nextCommitment ? (
-                  <span>
-                    Next commitment: <strong className="text-ink">{nextCommitment}</strong>.
-                  </span>
-                ) : null}
-              </p>
-            </div>
-
-            {/* Real-time Ambient Telemetry Badges */}
-            <div className="flex flex-wrap items-center gap-2 pt-1 text-xs">
-              {localTime && (
-                <div className="flex items-center gap-1.5 rounded-xl border border-ops-line bg-ops-void px-3 py-1.5 text-ink-dim shadow-2xs">
-                  <Clock size={13} className="text-ai" />
-                  <span className="font-mono font-medium text-ink">{localTime}</span>
-                </div>
-              )}
-              <div className="flex items-center gap-1.5 rounded-xl border border-ops-line bg-ops-void px-3 py-1.5 text-ink-dim shadow-2xs">
-                <Monitor
-                  size={13}
-                  className={computer.data?.companion_online ? "text-emerald-500" : "text-amber-500"}
-                />
-                <span>{computer.data?.companion_online ? "Windows Companion Online" : "Companion Idle"}</span>
-              </div>
-              <div className="flex items-center gap-1.5 rounded-xl border border-ops-line bg-ops-void px-3 py-1.5 text-ink-dim shadow-2xs">
-                <Bot size={13} className="text-ai" />
-                <span>{activeCoworkersCount} Specialists Ready</span>
-              </div>
-            </div>
+            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-ink mt-1.5 font-display">
+              {greeting()}
+            </h1>
           </div>
 
-          {/* Right Column: Prominent 3D IRIS Intelligence Core Sphere */}
-          <div className="flex flex-col items-center justify-center shrink-0 z-10">
-            <button
-              type="button"
-              onClick={() => {
-                if (voice.phase === "off") void voice.start();
-                else voice.tap();
-              }}
-              title="Tap to speak with IRIS"
-              className="group relative cursor-pointer focus-visible:outline-offset-4 focus:outline-hidden transition-transform duration-200 active:scale-95"
-            >
-              <div className="relative flex items-center justify-center">
-                {voiceActive && (
-                  <span
-                    className={cn(
-                      "absolute top-2 right-2 h-3 w-3 rounded-full ring-2 ring-white z-10",
-                      voice.phase === "listening"
-                        ? "bg-ai animate-pulse"
-                        : voice.phase === "speaking"
-                        ? "bg-emerald-500 animate-pulse"
-                        : "bg-amber-500",
-                    )}
-                  />
-                )}
-                {/* 220px 3D Matte Black Sphere - 100% Transparent Background */}
-                <IrisSphere phase={voice.phase} level={voice.level} size={220} />
+          {/* Real-time Ambient Telemetry Badges */}
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            {localTime && (
+              <div className="flex items-center gap-1.5 rounded-xl border border-ops-line bg-ops-panel px-3 py-1.5 text-ink-dim shadow-2xs">
+                <Clock size={13} className="text-ai" />
+                <span className="font-mono font-medium text-ink">{localTime}</span>
               </div>
-            </button>
-
-            {/* Voice Status Pill */}
-            <div
-              className="mt-1 flex items-center gap-1.5 rounded-full bg-ops-void px-3 py-1 text-[11px] font-medium text-ink-dim border border-ops-line/80 shadow-2xs"
-              role="status"
-            >
-              <span
-                className={cn(
-                  "h-1.5 w-1.5 rounded-full transition-colors",
-                  voiceActive ? "bg-emerald-500 animate-pulse" : "bg-ai",
-                )}
+            )}
+            <div className="flex items-center gap-1.5 rounded-xl border border-ops-line bg-ops-panel px-3 py-1.5 text-ink-dim shadow-2xs">
+              <Monitor
+                size={13}
+                className={computer.data?.companion_online ? "text-emerald-500" : "text-amber-500"}
               />
-              <span className="capitalize">{voiceLabel}</span>
-              {voiceActive && (
-                <button
-                  type="button"
-                  onClick={voice.end}
-                  className="ml-1 underline decoration-ops-line-bright underline-offset-2 text-ink-faint hover:text-ink cursor-pointer"
-                >
-                  End
-                </button>
-              )}
+              <span>{computer.data?.companion_online ? "Windows Companion Online" : "Companion Idle"}</span>
+            </div>
+            <div className="flex items-center gap-1.5 rounded-xl border border-ops-line bg-ops-panel px-3 py-1.5 text-ink-dim shadow-2xs">
+              <Bot size={13} className="text-ai" />
+              <span>{activeCoworkersCount} Specialists Ready</span>
             </div>
           </div>
         </header>
@@ -629,6 +646,155 @@ export function ProductivityHomePage() {
             </div>
           </div>
         </section>
+      </div>
+
+      {/* 5. BOTTOM COMMAND CENTER COMPOSER (DOCKED AT BOTTOM CENTER) */}
+      <div className="fixed bottom-3 sm:bottom-4 left-1/2 -translate-x-1/2 w-full max-w-2xl px-4 z-20 pointer-events-none">
+        <div className="pointer-events-auto space-y-2">
+          {/* Quick Action Suggestion Pills */}
+          <div className="flex items-center justify-center gap-1.5 overflow-x-auto scrollbar-none py-1">
+            <button
+              type="button"
+              onClick={() => handleQuickPrompt("What is my next commitment today?")}
+              className="rounded-full border border-ops-line bg-ops-panel/95 backdrop-blur-md px-3 py-1 text-[11px] font-medium text-ink-dim hover:text-ink hover:border-ai/50 shadow-2xs transition cursor-pointer whitespace-nowrap"
+            >
+              📅 Next commitment
+            </button>
+            <button
+              type="button"
+              onClick={() => handleQuickPrompt("Start 25m focus sprint")}
+              className="rounded-full border border-ops-line bg-ops-panel/95 backdrop-blur-md px-3 py-1 text-[11px] font-medium text-ink-dim hover:text-ink hover:border-ai/50 shadow-2xs transition cursor-pointer whitespace-nowrap"
+            >
+              ⚡ 25m focus sprint
+            </button>
+            <button
+              type="button"
+              onClick={() => handleQuickPrompt("Review my urgent priorities for today.")}
+              className="rounded-full border border-ops-line bg-ops-panel/95 backdrop-blur-md px-3 py-1 text-[11px] font-medium text-ink-dim hover:text-ink hover:border-ai/50 shadow-2xs transition cursor-pointer whitespace-nowrap"
+            >
+              🎯 Review priorities
+            </button>
+            <button
+              type="button"
+              onClick={() => handleQuickPrompt("Check Windows companion and desktop status.")}
+              className="rounded-full border border-ops-line bg-ops-panel/95 backdrop-blur-md px-3 py-1 text-[11px] font-medium text-ink-dim hover:text-ink hover:border-ai/50 shadow-2xs transition cursor-pointer whitespace-nowrap"
+            >
+              💻 Companion status
+            </button>
+          </div>
+
+          {/* Attached Image Previews */}
+          {attachedImages.length > 0 && (
+            <div className="flex items-center gap-2 rounded-xl border border-ops-line bg-ops-panel/95 backdrop-blur-md p-2 shadow-xs">
+              {attachedImages.map((img) => (
+                <div key={img.id} className="relative group">
+                  <img
+                    src={img.preview}
+                    alt="attachment"
+                    className="h-12 w-12 rounded-lg object-cover border border-ops-line"
+                  />
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setAttachedImages((prev) => prev.filter((i) => i.id !== img.id))
+                    }
+                    className="absolute -top-1.5 -right-1.5 h-4 w-4 rounded-full bg-critical text-white flex items-center justify-center text-[10px]"
+                  >
+                    <X size={10} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Docked Command Bar Box */}
+          <form
+            onSubmit={handleComposerSubmit}
+            className="flex items-center gap-2 rounded-2xl border border-ai/30 bg-ops-panel/95 backdrop-blur-md px-3 py-2 shadow-lg focus-within:border-ai focus-within:ring-2 focus-within:ring-ai/20 transition"
+          >
+            {/* Visual Screen Perception Button */}
+            <button
+              type="button"
+              onClick={handleCaptureScreen}
+              disabled={capturingScreen}
+              title="Capture active screen & attach to prompt"
+              className="rounded-xl p-2 text-ink-dim hover:text-ink hover:bg-ops-raised transition cursor-pointer shrink-0 disabled:opacity-50"
+            >
+              <Monitor size={17} className={capturingScreen ? "text-ai animate-spin" : ""} />
+            </button>
+
+            {/* File upload hidden input & trigger */}
+            <input
+              type="file"
+              ref={fileInputRef}
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => {
+                const files = e.target.files;
+                if (!files || files.length === 0) return;
+                const file = files[0];
+                const preview = URL.createObjectURL(file);
+                setAttachedImages((prev) => [
+                  ...prev,
+                  { id: `file-${Date.now()}`, file, preview },
+                ]);
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              title="Attach image or screenshot"
+              className="rounded-xl p-2 text-ink-dim hover:text-ink hover:bg-ops-raised transition cursor-pointer shrink-0"
+            >
+              <UploadCloud size={17} />
+            </button>
+
+            {/* Main Input Textarea/Input */}
+            <input
+              type="text"
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              placeholder="Ask IRIS anything or enter an autonomous command…"
+              className="flex-1 bg-transparent text-sm text-ink placeholder:text-ink-faint focus:outline-hidden px-1"
+            />
+
+            {/* Voice session button */}
+            <button
+              type="button"
+              onClick={() => {
+                if (voice.phase === "off") {
+                  void voice.start();
+                } else {
+                  voice.tap();
+                }
+              }}
+              title={voice.phase === "off" ? "Start voice interaction" : "Voice Active"}
+              className={cn(
+                "rounded-xl p-2 transition cursor-pointer shrink-0",
+                voice.phase !== "off"
+                  ? "bg-emerald-500 text-white animate-pulse"
+                  : "text-ink-dim hover:text-ink hover:bg-ops-raised",
+              )}
+            >
+              <Sparkles size={17} />
+            </button>
+
+            {/* Submit Arrow Button */}
+            <button
+              type="submit"
+              disabled={sending || (!prompt.trim() && attachedImages.length === 0)}
+              title="Send to IRIS"
+              className={cn(
+                "rounded-xl p-2 transition cursor-pointer shrink-0",
+                prompt.trim() || attachedImages.length > 0
+                  ? "bg-ai text-white hover:bg-ai/90 shadow-2xs"
+                  : "text-ink-faint opacity-40 cursor-not-allowed",
+              )}
+            >
+              <ArrowUp size={17} />
+            </button>
+          </form>
+        </div>
       </div>
     </div>
   );
