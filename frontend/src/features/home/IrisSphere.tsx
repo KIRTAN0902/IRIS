@@ -2,16 +2,20 @@ import { useEffect, useRef } from "react";
 import type { VoicePhase } from "@/features/home/voice";
 
 /**
- * The IRIS Sphere: Exact signature sphere model in Matte Black / Deep Graphite.
+ * The IRIS Sphere: Exact Signature Geometric Intelligence Core in 3D Matte Black / Obsidian.
  *
  * Preserves 100% of the exact geometric structure from the reference model:
  * - 96-node Fibonacci lattice on a unit sphere
  * - Deduplicated nearest-neighbor links (3 links per node)
  * - Concentric turning 12-point star
- * - Central turning regular hexagon
- * - Focal core sprite
+ * - Central turning regular hexagon with vertex nodes
+ * - Central 3D obsidian focal core
  *
- * Mapped directly into an elegant Matte Black and Graphite palette for daylight UI.
+ * True 3D Volumetric Depth:
+ * - True painter's algorithm depth sorting (back wireframe -> back nodes -> internal star/hex -> front wireframe -> front nodes)
+ * - Front vertices are volumetric obsidian beads with directional top-left specular highlights
+ * - Front edges are crisp, bold dark obsidian; back edges softly recede in slate-grey
+ * - 100% transparent canvas background (no white container, no fuzzy glow smudge)
  */
 
 const NODES = 96;
@@ -60,21 +64,6 @@ function nearestLinks(pts: Vec[], k: number): [number, number][] {
   return links;
 }
 
-/** Soft deep graphite / black node sprite with subtle depth highlight. */
-function glowSprite(px: number): HTMLCanvasElement {
-  const c = document.createElement("canvas");
-  c.width = c.height = px;
-  const g = c.getContext("2d")!;
-  const grad = g.createRadialGradient(px / 2, px / 2, 0, px / 2, px / 2, px / 2);
-  grad.addColorStop(0, "rgba(10, 12, 16, 1)");
-  grad.addColorStop(0.22, "rgba(22, 27, 36, 0.92)");
-  grad.addColorStop(0.5, "rgba(65, 75, 90, 0.38)");
-  grad.addColorStop(1, "rgba(10, 12, 16, 0)");
-  g.fillStyle = grad;
-  g.fillRect(0, 0, px, px);
-  return c;
-}
-
 export function IrisSphere({ phase, level, size }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const phaseRef = useRef(phase);
@@ -96,12 +85,11 @@ export function IrisSphere({ phase, level, size }: Props) {
     const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
     const pts = fibonacciSphere(NODES);
     const links = nearestLinks(pts, LINKS_PER_NODE);
-    const sprite = glowSprite(64);
     const projected = pts.map(() => ({ x: 0, y: 0, z: 0, s: 1 }));
 
     const c = size / 2;
-    let rotY = 0;
-    let rotX = 0.35;
+    let rotY = 0.5;
+    let rotX = 0.34;
     let spin = 0;
     let shown = 0; // smoothed level actually drawn
     let last = performance.now();
@@ -114,22 +102,23 @@ export function IrisSphere({ phase, level, size }: Props) {
       const t = now / 1000;
 
       // Real mic level while listening, speech pulse while speaking, shimmer while thinking
-      let target = 0.08;
+      let target = 0.06;
       if (p === "listening") target = Math.min(1, levelRef.current());
-      else if (p === "paused") target = 0.05;
+      else if (p === "paused") target = 0.04;
       else if (p === "speaking")
         target = 0.35 + 0.3 * Math.abs(Math.sin(t * 7.3)) * (0.6 + 0.4 * Math.sin(t * 2.1 + 1.3));
       else if (p === "thinking" || p === "transcribing") target = 0.22 + 0.1 * Math.sin(t * 5);
       shown += (target - shown) * Math.min(1, dt * 10);
 
-      const speed = reduceMotion ? 0 : p === "thinking" || p === "transcribing" ? 1.4 : 0.35 + shown * 0.6;
+      const speed = reduceMotion ? 0 : p === "thinking" || p === "transcribing" ? 1.4 : 0.4 + shown * 0.6;
       rotY += speed * dt;
-      rotX = 0.35 + Math.sin(t * 0.4) * 0.15;
-      spin += (reduceMotion ? 0 : speed * 0.6) * dt;
+      rotX = 0.34 + Math.sin(t * 0.4) * 0.12;
+      spin += (reduceMotion ? 0 : speed * 0.65) * dt;
 
-      const R = size * 0.34 * (1 + shown * 0.14);
+      const R = size * 0.38 * (1 + shown * 0.12);
       const cosY = Math.cos(rotY), sinY = Math.sin(rotY);
       const cosX = Math.cos(rotX), sinX = Math.sin(rotX);
+
       pts.forEach(([x, y, z], i) => {
         const x1 = x * cosY + z * sinY;
         const z1 = -x * sinY + z * cosY;
@@ -143,38 +132,48 @@ export function IrisSphere({ phase, level, size }: Props) {
         o.s = persp;
       });
 
+      // 100% Transparent canvas background
       ctx.clearRect(0, 0, size, size);
 
-      // Subtle graphite halo behind everything
-      const halo = ctx.createRadialGradient(c, c, R * 0.2, c, c, R * 1.08);
-      halo.addColorStop(0, `rgba(10,12,16,${(0.02 + shown * 0.02).toFixed(3)})`);
-      halo.addColorStop(1, "rgba(10,12,16,0)");
-      ctx.fillStyle = halo;
-      ctx.fillRect(0, 0, size, size);
+      const sRatio = size / 100;
 
-      // The web: a wide faint pass, then a crisp pass
-      const linkScale = size < 100 ? 0.75 : 1.0;
-      for (const [width, boost] of [
-        [2.6 * linkScale, 0.12],
-        [0.95 * linkScale, 0.65],
-      ] as const) {
-        ctx.lineWidth = width;
-        for (const [a, b] of links) {
-          const pa = projected[a], pb = projected[b];
-          const depth = (pa.z + pb.z) / 2; // -1 (back) .. 1 (front)
-          const alpha = boost * (0.25 + 0.75 * ((depth + 1) / 2)) * (0.7 + shown * 0.6);
-          ctx.strokeStyle = `rgba(18,24,32,${(alpha * 1.15).toFixed(3)})`;
+      // ========================================================
+      // LAYER 1: BACK WIREFRAME (z <= 0) - Receding softly in depth
+      // ========================================================
+      links.forEach(([a, b]) => {
+        const pa = projected[a], pb = projected[b];
+        const depth = (pa.z + pb.z) / 2;
+        if (depth <= 0) {
+          const front = (depth + 1) / 2; // 0..0.5
+          ctx.lineWidth = Math.max(0.65, (0.45 + 0.35 * front) * sRatio);
+          ctx.strokeStyle = `rgba(100, 116, 139, ${(0.12 + 0.25 * front) * (1 + shown * 0.3)})`;
           ctx.beginPath();
           ctx.moveTo(pa.x, pa.y);
           ctx.lineTo(pb.x, pb.y);
           ctx.stroke();
         }
-      }
+      });
 
-      // Inner 12-point star and hexagon, turning against the sphere
+      // ========================================================
+      // LAYER 2: BACK NODES (z <= 0) - Subtle receding vertices
+      // ========================================================
+      projected.forEach((o) => {
+        if (o.z <= 0) {
+          const front = (o.z + 1) / 2; // 0..0.5
+          const r = Math.max(0.8, (0.8 + front * 1.1) * sRatio);
+          ctx.fillStyle = `rgba(71, 85, 105, ${(0.35 + 0.35 * front) * (1 + shown * 0.3)})`;
+          ctx.beginPath();
+          ctx.arc(o.x, o.y, r, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      });
+
+      // ========================================================
+      // LAYER 3: INTERNAL GEOMETRIC CORE (Inside the sphere)
+      // ========================================================
       const star = (radius: number, inner: number, points: number, rot: number, alpha: number, w: number) => {
-        ctx.lineWidth = w * linkScale;
-        ctx.strokeStyle = `rgba(10,12,16,${alpha.toFixed(3)})`;
+        ctx.lineWidth = Math.max(0.7, w * sRatio * 0.7);
+        ctx.strokeStyle = `rgba(15, 23, 42, ${alpha * (1 + shown * 0.4)})`;
         ctx.beginPath();
         for (let k = 0; k <= points * 2; k++) {
           const ang = rot + (k * Math.PI) / points - Math.PI / 2;
@@ -187,25 +186,87 @@ export function IrisSphere({ phase, level, size }: Props) {
         ctx.stroke();
       };
 
-      const glowA = 0.5 + shown * 0.5;
-      star(R * 0.62, R * 0.42, 12, -spin, 0.12 * glowA, 3.8);
-      star(R * 0.62, R * 0.42, 12, -spin, 0.65 * glowA, 1.15);
-      star(R * 0.2, R * 0.2, 3, spin * 1.5, 0.8 * glowA, 1.4); // hexagon (6 equal points)
+      // Concentric turning 12-point star
+      star(R * 0.65, R * 0.44, 12, -spin, 0.62, 1.35);
 
-      // Nodes: bigger and brighter at the front
-      projected.forEach((o) => {
-        const front = (o.z + 1) / 2;
-        const baseSize = size < 100 ? 1.4 + front * 2.8 : 3 + front * 7;
-        const s = baseSize * o.s * (1 + shown * 0.4);
-        ctx.globalAlpha = 0.25 + front * 0.75;
-        ctx.drawImage(sprite, o.x - s, o.y - s, s * 2, s * 2);
+      // Inner regular hexagon
+      star(R * 0.22, R * 0.22, 3, spin * 1.4, 0.8, 1.4);
+
+      // Hexagon vertex nodes
+      for (let k = 0; k < 6; k++) {
+        const ang = spin * 1.4 + (k * Math.PI) / 3 - Math.PI / 2;
+        const x = c + Math.cos(ang) * (R * 0.22);
+        const y = c + Math.sin(ang) * (R * 0.22);
+        ctx.fillStyle = "rgba(15, 23, 42, 0.85)";
+        ctx.beginPath();
+        ctx.arc(x, y, Math.max(1, 1.2 * sRatio), 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // Central focal core: 3D obsidian bead with specular gleam
+      const coreR = Math.max(2.5, R * (0.11 + shown * 0.05));
+      const coreGrad = ctx.createRadialGradient(
+        c - coreR * 0.32, c - coreR * 0.32, coreR * 0.05,
+        c, c, coreR
+      );
+      coreGrad.addColorStop(0, "rgba(255, 255, 255, 0.95)"); // specular highlight
+      coreGrad.addColorStop(0.2, "rgba(160, 175, 195, 0.9)");
+      coreGrad.addColorStop(0.65, "rgba(24, 32, 47, 0.98)");
+      coreGrad.addColorStop(1, "rgba(10, 15, 26, 1)");
+      ctx.fillStyle = coreGrad;
+      ctx.beginPath();
+      ctx.arc(c, c, coreR, 0, Math.PI * 2);
+      ctx.fill();
+
+      // ========================================================
+      // LAYER 4: FRONT WIREFRAME (z > 0) - Crisp obsidian in foreground
+      // ========================================================
+      links.forEach(([a, b]) => {
+        const pa = projected[a], pb = projected[b];
+        const depth = (pa.z + pb.z) / 2;
+        if (depth > 0) {
+          const front = (depth + 1) / 2; // 0.5..1.0
+          ctx.lineWidth = Math.max(0.85, (0.55 + 0.65 * front) * sRatio);
+          ctx.strokeStyle = `rgba(15, 23, 42, ${(0.45 + 0.5 * front) * (1 + shown * 0.2)})`;
+          ctx.beginPath();
+          ctx.moveTo(pa.x, pa.y);
+          ctx.lineTo(pb.x, pb.y);
+          ctx.stroke();
+        }
       });
 
-      // Core
-      const core = R * (0.28 + shown * 0.22);
-      ctx.globalAlpha = 0.9;
-      ctx.drawImage(sprite, c - core, c - core, core * 2, core * 2);
-      ctx.globalAlpha = 1;
+      // ========================================================
+      // LAYER 5: FRONT NODES (z > 0) - Volumetric obsidian beads with specular reflection
+      // ========================================================
+      projected.forEach((o) => {
+        if (o.z > 0) {
+          const front = (o.z + 1) / 2; // 0.5..1.0
+          const r = Math.max(1.4, (1.1 + front * 1.5) * sRatio);
+
+          // Shading with directional light from top-left (-0.32 * r)
+          const beadGrad = ctx.createRadialGradient(
+            o.x - r * 0.32, o.y - r * 0.32, r * 0.04,
+            o.x, o.y, r
+          );
+          beadGrad.addColorStop(0, "rgba(255, 255, 255, 0.95)"); // crisp specular gleam
+          beadGrad.addColorStop(0.22, "rgba(160, 175, 195, 0.85)"); // silvery graphite reflection
+          beadGrad.addColorStop(0.65, "rgba(30, 41, 59, 0.96)");   // deep obsidian body
+          beadGrad.addColorStop(1, "rgba(10, 15, 26, 1)");       // dark rim
+
+          ctx.fillStyle = beadGrad;
+          ctx.beginPath();
+          ctx.arc(o.x, o.y, r, 0, Math.PI * 2);
+          ctx.fill();
+
+          // Specular pinprick on front-most vertices
+          if (front > 0.65 && size >= 100) {
+            ctx.fillStyle = "rgba(255, 255, 255, 0.95)";
+            ctx.beginPath();
+            ctx.arc(o.x - r * 0.28, o.y - r * 0.28, Math.max(0.5, 0.35 * sRatio), 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
+      });
 
       frame = requestAnimationFrame(draw);
     };

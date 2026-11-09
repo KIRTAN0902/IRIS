@@ -9,10 +9,11 @@ import { cn } from "@/lib/format";
  * PersistentIrisSphere:
  * A single, persistent application-level ambient intelligence presence.
  *
- * Continuous Transition System:
- * - On Home: Anchored at bottom-center directly above the chat composer.
+ * Clean Transparent 3D Intelligence Core:
+ * - On Home: Positioned prominently at bottom-center with substantial size (220px desktop / 150px mobile).
  * - On Other Lenses (Chat, Horizon, Fleet, Vault, etc.): Glides smoothly
- *   horizontally and vertically into the bottom-right corner.
+ *   into the bottom-right corner at compact 64px.
+ * - Completely transparent background (zero white circular bezel, zero white card disc).
  * - Canvas internal state and 60fps kinetic rotation are NEVER interrupted.
  */
 export function PersistentIrisSphere() {
@@ -35,6 +36,10 @@ export function PersistentIrisSphere() {
     (activeLens === "home" || !activeLens) &&
     (location.pathname === "/" || location.pathname === "");
 
+  // On Home, the prominent 220px 3D sphere is showcased in the Homepage Hero.
+  // On all other views (Chat, Horizon, Fleet, Vault), PersistentIrisSphere provides the universal ambient presence.
+  if (isHome) return null;
+
   const active = voice.phase !== "off";
   const label =
     voice.phase === "off"
@@ -55,25 +60,13 @@ export function PersistentIrisSphere() {
     }
   };
 
-  // Coordinated physical positions (using identical CSS properties for continuous interpolation)
+  // Clean fixed position in the bottom-right corner
   const sphereStyle: React.CSSProperties = {
     position: "fixed",
     zIndex: 40,
-    left: isHome ? "50%" : isMobile ? "calc(100% - 3.75rem)" : "calc(100% - 4.25rem)",
-    bottom: isHome
-      ? isMobile
-        ? "118px"
-        : "112px"
-      : isMobile
-      ? "5.25rem" // above mobile dock
-      : "1.5rem",
-    transform: isHome
-      ? "translate3d(-50%, 0, 0) scale(1)"
-      : "translate3d(0, 0, 0) scale(0.72)",
-    transformOrigin: "center bottom",
-    transition:
-      "left 650ms cubic-bezier(0.16, 1, 0.3, 1), bottom 650ms cubic-bezier(0.16, 1, 0.3, 1), transform 650ms cubic-bezier(0.16, 1, 0.3, 1)",
-    willChange: "left, bottom, transform",
+    right: isMobile ? "1.25rem" : "1.75rem",
+    bottom: isMobile ? "5.25rem" : "1.75rem",
+    transition: "transform 200ms ease-out",
   };
 
   return (
@@ -90,25 +83,17 @@ export function PersistentIrisSphere() {
         }
         title={isHome ? "Tap to speak with IRIS" : "IRIS Intelligence Core · Tap to speak"}
         className={cn(
-          "pointer-events-auto group relative rounded-full cursor-pointer focus-visible:outline-offset-4",
+          "pointer-events-auto group relative cursor-pointer focus-visible:outline-offset-4 focus:outline-hidden",
           "transition-transform duration-200 active:scale-95",
         )}
       >
-        {/* Sleek, precision dark bezel container */}
-        <div
-          className={cn(
-            "relative rounded-full p-1 transition-all duration-300 flex items-center justify-center",
-            "border bg-ops-panel/95 backdrop-blur-md shadow-sm",
-            active
-              ? "border-ai/50 ring-2 ring-ai/20 shadow-md"
-              : "border-zinc-300/80 hover:border-zinc-500/80 hover:shadow-md",
-          )}
-        >
+        {/* 100% Transparent Container: Zero white background disc, zero borders */}
+        <div className="relative flex items-center justify-center">
           {/* Active micro-indicator dot */}
           {active && (
             <span
               className={cn(
-                "absolute top-0 right-0 h-2 w-2 rounded-full",
+                "absolute top-1 right-1 h-2.5 w-2.5 rounded-full ring-2 ring-white/80 z-10",
                 voice.phase === "listening"
                   ? "bg-ai animate-pulse"
                   : voice.phase === "speaking"
@@ -118,7 +103,7 @@ export function PersistentIrisSphere() {
             />
           )}
 
-          {/* Constant 64px canvas resolution: never destroyed or remounted */}
+          {/* 3D IRIS Sphere: Compact 64px ambient dock on other views */}
           <IrisSphere phase={voice.phase} level={voice.level} size={64} />
         </div>
       </button>
@@ -126,7 +111,7 @@ export function PersistentIrisSphere() {
       {/* Status caption shown under sphere in Homepage mode */}
       <div
         className={cn(
-          "mt-1.5 flex items-center gap-1.5 text-[11px] font-medium text-ink-dim transition-all duration-300",
+          "mt-1.5 flex items-center gap-1.5 rounded-full bg-ops-panel/85 backdrop-blur-xs px-3 py-1 text-[11px] font-medium text-ink-dim border border-ops-line/60 shadow-2xs transition-all duration-300",
           isHome
             ? "opacity-100 translate-y-0"
             : "opacity-0 -translate-y-2 pointer-events-none h-0 overflow-hidden",
