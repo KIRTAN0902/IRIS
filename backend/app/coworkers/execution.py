@@ -105,7 +105,8 @@ async def run_coworker_task(task_id: str, user_id: int) -> None:
 
         # Developer and Coding Coworker hand implementation to the reviewed
         # isolated Git workspace workflow.
-        if coworker.role.strip().lower() in {"developer", "software developer", "coding coworker"}:
+        role_clean = coworker.role.strip().lower()
+        if any(k in role_clean for k in ("developer", "software", "coding")):
             if not task.project_id:
                 # Attempt to resolve project from instruction or active project
                 projects = db.query(CodingProject).filter_by(user_id=user_id, active=True).all()

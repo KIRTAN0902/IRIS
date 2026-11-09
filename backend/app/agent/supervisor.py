@@ -28,9 +28,12 @@ from sqlalchemy.orm import Session
 
 from app.agent.agents.base_agent import SubAgentReport
 from app.agent.agents.bubba import get_bubba_agent
+from app.agent.agents.developer import get_developer_agent
+from app.agent.agents.notification import get_notification_agent
 from app.agent.agents.operator import get_operator_agent
 from app.agent.agents.planner import get_planner_agent
 from app.agent.agents.scribe import get_scribe_agent
+from app.agent.agents.workspace import get_workspace_agent
 from app.agent.schemas import AgentResponseSchema
 from app.agent.tools.mesh import LockWorkstationTool, RingMyPhoneTool
 from app.agent.tools.tasks import CompleteTaskTool
@@ -78,10 +81,13 @@ class IrisSupervisor:
         scored: list[tuple[int, Coworker]] = []
         words = set(re.findall(r"[a-z]{4,}", instruction.lower()))
         role_terms = {
+            "developer": {"code", "coding", "implement", "debug", "software", "feature", "tests", "git", "repo", "refactor"},
+            "workspace": {"email", "emails", "gmail", "inbox", "drive", "gdrive", "slack", "channel", "draft", "document"},
+            "notification": {"notification", "notifications", "gpay", "google pay", "upi", "event", "listener"},
+            "scribe": {"write", "draft", "documentation", "prose", "report", "adr", "notes", "notebook", "summary", "summarise", "summarize"},
             "analyst": {"data", "analyse", "analyze", "numbers", "compare", "comparison", "metrics", "dataset"},
             "researcher": {"research", "sources", "evidence", "references", "investigate", "findings"},
             "writer": {"write", "draft", "documentation", "prose", "report", "wording"},
-            "developer": {"code", "coding", "implement", "debug", "software", "feature", "tests"},
             "project manager": {"plan", "planning", "coordinate", "dependencies", "sequence", "schedule"},
         }
         for coworker in candidates:
@@ -1621,8 +1627,8 @@ class IrisSupervisor:
 
         matched: list[str] = []
 
-        # Operator triggers: Terminal, PowerShell, OS files, App launchers, Coding
-        operator_keywords = [
+        # Developer / Operator triggers: Terminal, PowerShell, OS files, App launchers, Coding, Git
+        developer_keywords = [
             "run command", "terminal", "powershell", "execute command", "exec ",
             "surf file", "read file", "show file", "cat ", "view file",
             "surf files", "list files", "show files", "what files", "browse files",
@@ -1633,9 +1639,11 @@ class IrisSupervisor:
             "laptop screen", "computer screen", "screen capture", "screenshot of laptop",
             "see my screen", "look at my laptop", "check my laptop", "what's on my laptop",
             "what is on my laptop", "capture laptop screen",
+            "git ", "git commit", "git push", "git branch", "worktree", "pull request", "pr ",
+            "fix bug", "debug", "refactor", "software", "repository", "repo", "implement feature",
         ]
-        if any(k in msg for k in operator_keywords):
-            matched.append("operator")
+        if any(k in msg for k in developer_keywords):
+            matched.append("developer")
 
         # Planner triggers: Chronos, Schedule time blocks, Calendar, Task planning, Goals
         planner_keywords = [
@@ -1648,33 +1656,37 @@ class IrisSupervisor:
         if any(k in msg for k in planner_keywords):
             matched.append("planner")
 
-        # Scribe triggers: Diary, Notes notebook, Habits, Workouts, Finances, Startup, Daily Tasks
+        # Scribe triggers: Technical Documentation, ADRs, Reports, Notes Notebook
         scribe_keywords = [
             "diary", "my notes", "take a note", "save note", "write note", "note in diary",
-            "journal", "reflection", "startup idea", "write in diary", "read diary",
-            "workout", "gym", "exercise", "bench press", "squat", "pushups", "sets", "reps",
-            "yoga", "asana", "pranayama", "surya namaskar",
-            "habit", "streak", "daily routine",
-            "finance", "finances", "expense", "expenses", "spent", "income", "budget", "bill", "bills",
-            "savings goal", "transaction", "transactions", "payment", "payments", "gpay", "google pay",
-            "phonepe", "paytm", "banking", "credit", "debit", "receipt", "receipts", "invoice", "invoices",
-            "rupee", "rupees", "inr",
-            "startup status", "outreach status", "log outreach",
-            "scribe", "daily task", "daily tasks", "today's task", "today's tasks", "todays tasks",
-            "create task", "add task", "log task", "my tasks",
+            "journal", "reflection", "write in diary", "read diary",
+            "technical report", "prepare report", "write report", "adr", "architecture decision",
+            "draft document", "write documentation", "polish writing", "edit text", "scribe",
+            "documentation", "readme", "write deliverable",
         ]
         if any(k in msg for k in scribe_keywords):
             matched.append("scribe")
 
-        # BUBBA triggers: Gmail, Inbox, Emails, Google Drive
-        bubba_keywords = [
+        # Workspace triggers: Gmail, Inbox, Emails, Google Drive, Slack
+        workspace_keywords = [
             "email", "emails", "gmail", "inbox", "unread email", "unread emails",
             "draft email", "send email", "check email", "search emails",
             "google drive", "gdrive", "drive files", "drive document", "upload to drive",
             "search drive", "read drive",
+            "slack", "slack channel", "slack message", "slack messages", "slack discussion",
+            "summarise slack", "summarize slack", "search slack",
         ]
-        if any(k in msg for k in bubba_keywords):
-            matched.append("bubba")
+        if any(k in msg for k in workspace_keywords):
+            matched.append("workspace")
+
+        # Notification triggers: GPay transaction events, Android notification listener
+        notification_keywords = [
+            "gpay notification", "google pay notification", "payment notification",
+            "notification listener", "notification events", "ingest notification",
+            "gpay event", "upi notification", "android notification",
+        ]
+        if any(k in msg for k in notification_keywords):
+            matched.append("notification")
 
         return matched
 
@@ -1776,10 +1788,10 @@ class IrisSupervisor:
                     raw_text = data["choices"][0]["message"]["content"].strip()
                     cleaned = raw_text.strip("[]() :.\"'").upper()
                     mapping = {
-                        "A": ["operator"],
+                        "A": ["developer"],
                         "B": ["planner"],
                         "C": ["scribe"],
-                        "D": ["bubba"],
+                        "D": ["workspace"],
                         "E": [],
                     }
                     if cleaned and cleaned[0] in mapping:
@@ -1811,7 +1823,7 @@ class IrisSupervisor:
             "now_local": to_local(now, tz).isoformat(),
         }
 
-        if domain == "operator":
+        if domain in {"operator", "developer"}:
             session = agy_manager.find_session(agy_manager.current_session_key)
             coding_memories = (
                 db.query(AIMemory)
@@ -1946,7 +1958,7 @@ class IrisSupervisor:
                     shared["knowledge_context"] = scribe_ctx
             except Exception:
                 pass
-        elif domain == "bubba":
+        elif domain in {"bubba", "workspace"}:
             from app.models.email_account import EmailAccount
             from app.models.lead import Lead
             from app.models.startup import Startup
@@ -2006,6 +2018,15 @@ class IrisSupervisor:
                     shared["knowledge_context"] = bubba_ctx
             except Exception:
                 pass
+        elif domain == "notification":
+            from app.services.notification_coworker_service import notification_coworker_service
+
+            shared.update(
+                {
+                    "listener_status": notification_coworker_service.get_status(db, user.id),
+                    "recent_events": notification_coworker_service.get_recent_events(limit=5),
+                }
+            )
 
         if context:
             for key in ("force_agent", "conversation_id"):
@@ -2023,14 +2044,16 @@ class IrisSupervisor:
         history: list[Any] | None = None,
     ) -> SubAgentReport:
         """Execute the sub-agent corresponding to the given domain."""
-        if domain == "operator":
-            agent = get_operator_agent()
+        if domain in {"developer", "operator"}:
+            agent = get_developer_agent()
         elif domain == "planner":
             agent = get_planner_agent()
         elif domain == "scribe":
             agent = get_scribe_agent()
-        elif domain == "bubba":
-            agent = get_bubba_agent()
+        elif domain in {"workspace", "bubba"}:
+            agent = get_workspace_agent()
+        elif domain == "notification":
+            agent = get_notification_agent()
         else:
             return SubAgentReport(
                 agent_name="Supervisor",

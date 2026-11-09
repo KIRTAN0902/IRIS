@@ -22,6 +22,16 @@ from app.core.execution_provider import require_execution
 from app.coworkers.governance import evaluate_capability
 from app.coworkers.templates import TEMPLATES
 from app.coworkers.computer_use import MockLocalComputerUse, run_mock_demo
+from app.services.notification_coworker_service import (
+    IngestNotificationPayload,
+    notification_coworker_service,
+)
+from app.services.slack_service import slack_service
+from app.coworkers.registry import (
+    CANONICAL_COWORKER_SLUGS,
+    ensure_specialized_coworkers,
+    evaluate_coworker_availability,
+)
 
 router = APIRouter(prefix="/coworkers", tags=["coworkers"])
 
@@ -116,14 +126,30 @@ def _event(db, user_id, coworker_id, task_id, kind, payload=None):
                          event_type=kind, payload=payload or {}))
 
 
-def _coworker_out(c: Coworker, tasks: list | None = None):
-    return {"id": c.id, "name": c.name, "description": c.description, "role": c.role,
-        "specialisation": c.specialisation, "responsibilities": c.responsibilities or [],
-        "system_instructions": c.system_instructions, "preferred_provider": c.preferred_provider,
-        "preferred_model": c.preferred_model, "allowed_capabilities": c.allowed_capabilities or [],
-        "project_id": c.project_id, "permission_profile": c.permission_profile or {},
-        "status": c.status, "availability": c.availability, "config_version": c.config_version,
-        "created_at": c.created_at, "updated_at": c.updated_at, "tasks": tasks or []}
+def _coworker_out(c: Coworker, tasks: list | None = None, extra: dict | None = None):
+    out = {
+        "id": c.id,
+        "name": c.name,
+        "description": c.description,
+        "role": c.role,
+        "specialisation": c.specialisation,
+        "responsibilities": c.responsibilities or [],
+        "system_instructions": c.system_instructions,
+        "preferred_provider": c.preferred_provider,
+        "preferred_model": c.preferred_model,
+        "allowed_capabilities": c.allowed_capabilities or [],
+        "project_id": c.project_id,
+        "permission_profile": c.permission_profile or {},
+        "status": c.status,
+        "availability": c.availability,
+        "config_version": c.config_version,
+        "created_at": c.created_at,
+        "updated_at": c.updated_at,
+        "tasks": tasks or [],
+    }
+    if extra:
+        out.update(extra)
+    return out
 
 
 def _task_out(t: CoworkerTask):
@@ -193,7 +219,85 @@ async def computer_use_demo(data: ComputerUseDemoRequest, user: User = Depends(c
 
 @router.get("")
 def list_coworkers(user: User = Depends(current_user), db: Session = Depends(get_db)):
-    return [_coworker_out(c) for c in db.query(Coworker).filter_by(user_id=user.id).order_by(Coworker.created_at.desc()).all()]
+    # 1. Ensure the 4 canonical specialized coworkers exist
+    ensure_specialized_coworkers(db, user)
+
+    # 2. Query coworkers for the user
+    all_cw = db.query(Coworker).filter_by(user_id=user.id).all()
+
+    # 3. Filter out IRIS Core, BUBBA, and calculate real availability
+    out: list[dict] = []
+    canonical_order = ["Developer", "Workspace", "Notification", "Scribe"]
+
+    for c in all_cw:
+        name_lower = (c.name or "").strip().lower()
+        role_lower = (c.role or "").strip().lower()
+
+        # Strict boundary: IRIS Core and BUBBA must NEVER appear in Fleet
+        if "iris core" in name_lower or "iris core" in role_lower:
+            continue
+        if "bubba" in name_lower or "bubba" in role_lower:
+            continue
+
+        # Determine canonical slug
+        slug = (
+            "developer" if any(k in name_lower or k in role_lower for k in ("developer", "coding", "software"))
+            else "workspace" if any(k in name_lower or k in role_lower for k in ("workspace", "gmail", "drive", "slack"))
+            else "notification" if any(k in name_lower or k in role_lower for k in ("notification", "gpay", "ingest"))
+            else "scribe" if any(k in name_lower or k in role_lower for k in ("scribe", "writing", "document"))
+            else None
+        )
+
+        extra = {}
+        if slug:
+            extra = evaluate_coworker_availability(db, user, slug, c.id)
+
+        tasks = (
+            db.query(CoworkerTask)
+            .filter_by(user_id=user.id, coworker_id=c.id)
+            .order_by(CoworkerTask.created_at.desc())
+            .limit(10)
+            .all()
+        )
+        out.append(_coworker_out(c, [_task_out(t) for t in tasks], extra=extra))
+
+    # Sort canonical coworkers to the top in the mandatory order
+    def _sort_key(item: dict) -> tuple[int, int | str]:
+        name = item.get("name", "")
+        if name in canonical_order:
+            return (0, canonical_order.index(name))
+        return (1, name)
+
+    out.sort(key=_sort_key)
+    return out
+
+
+@router.get("/workspace/status")
+def get_workspace_coworker_status(user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Return live status of Workspace coworker connected integrations (Gmail, Drive, Slack)."""
+    return evaluate_coworker_availability(db, user, "workspace", "workspace-check")
+
+
+@router.get("/notification/status")
+def get_notification_coworker_status(user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Return live status of Notification coworker (Android listener health, supported payment apps)."""
+    return notification_coworker_service.get_status(db, user.id)
+
+
+@router.get("/notification/events")
+def list_notification_events(user: User = Depends(current_user), db: Session = Depends(get_db), limit: int = 20):
+    """List recently ingested notification events from authorized Android devices."""
+    return notification_coworker_service.get_recent_events(limit=limit)
+
+
+@router.post("/notification/events", status_code=202)
+def ingest_notification_event(
+    payload: IngestNotificationPayload,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+):
+    """Ingest, validate, and forward structured GPay transaction notification from Android."""
+    return notification_coworker_service.ingest_event(db, user, payload)
 
 
 @router.post("", status_code=201)
@@ -218,11 +322,22 @@ def create_coworker(data: CoworkerCreate, template: str | None = None,
 
 @router.get("/{coworker_id:uuid}")
 def get_coworker(coworker_id, user: User = Depends(current_user), db: Session = Depends(get_db)):
-    c = _coworker(db,user,str(coworker_id))
-    tasks = db.query(CoworkerTask).filter_by(user_id=user.id,coworker_id=c.id).order_by(CoworkerTask.created_at.desc()).limit(50).all()
-    for task in tasks: _sync_coding_status(db,user,task)
+    c = _coworker(db, user, str(coworker_id))
+    tasks = db.query(CoworkerTask).filter_by(user_id=user.id, coworker_id=c.id).order_by(CoworkerTask.created_at.desc()).limit(50).all()
+    for task in tasks: _sync_coding_status(db, user, task)
     db.commit()
-    return _coworker_out(c, [_task_out(t) for t in tasks])
+
+    name_lower = (c.name or "").strip().lower()
+    role_lower = (c.role or "").strip().lower()
+    slug = (
+        "developer" if any(k in name_lower or k in role_lower for k in ("developer", "coding", "software"))
+        else "workspace" if any(k in name_lower or k in role_lower for k in ("workspace", "gmail", "drive", "slack"))
+        else "notification" if any(k in name_lower or k in role_lower for k in ("notification", "gpay", "ingest"))
+        else "scribe" if any(k in name_lower or k in role_lower for k in ("scribe", "writing", "document"))
+        else None
+    )
+    extra = evaluate_coworker_availability(db, user, slug, c.id) if slug else {}
+    return _coworker_out(c, [_task_out(t) for t in tasks], extra=extra)
 
 
 @router.patch("/{coworker_id}")

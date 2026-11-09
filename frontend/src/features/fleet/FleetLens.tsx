@@ -1,19 +1,23 @@
 import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import {
+  AlertCircle,
   ArrowRight,
-  Bot,
+  Bell,
+  Briefcase,
   Check,
+  CheckCircle2,
   Clock,
   Code,
   FileText,
-  LineChart,
-  Plus,
+  Loader2,
+  RefreshCw,
   Search,
+  ShieldAlert,
+  Sparkles,
   Users,
 } from "lucide-react";
 import { api } from "@/api/client";
 import { Button } from "@/components/ui/Button";
-import { Dialog, DialogContent } from "@/components/ui/Overlay";
 import { cn } from "@/lib/format";
 import { useLensStore } from "@/stores/lensStore";
 
@@ -31,8 +35,12 @@ export type Coworker = {
   allowed_capabilities: string[];
   project_id: number | null;
   permission_profile: Record<string, unknown>;
-  status: string;
+  status: "ready" | "needs_setup" | "busy" | "working" | "unavailable" | string;
   availability: boolean;
+  setup_requirement?: string | null;
+  message?: string | null;
+  connected_services?: string[];
+  execution_target?: string | null;
   config_version: number;
   tasks?: Task[];
 };
@@ -49,16 +57,6 @@ export type Task = {
   output?: string | null;
   error?: string | null;
   created_at: string;
-};
-
-export type Template = {
-  key: string;
-  name: string;
-  role: string;
-  description: string;
-  specialisation: string;
-  responsibilities: string[];
-  allowed_capabilities: string[];
 };
 
 export type Project = {
@@ -78,48 +76,40 @@ export type Approval = {
   status: string;
 };
 
-const CATEGORIES = [
-  { id: "all", label: "All Specialists" },
-  { id: "engineering", label: "Development" },
-  { id: "research", label: "Research" },
-  { id: "analysis", label: "Analysis" },
-  { id: "writing", label: "Writing" },
-  { id: "management", label: "Management" },
+const STATUS_FILTERS = [
+  { id: "all", label: "All Specialists (4)" },
+  { id: "ready", label: "Ready & Active" },
+  { id: "needs_setup", label: "Needs Setup" },
 ] as const;
 
 export function FleetLens() {
   const { selectedCoworkerId, setSelectedCoworkerId } = useLensStore();
 
   const [coworkers, setCoworkers] = useState<Coworker[]>([]);
-  const [templates, setTemplates] = useState<Template[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [approvals, setApprovals] = useState<Approval[]>([]);
   const [search, setSearch] = useState("");
-  const [selectedCategory, setSelectedCategory] = useState<string>("all");
+  const [selectedFilter, setSelectedFilter] = useState<string>("all");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
-
-  // Creation modal state
-  const [createModalOpen, setCreateModalOpen] = useState(false);
-  const [formName, setFormName] = useState("");
-  const [formRole, setFormRole] = useState("Specialist");
-  const [formSpec, setFormSpec] = useState("general");
-  const [formDesc, setFormDesc] = useState("");
-  const [formCapabilities, setFormCapabilities] = useState<string[]>([]);
-  const [isCreating, setIsCreating] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
       setLoading(true);
       setError("");
-      const [cs, ts, ps, aps] = await Promise.all([
+      const [cs, ps, aps] = await Promise.all([
         api.get<Coworker[]>("/coworkers"),
-        api.get<Template[]>("/coworkers/templates"),
         api.get<Project[]>("/coding/projects"),
         api.get<Approval[]>("/coworkers/approvals"),
       ]);
-      setCoworkers(cs);
-      setTemplates(ts);
+      // Ensure IRIS Core and BUBBA are never shown, only the 4 canonical specialists
+      const validSpecialists = cs.filter(
+        (c) =>
+          !c.name.toLowerCase().includes("iris core") &&
+          !c.name.toLowerCase().includes("bubba") &&
+          c.id !== "00000000-0000-0000-0000-000000000001",
+      );
+      setCoworkers(validSpecialists);
       setProjects(ps);
       setApprovals(aps);
     } catch (e) {
@@ -143,91 +133,65 @@ export function FleetLens() {
     }
   };
 
-  const handleOpenCreateModal = (template?: Template) => {
-    if (template) {
-      setFormName(template.name);
-      setFormRole(template.role);
-      setFormSpec(template.specialisation);
-      setFormDesc(template.description);
-      setFormCapabilities(template.allowed_capabilities ?? []);
-    } else {
-      setFormName("");
-      setFormRole("Specialist");
-      setFormSpec("general");
-      setFormDesc("");
-      setFormCapabilities(["web_search", "workspace_read"]);
-    }
-    setCreateModalOpen(true);
-  };
-
-  const handleCreateSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!formName.trim() || !formRole.trim() || isCreating) return;
-
-    setIsCreating(true);
-    setError("");
-    try {
-      const c = await api.post<Coworker>("/coworkers", {
-        name: formName.trim(),
-        role: formRole.trim(),
-        specialisation: formSpec.trim(),
-        description: formDesc.trim(),
-        allowed_capabilities: formCapabilities,
-        system_instructions: `You are ${formName.trim()}, a specialized coworker operating within IRIS.`,
-        permission_profile: {
-          require_approval_for: ["execute_desktop_command", "git_push"],
-        },
-      });
-      await refresh();
-      setCreateModalOpen(false);
-      setSelectedCoworkerId(c.id);
-    } catch (e) {
-      setError(String(e));
-    } finally {
-      setIsCreating(false);
-    }
-  };
-
-  const matchesCategory = (roleStr: string, specStr: string, cat: string) => {
-    if (cat === "all") return true;
-    const combined = `${roleStr} ${specStr}`.toLowerCase();
-    if (cat === "engineering") return combined.includes("dev") || combined.includes("cod") || combined.includes("software") || combined.includes("engineer");
-    if (cat === "research") return combined.includes("research") || combined.includes("search") || combined.includes("investigat");
-    if (cat === "analysis") return combined.includes("analy") || combined.includes("data") || combined.includes("metrics");
-    if (cat === "writing") return combined.includes("writ") || combined.includes("scribe") || combined.includes("doc");
-    if (cat === "management") return combined.includes("manage") || combined.includes("project") || combined.includes("coord") || combined.includes("plan");
-    return true;
-  };
-
   const filteredCoworkers = coworkers.filter((c) => {
     const matchesSearch =
       c.name.toLowerCase().includes(search.toLowerCase()) ||
       c.role.toLowerCase().includes(search.toLowerCase()) ||
-      c.specialisation.toLowerCase().includes(search.toLowerCase());
-    return matchesSearch && matchesCategory(c.role, c.specialisation, selectedCategory);
+      c.specialisation.toLowerCase().includes(search.toLowerCase()) ||
+      (c.description ?? "").toLowerCase().includes(search.toLowerCase());
+
+    if (!matchesSearch) return false;
+
+    if (selectedFilter === "ready") {
+      return c.status === "ready" || c.status === "busy" || c.availability;
+    }
+    if (selectedFilter === "needs_setup") {
+      return c.status === "needs_setup" || (!c.availability && c.status !== "busy");
+    }
+    return true;
   });
 
   const activeCoworker = coworkers.find((c) => c.id === selectedCoworkerId);
 
-  // If a coworker is selected, display their focused workspace with back button!
+  // If a coworker is selected, display their focused workspace with back button
   if (selectedCoworkerId && activeCoworker) {
     return (
-      <div className="flex h-[calc(100vh-3.5rem)] w-full flex-col overflow-hidden">
-        <div className="flex h-11 shrink-0 items-center justify-between border-b border-ops-line px-4 bg-ops-panel/90 text-xs">
+      <div className="flex h-[calc(100vh-3.5rem)] w-full flex-col overflow-hidden bg-ops-ground">
+        <div className="flex h-12 shrink-0 items-center justify-between border-b border-ops-line px-5 bg-ops-panel/95 backdrop-blur text-xs">
           <button
             type="button"
             onClick={() => setSelectedCoworkerId(null)}
-            className="flex items-center gap-1.5 text-ai hover:underline font-semibold cursor-pointer"
+            className="flex items-center gap-2 text-ai hover:underline font-semibold cursor-pointer transition-colors"
           >
             ← Back to Fleet Overview
           </button>
-          <div className="flex items-center gap-2">
-            <span className="font-semibold text-ink">{activeCoworker.name}</span>
-            <span className="text-ink-faint">({activeCoworker.role})</span>
+          <div className="flex items-center gap-3">
+            <span className="font-bold text-ink">{activeCoworker.name}</span>
+            <span className="text-ink-faint">·</span>
+            <span className="text-ink-dim font-medium">{activeCoworker.role}</span>
+            <span
+              className={cn(
+                "rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider",
+                activeCoworker.status === "ready"
+                  ? "bg-emerald-500/10 text-emerald-600 border border-emerald-500/20"
+                  : activeCoworker.status === "needs_setup"
+                  ? "bg-amber-500/10 text-amber-600 border border-amber-500/20"
+                  : "bg-neutral-500/10 text-neutral-500 border border-neutral-500/20",
+              )}
+            >
+              {activeCoworker.status === "needs_setup" ? "Setup Required" : activeCoworker.status}
+            </span>
           </div>
         </div>
         <div className="flex-1 overflow-y-auto">
-          <Suspense fallback={<div className="p-4 text-xs text-ink-faint animate-pulse">Loading Coworker Stage…</div>}>
+          <Suspense
+            fallback={
+              <div className="flex items-center justify-center h-full p-8 text-xs text-ink-faint gap-2">
+                <Loader2 size={16} className="animate-spin text-ai" />
+                <span>Initializing Coworker Stage…</span>
+              </div>
+            }
+          >
             <CoworkerChatPage />
           </Suspense>
         </div>
@@ -235,47 +199,73 @@ export function FleetLens() {
     );
   }
 
+  const getCoworkerIcon = (name: string, spec: string) => {
+    const n = name.toLowerCase();
+    const s = spec.toLowerCase();
+    if (n.includes("developer") || s.includes("cod") || s.includes("soft")) {
+      return <Code size={20} className="text-blue-600" />;
+    }
+    if (n.includes("workspace") || s.includes("work") || s.includes("prod")) {
+      return <Briefcase size={20} className="text-emerald-600" />;
+    }
+    if (n.includes("notification") || s.includes("notif") || s.includes("event")) {
+      return <Bell size={20} className="text-violet-600" />;
+    }
+    if (n.includes("scribe") || s.includes("writ") || s.includes("doc")) {
+      return <FileText size={20} className="text-amber-600" />;
+    }
+    return <Sparkles size={20} className="text-ai" />;
+  };
+
   return (
-    <div className="mx-auto max-w-6xl space-y-6 pb-12 p-4 md:p-6">
+    <div className="mx-auto max-w-6xl space-y-6 pb-16 p-4 md:p-6">
       {/* 1. Fleet Operations Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2.5">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-ai/10 border border-ai/20 text-ai">
-              <Users size={18} />
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-ai/10 border border-ai/20 text-ai shadow-2xs">
+              <Users size={20} />
             </div>
             <div>
-              <h1 className="text-2xl font-bold tracking-tight text-ink">Coworker Fleet</h1>
-              <p className="text-xs text-ink-dim">
-                Autonomous specialist agents coordinated by IRIS to execute engineering, research, and analysis.
+              <div className="flex items-center gap-2">
+                <h1 className="text-2xl font-bold tracking-tight text-ink">Specialized Coworkers</h1>
+                <span className="rounded-full bg-ops-raised px-2 py-0.5 text-[11px] font-semibold text-ink-dim border border-ops-line">
+                  4 Active Fleet Roles
+                </span>
+              </div>
+              <p className="text-xs text-ink-dim mt-0.5">
+                Specialized autonomous execution units governed, dispatched, and supervised under IRIS Core.
               </p>
             </div>
           </div>
         </div>
 
         <div className="flex items-center gap-2">
-          <Button onClick={() => handleOpenCreateModal()} className="flex items-center gap-1.5 shadow-xs">
-            <Plus size={14} />
-            <span>Deploy Specialist</span>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => void refresh()}
+            disabled={loading}
+            className="flex items-center gap-1.5"
+          >
+            <RefreshCw size={13} className={cn(loading && "animate-spin")} />
+            <span>Sync Fleet</span>
           </Button>
         </div>
       </div>
 
       {error && (
-        <div className="rounded-xl border border-critical/30 bg-critical/10 p-3 text-xs text-critical">
-          {error}
+        <div className="rounded-xl border border-critical/30 bg-critical/10 p-3.5 text-xs text-critical flex items-center gap-2">
+          <ShieldAlert size={15} />
+          <span>{error}</span>
         </div>
-      )}
-
-      {loading && (
-        <div className="text-xs text-ink-faint animate-pulse">Synchronizing coworker fleet…</div>
       )}
 
       {/* 2. Pending Actions Approval Banner */}
       {approvals.length > 0 && (
         <section className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 shadow-xs space-y-3">
           <div className="flex items-center justify-between">
-            <h2 className="font-bold text-sm text-amber-500 flex items-center gap-2">
+            <h2 className="font-bold text-sm text-amber-600 flex items-center gap-2">
               <Clock size={16} />
               <span>Privileged Actions Awaiting Approval ({approvals.length})</span>
             </h2>
@@ -325,14 +315,14 @@ export function FleetLens() {
         </section>
       )}
 
-      {/* 3. Search & Filter Pills */}
+      {/* 3. Search & Operational Filter Bar */}
       <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between">
-        <div className="flex h-10 w-full sm:w-72 items-center gap-2 rounded-xl border border-ops-line bg-ops-panel px-3 focus-within:border-ai transition">
+        <div className="flex h-10 w-full sm:w-80 items-center gap-2 rounded-xl border border-ops-line bg-ops-panel px-3 focus-within:border-ai transition">
           <Search size={15} className="text-ink-faint shrink-0" />
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search specialists…"
+            placeholder="Search coworker abilities or tools…"
             className="w-full bg-transparent text-xs text-ink outline-none placeholder:text-ink-faint"
           />
           {search && (
@@ -342,91 +332,150 @@ export function FleetLens() {
           )}
         </div>
 
-        <div className="flex items-center gap-1 overflow-x-auto pb-1 sm:pb-0 scrollbar-none">
-          {CATEGORIES.map((cat) => (
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 scrollbar-none">
+          {STATUS_FILTERS.map((f) => (
             <button
-              key={cat.id}
-              onClick={() => setSelectedCategory(cat.id)}
+              key={f.id}
+              onClick={() => setSelectedFilter(f.id)}
               className={cn(
-                "rounded-xl px-3 py-1.5 text-xs font-medium transition cursor-pointer whitespace-nowrap",
-                selectedCategory === cat.id
+                "rounded-xl px-3.5 py-1.5 text-xs font-semibold transition cursor-pointer whitespace-nowrap",
+                selectedFilter === f.id
                   ? "bg-ai text-white shadow-xs"
-                  : "bg-ops-panel border border-ops-line text-ink-dim hover:text-ink",
+                  : "bg-ops-panel border border-ops-line text-ink-dim hover:text-ink hover:bg-ops-raised",
               )}
             >
-              {cat.label}
+              {f.label}
             </button>
           ))}
         </div>
       </div>
 
-      {/* 4. Coworker Roster Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      {/* 4. Specialized Coworkers Roster (Grid of 4) */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
         {filteredCoworkers.map((c) => {
           const activeTasksCount = (c.tasks ?? []).filter((t) =>
             ["running", "queued", "working"].includes(t.status),
           ).length;
           const assignedProject = projects.find((p) => p.id === c.project_id);
+          const isNeedsSetup = c.status === "needs_setup";
+          const isReady = c.status === "ready" || c.availability;
 
           return (
             <div
               key={c.id}
               onClick={() => setSelectedCoworkerId(c.id)}
-              className="group flex flex-col justify-between rounded-2xl border border-ops-line bg-ops-panel p-5 shadow-xs hover:border-ai/60 hover:shadow-md transition-all cursor-pointer"
+              className={cn(
+                "group flex flex-col justify-between rounded-2xl border p-5 shadow-xs transition-all cursor-pointer",
+                isNeedsSetup
+                  ? "border-amber-500/30 bg-amber-500/[0.02] hover:border-amber-500/60 hover:shadow-md"
+                  : "border-ops-line bg-ops-panel hover:border-ai/60 hover:shadow-md",
+              )}
             >
-              <div className="space-y-3">
-                <div className="flex items-start justify-between">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-ops-raised border border-ops-line group-hover:border-ai/30 transition text-ai">
-                    {c.specialisation.includes("cod") || c.specialisation.includes("dev") ? (
-                      <Code size={18} />
-                    ) : c.specialisation.includes("analy") ? (
-                      <LineChart size={18} />
-                    ) : c.specialisation.includes("writ") ? (
-                      <FileText size={18} />
+              <div className="space-y-4">
+                {/* Header: Icon, Name, and Status Badge */}
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-ops-raised border border-ops-line group-hover:border-ai/40 transition shadow-2xs">
+                      {getCoworkerIcon(c.name, c.specialisation)}
+                    </div>
+                    <div>
+                      <h3 className="text-base font-bold text-ink group-hover:text-ai transition-colors flex items-center gap-1.5">
+                        <span>{c.name}</span>
+                      </h3>
+                      <p className="text-xs text-ink-dim font-medium mt-0.5">
+                        {c.role}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Real Availability Badge */}
+                  <div className="flex items-center">
+                    {activeTasksCount > 0 ? (
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-ai/10 border border-ai/20 px-2.5 py-1 text-[11px] font-semibold text-ai">
+                        <span className="h-2 w-2 rounded-full bg-ai animate-pulse" />
+                        <span>Working ({activeTasksCount})</span>
+                      </span>
+                    ) : isReady ? (
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 text-[11px] font-semibold text-emerald-600">
+                        <CheckCircle2 size={12} />
+                        <span>Ready</span>
+                      </span>
+                    ) : isNeedsSetup ? (
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/10 border border-amber-500/20 px-2.5 py-1 text-[11px] font-semibold text-amber-600">
+                        <AlertCircle size={12} />
+                        <span>Needs Setup</span>
+                      </span>
                     ) : (
-                      <Bot size={18} />
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-neutral-500/10 border border-neutral-500/20 px-2.5 py-1 text-[11px] font-semibold text-neutral-500">
+                        <span>{c.status}</span>
+                      </span>
                     )}
                   </div>
-                  <div className="flex items-center gap-1.5">
-                    <span
-                      className={cn(
-                        "h-2 w-2 rounded-full",
-                        activeTasksCount > 0
-                          ? "bg-ai animate-pulse"
-                          : c.availability
-                          ? "bg-emerald-500"
-                          : "bg-gray-400",
+                </div>
+
+                {/* Description */}
+                <p className="text-xs text-ink-dim leading-relaxed">
+                  {c.description || "Autonomous specialist agent."}
+                </p>
+
+                {/* Setup Requirement or Connected Services Details */}
+                {isNeedsSetup && c.setup_requirement && (
+                  <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-xs text-amber-700 flex items-start gap-2">
+                    <AlertCircle size={14} className="shrink-0 mt-0.5 text-amber-600" />
+                    <span>{c.setup_requirement}</span>
+                  </div>
+                )}
+
+                {c.connected_services && c.connected_services.length > 0 && (
+                  <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+                    <span className="text-[11px] text-ink-faint">Connected:</span>
+                    {c.connected_services.map((svc) => (
+                      <span
+                        key={svc}
+                        className="rounded-md bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 text-[11px] font-semibold text-emerald-600"
+                      >
+                        {svc}
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                {/* Tool Capabilities Badges */}
+                {c.allowed_capabilities && c.allowed_capabilities.length > 0 && (
+                  <div className="space-y-1.5 pt-1">
+                    <div className="flex flex-wrap gap-1.5">
+                      {c.allowed_capabilities.slice(0, 5).map((cap) => (
+                        <span
+                          key={cap}
+                          className="rounded-lg bg-ops-raised border border-ops-line px-2 py-0.5 text-[10px] font-mono text-ink-dim"
+                        >
+                          {cap}
+                        </span>
+                      ))}
+                      {c.allowed_capabilities.length > 5 && (
+                        <span className="rounded-lg bg-ops-raised px-1.5 py-0.5 text-[10px] text-ink-faint">
+                          +{c.allowed_capabilities.length - 5} more
+                        </span>
                       )}
-                    />
-                    <span className="text-[11px] font-medium text-ink-dim capitalize">
-                      {activeTasksCount > 0 ? "Working" : c.availability ? "Online" : c.status}
+                    </div>
+                  </div>
+                )}
+
+                {assignedProject && (
+                  <div className="pt-1">
+                    <span className="inline-block text-[11px] text-ink-faint rounded bg-ops-raised border border-ops-line px-2 py-0.5">
+                      📁 Assigned Project: {assignedProject.name}
                     </span>
                   </div>
-                </div>
-
-                <div>
-                  <h3 className="text-base font-bold text-ink group-hover:text-ai transition-colors">
-                    {c.name}
-                  </h3>
-                  <p className="text-xs text-ai font-medium capitalize mt-0.5">
-                    {c.role} · {c.specialisation}
-                  </p>
-                  {assignedProject && (
-                    <span className="inline-block mt-1 text-[10px] text-ink-faint rounded bg-ops-raised px-1.5 py-0.5">
-                      📁 {assignedProject.name}
-                    </span>
-                  )}
-                  <p className="text-xs text-ink-dim mt-2 line-clamp-2 leading-relaxed">
-                    {c.description || "Specialist agent ready for scoped execution."}
-                  </p>
-                </div>
+                )}
               </div>
 
-              <div className="mt-4 pt-3 border-t border-ops-line/60 flex items-center justify-between text-xs text-ink-faint">
-                <span>{(c.tasks ?? []).length} tasks logged</span>
-                <span className="inline-flex items-center gap-1 font-semibold text-ai group-hover:translate-x-0.5 transition-transform">
-                  <span>Open</span>
-                  <ArrowRight size={13} />
+              {/* Footer: Open Coworker Stage */}
+              <div className="mt-5 pt-3.5 border-t border-ops-line/60 flex items-center justify-between text-xs text-ink-faint">
+                <span>{(c.tasks ?? []).length} tasks recorded</span>
+                <span className="inline-flex items-center gap-1 font-semibold text-ai group-hover:translate-x-1 transition-transform">
+                  <span>Open Coworker Stage</span>
+                  <ArrowRight size={14} />
                 </span>
               </div>
             </div>
@@ -434,103 +483,17 @@ export function FleetLens() {
         })}
       </div>
 
-      {/* 5. Pre-configured Specialists Section */}
-      <div className="pt-6 border-t border-ops-line space-y-4">
-        <div>
-          <h2 className="text-sm font-bold uppercase tracking-wider text-ink-faint">
-            Specialist Templates
-          </h2>
-          <p className="text-xs text-ink-dim mt-0.5">
-            Deploy pre-configured agents for rapid workspace integration.
+      {filteredCoworkers.length === 0 && !loading && (
+        <div className="rounded-2xl border border-dashed border-ops-line p-10 text-center space-y-2">
+          <p className="text-sm font-semibold text-ink">No coworkers match your filter</p>
+          <p className="text-xs text-ink-dim">
+            Switch filter or clear your search query to view the 4 specialized fleet coworkers.
           </p>
+          <Button size="sm" variant="outline" onClick={() => { setSelectedFilter("all"); setSearch(""); }}>
+            Reset Filters
+          </Button>
         </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {templates.map((t) => (
-            <div
-              key={t.key}
-              className="rounded-2xl border border-ops-line bg-ops-panel/60 p-4 space-y-3 flex flex-col justify-between"
-            >
-              <div>
-                <h4 className="text-sm font-bold text-ink">{t.name}</h4>
-                <p className="text-xs text-ai capitalize font-medium">{t.specialisation}</p>
-                <p className="text-xs text-ink-dim mt-1.5 line-clamp-2">{t.description}</p>
-              </div>
-
-              <div className="flex items-center justify-between pt-2 border-t border-ops-line/60 text-xs">
-                <span className="text-ink-faint text-[11px]">
-                  {t.allowed_capabilities.length} tools granted
-                </span>
-                <Button size="sm" variant="outline" onClick={() => handleOpenCreateModal(t)}>
-                  <Plus size={12} />
-                  <span>Use Template</span>
-                </Button>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Creation Modal */}
-      <Dialog open={createModalOpen} onOpenChange={setCreateModalOpen}>
-        <DialogContent title="Deploy Specialist Coworker">
-          <form onSubmit={handleCreateSubmit} className="space-y-4 pt-2">
-            <div>
-              <label className="block text-xs font-semibold text-ink mb-1">Coworker Name</label>
-              <input
-                type="text"
-                required
-                value={formName}
-                onChange={(e) => setFormName(e.target.value)}
-                placeholder="e.g. Athena, Hermes, Orion"
-                className="w-full rounded-xl border border-ops-line bg-ops-void px-3 py-2 text-xs text-ink outline-none focus:border-ai"
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-semibold text-ink mb-1">Role Title</label>
-                <input
-                  type="text"
-                  required
-                  value={formRole}
-                  onChange={(e) => setFormRole(e.target.value)}
-                  placeholder="e.g. Lead Software Engineer"
-                  className="w-full rounded-xl border border-ops-line bg-ops-void px-3 py-2 text-xs text-ink outline-none focus:border-ai"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-ink mb-1">Specialisation</label>
-                <input
-                  type="text"
-                  required
-                  value={formSpec}
-                  onChange={(e) => setFormSpec(e.target.value)}
-                  placeholder="e.g. backend, security, testing"
-                  className="w-full rounded-xl border border-ops-line bg-ops-void px-3 py-2 text-xs text-ink outline-none focus:border-ai"
-                />
-              </div>
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-ink mb-1">Mission / Description</label>
-              <textarea
-                rows={3}
-                value={formDesc}
-                onChange={(e) => setFormDesc(e.target.value)}
-                placeholder="Describe what this specialist is responsible for…"
-                className="w-full rounded-xl border border-ops-line bg-ops-void px-3 py-2 text-xs text-ink outline-none focus:border-ai"
-              />
-            </div>
-            <div className="flex justify-end gap-2 pt-2 border-t border-ops-line">
-              <Button type="button" variant="ghost" onClick={() => setCreateModalOpen(false)}>
-                Cancel
-              </Button>
-              <Button type="submit" disabled={isCreating}>
-                {isCreating ? "Deploying…" : "Deploy Coworker"}
-              </Button>
-            </div>
-          </form>
-        </DialogContent>
-      </Dialog>
+      )}
     </div>
   );
 }
