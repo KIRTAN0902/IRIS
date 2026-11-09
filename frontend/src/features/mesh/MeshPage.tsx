@@ -277,22 +277,22 @@ export function MeshPage() {
   const companionUrl = `${window.location.origin}/companion`;
 
   return (
-    <div className="mx-auto w-full max-w-5xl space-y-6">
+    <div className="mx-auto w-full max-w-5xl space-y-6 pb-12">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 border-b border-ops-line/80 pb-4">
         <div>
-          <h1 className="text-[28px] font-bold tracking-tight text-ink">Devices & Mesh</h1>
-          <p className="text-[13px] text-ink-dim">
-            Permanent, $0 cross-network device continuity, clipboard, and file drops.
+          <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-ink font-display">Devices & Mesh</h1>
+          <p className="text-xs text-ink-dim mt-0.5">
+            Sovereign cross-device continuity, clipboard sharing, and encrypted file drops.
           </p>
         </div>
-        <div className="flex items-center gap-3">
-          <Button size="sm" variant="outline" onClick={() => handleOpenPairModal("enter_pin")}>
-            <Plus size={14} /> Pair New Phone
+        <div className="flex items-center gap-2.5">
+          <Button size="sm" variant="ai" onClick={() => handleOpenPairModal("enter_pin")}>
+            <Plus size={14} /> Pair New Device
           </Button>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 rounded-xl border border-ops-line bg-ops-panel px-3 py-1.5 shadow-2xs">
             {loadingDevices ? <Lamp tone="caution" pulse /> : <Lamp tone={hostOnline ? "go" : "caution"} />}
-            <span className="text-[12px] font-medium text-ink-dim">{loadingDevices ? "Checking connection" : hostOnline ? "Host online" : "Host offline"}</span>
+            <span className="text-xs font-medium text-ink-dim">{loadingDevices ? "Checking" : hostOnline ? "Host online" : "Host offline"}</span>
           </div>
         </div>
       </div>

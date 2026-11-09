@@ -20,6 +20,13 @@
   --color-ops-line: #e5e8ec;
   --color-ops-line-bright: #d2d7df;
 
+  /* Standard aliases for unified border and surface resolution */
+  --color-line: #e5e8ec;
+  --color-line-bright: #d2d7df;
+  --color-surface: #ffffff;
+  --color-surface-raised: #f1f4f6;
+  --color-surface-dim: #f8fafb;
+
   --color-ink: #111827;
   --color-ink-dim: #374151;
   --color-ink-faint: #6b7280;

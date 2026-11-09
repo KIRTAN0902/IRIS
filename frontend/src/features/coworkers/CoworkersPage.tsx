@@ -244,7 +244,7 @@ export function CoworkersPage() {
     if (s.includes("research") || s.includes("investigat")) return <Search size={20} className="text-sky-600" />;
     if (s.includes("analy") || s.includes("data")) return <LineChart size={20} className="text-emerald-600" />;
     if (s.includes("writ") || s.includes("scribe")) return <PenTool size={20} className="text-amber-600" />;
-    if (s.includes("manage") || s.includes("project")) return <FolderKanban size={20} className="text-purple-600" />;
+    if (s.includes("manage") || s.includes("project")) return <FolderKanban size={20} className="text-ai" />;
     return <Bot size={20} className="text-ink" />;
   };
 

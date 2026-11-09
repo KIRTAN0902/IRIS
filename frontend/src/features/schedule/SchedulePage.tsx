@@ -34,11 +34,14 @@ export function SchedulePage() {
   }, [events.data, blocks.data]);
 
   return (
-    <div className="space-y-5">
-      <header className="flex flex-wrap items-baseline gap-4">
-        <h1 className="text-[30px] font-bold leading-tight tracking-[-0.02em] text-ink">Schedule</h1>
+    <div className="space-y-6 max-w-5xl mx-auto pb-12">
+      <header className="flex flex-wrap items-baseline justify-between gap-4">
+        <div>
+          <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-ink font-display">Schedule</h1>
+          <p className="text-xs text-ink-dim mt-0.5">Committed temporal blocks, events & free focus windows</p>
+        </div>
         {availability.data && (
-          <p className="tnum text-[12px] text-ink-dim">
+          <p className="tnum text-xs font-semibold text-ai">
             {humanDuration(availability.data.total_free_minutes)} free today
           </p>
         )}

@@ -103,13 +103,13 @@ function Stat({
   tone?: "go" | "caution" | "ai" | "dim";
 }) {
   return (
-    <div className="rounded-lg border border-ops-line bg-ops-raised/40 px-3 py-2.5">
+    <div className="rounded-2xl border border-ops-line bg-ops-panel p-4 shadow-xs">
       <div className="flex items-center gap-2">
         <Lamp tone={tone} />
-        <p className="text-[11px] uppercase tracking-wide text-ink-faint">{label}</p>
+        <p className="text-[10px] font-bold uppercase tracking-wider text-ink-faint">{label}</p>
       </div>
-      <p className="mt-1 tnum text-[22px] font-semibold leading-none text-ink">{value}</p>
-      {hint && <p className="mt-1 text-[11px] text-ink-faint">{hint}</p>}
+      <p className="mt-1.5 tnum text-2xl font-bold leading-none text-ink">{value}</p>
+      {hint && <p className="mt-1 text-xs text-ink-faint">{hint}</p>}
     </div>
   );
 }
@@ -1108,19 +1108,23 @@ export function KnowledgePage() {
   const [tab, setTab] = useState<Tab>("overview");
 
   return (
-    <div className="space-y-4">
-      <header className="flex flex-wrap items-end justify-between gap-3 border-b border-ops-line pb-3">
+    <div className="space-y-6 max-w-6xl mx-auto pb-12">
+      <header className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 border-b border-ops-line/80 pb-4">
         <div>
-          <div className="flex items-center gap-2">
-            <Library className="text-ai" size={24} />
-            <h1 className="text-[26px] font-bold leading-tight tracking-tight text-ink">Knowledge</h1>
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-ai/10 border border-ai/20 text-ai">
+              <Library size={18} />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight text-ink">Knowledge Vault</h1>
+              <p className="mt-0.5 text-xs text-ink-dim">
+                Authoritative Supabase PostgreSQL & pgvector graph, synced with private cloud vault.
+              </p>
+            </div>
           </div>
-          <p className="mt-1 text-[12px] text-ink-faint">
-            PostgreSQL is authoritative. Markdown is the Obsidian-compatible vault. Facts, observations,
-            decisions and inferences stay distinct.
-          </p>
         </div>
-        <nav className="flex w-full gap-1 overflow-x-auto rounded-lg border border-ops-line bg-ops-raised/40 p-1 sm:w-auto">
+
+        <nav className="flex items-center gap-1 overflow-x-auto rounded-xl border border-ops-line bg-ops-raised p-1">
           {TABS.map((item) => {
             const Icon = item.icon;
             return (
@@ -1129,11 +1133,14 @@ export function KnowledgePage() {
                 type="button"
                 onClick={() => setTab(item.id)}
                 className={cn(
-                  "flex shrink-0 items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[12px] transition-colors",
-                  tab === item.id ? "bg-ops-ground text-ink shadow-sm" : "text-ink-faint hover:text-ink",
+                  "flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium transition cursor-pointer",
+                  tab === item.id
+                    ? "bg-ops-panel text-ink font-semibold shadow-2xs border border-ops-line-bright"
+                    : "text-ink-faint hover:text-ink hover:bg-ops-panel/50",
                 )}
               >
-                <Icon size={14} /> {item.label}
+                <Icon size={13} className={tab === item.id ? "text-ai" : "opacity-70"} />
+                <span>{item.label}</span>
               </button>
             );
           })}

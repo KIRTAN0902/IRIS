@@ -521,15 +521,15 @@ export function CoworkerChatView({
   };
 
   return (
-    <div className="flex flex-col h-[calc(100vh-140px)] min-h-[580px] rounded-2xl border border-ops-line bg-surface overflow-hidden shadow-xs">
+    <div className="flex flex-col h-[calc(100vh-140px)] min-h-[580px] rounded-2xl border border-ops-line bg-ops-panel overflow-hidden shadow-xs">
       {/* 1. Coworker Chat Header */}
-      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-line bg-surface px-4 py-3 shrink-0 sm:px-5">
+      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-ops-line bg-ops-panel px-4 py-3 shrink-0 sm:px-5">
         <div className="flex items-center gap-2.5 min-w-0 sm:gap-3">
           {onBack && (
             <button
               type="button"
               onClick={onBack}
-              className="inline-flex items-center gap-1.5 rounded-xl border border-line bg-ops-panel px-2.5 py-1.5 text-xs font-medium text-ink hover:bg-white hover:text-ai transition cursor-pointer shrink-0"
+              className="inline-flex items-center gap-1.5 rounded-xl border border-ops-line bg-ops-panel px-2.5 py-1.5 text-xs font-medium text-ink hover:bg-ops-raised hover:text-ai transition cursor-pointer shrink-0"
               title="Return to Coworkers directory"
             >
               <ArrowLeft size={14} />
@@ -1131,7 +1131,7 @@ export function CoworkerChatView({
       </div>
 
       {/* 3. Bottom Composer */}
-      <footer className="border-t border-line bg-surface p-4 shrink-0 space-y-2.5">
+      <footer className="border-t border-ops-line bg-ops-panel p-4 shrink-0 space-y-2.5">
         {/* Active running task banner with immediate Stop button */}
         {activeRunningTurn && (
           <div className="flex items-center justify-between rounded-xl bg-amber-500/10 border border-amber-500/30 px-3.5 py-1.5 text-xs text-amber-900">
@@ -1145,7 +1145,7 @@ export function CoworkerChatView({
               type="button"
               onClick={handleStopExecution}
               disabled={stopping}
-              className="font-semibold text-red-700 hover:underline cursor-pointer"
+              className="font-semibold text-critical hover:underline cursor-pointer"
             >
               Stop Execution
             </button>
@@ -1153,7 +1153,7 @@ export function CoworkerChatView({
         )}
 
         {/* Input box */}
-        <div className="flex items-end gap-2 rounded-2xl border border-line bg-white p-2.5 shadow-xs focus-within:border-ai transition">
+        <div className="flex items-end gap-2 rounded-2xl border border-ops-line bg-ops-void p-2.5 shadow-xs focus-within:border-ai transition">
           <textarea
             rows={1}
             value={inputText}

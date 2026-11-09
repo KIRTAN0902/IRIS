@@ -188,13 +188,13 @@ export function ProjectsPage() {
       </header>
 
       {error && (
-        <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+        <div role="alert" className="rounded-xl border border-critical/30 bg-critical-dim p-4 text-xs font-medium text-critical">
           {error}
         </div>
       )}
 
       {/* Register New Workspace */}
-      <section className="space-y-3 rounded-2xl border border-line bg-ops-panel p-5 shadow-xs">
+      <section className="space-y-3 rounded-2xl border border-ops-line bg-ops-panel p-5 shadow-xs">
         <h2 className="text-base font-semibold text-ink flex items-center gap-2">
           <FolderPlus size={16} className="text-ai" /> Register Codebase Workspace
         </h2>
@@ -204,7 +204,7 @@ export function ProjectsPage() {
         <div className="grid gap-3 sm:grid-cols-2">
           <input
             aria-label="Project name"
-            className="rounded-xl border border-line bg-white px-3 py-2 text-xs outline-none focus:border-ai transition"
+            className="rounded-xl border border-ops-line bg-ops-void px-3 py-2 text-xs outline-none focus:border-ai transition"
             placeholder="Codebase Name (e.g. IRIS)"
             value={name}
             onChange={(e) => setName(e.target.value)}
@@ -212,14 +212,14 @@ export function ProjectsPage() {
           <div className="flex gap-2">
             <input
               aria-label="Directory path"
-              className="min-w-0 flex-1 rounded-xl border border-line bg-white px-3 py-2 text-xs font-mono outline-none focus:border-ai transition"
+              className="min-w-0 flex-1 rounded-xl border border-ops-line bg-ops-void px-3 py-2 text-xs font-mono outline-none focus:border-ai transition"
               placeholder="Absolute path (e.g. C:\kirtan\IRIS)"
               value={directory}
               onChange={(e) => setDirectory(e.target.value)}
             />
             <button
               type="button"
-              className="rounded-xl border border-line bg-white px-3 py-2 text-xs font-medium text-ink hover:bg-ops-ground transition cursor-pointer"
+              className="rounded-xl border border-ops-line bg-ops-void px-3 py-2 text-xs font-medium text-ink hover:bg-ops-raised transition cursor-pointer"
               onClick={() => void chooseDirectory()}
             >
               Browse
@@ -227,7 +227,7 @@ export function ProjectsPage() {
           </div>
           <input
             aria-label="Aliases"
-            className="rounded-xl border border-line bg-white px-3 py-2 text-xs outline-none focus:border-ai transition sm:col-span-2"
+            className="rounded-xl border border-ops-line bg-ops-void px-3 py-2 text-xs outline-none focus:border-ai transition sm:col-span-2"
             placeholder="Aliases (comma-separated, e.g. iris, repo, core)"
             value={aliases}
             onChange={(e) => setAliases(e.target.value)}
@@ -250,7 +250,7 @@ export function ProjectsPage() {
             <article
               key={p.id}
               className={`rounded-2xl border p-4.5 transition ${
-                p.is_active ? "border-ai/40 bg-ai/5 shadow-xs" : "border-line bg-ops-panel"
+                p.is_active ? "border-ai/40 bg-ai/5 shadow-xs" : "border-ops-line bg-ops-panel"
               }`}
             >
               <div className="flex flex-wrap items-start justify-between gap-3">
@@ -263,7 +263,7 @@ export function ProjectsPage() {
                       </span>
                     )}
                     {!p.exists && (
-                      <span className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-800">
+                      <span className="rounded-full bg-critical-dim px-2 py-0.5 text-[10px] font-semibold text-critical">
                         Directory Missing
                       </span>
                     )}
@@ -286,7 +286,7 @@ export function ProjectsPage() {
                     className={`rounded-xl border px-3 py-1.5 text-xs font-medium transition cursor-pointer ${
                       p.write_access
                         ? "border-emerald-300 bg-emerald-50 text-emerald-800"
-                        : "border-line bg-white text-ink-dim hover:text-ink"
+                        : "border-ops-line bg-ops-void text-ink-dim hover:text-ink"
                     }`}
                     onClick={() => void permission(p, "write_access")}
                   >
@@ -297,7 +297,7 @@ export function ProjectsPage() {
                     className={`rounded-xl border px-3 py-1.5 text-xs font-medium transition cursor-pointer ${
                       p.command_access
                         ? "border-emerald-300 bg-emerald-50 text-emerald-800"
-                        : "border-line bg-white text-ink-dim hover:text-ink"
+                        : "border-ops-line bg-ops-void text-ink-dim hover:text-ink"
                     }`}
                     onClick={() => void permission(p, "command_access")}
                   >
@@ -311,7 +311,7 @@ export function ProjectsPage() {
       </section>
 
       {/* Prepare Quick Coding Brief */}
-      <section className="space-y-3 rounded-2xl border border-line bg-ops-panel p-5 shadow-xs">
+      <section className="space-y-3 rounded-2xl border border-ops-line bg-ops-panel p-5 shadow-xs">
         <h2 className="text-base font-semibold text-ink flex items-center gap-2">
           <Code2 size={16} className="text-ai" /> Prepare Fast Coding Brief
         </h2>
@@ -321,7 +321,7 @@ export function ProjectsPage() {
         <div className="flex flex-wrap gap-3">
           <select
             aria-label="Select registered project"
-            className="flex-1 min-w-[200px] rounded-xl border border-line bg-white p-2.5 text-xs font-medium text-ink outline-none cursor-pointer"
+            className="flex-1 min-w-[200px] rounded-xl border border-ops-line bg-ops-void p-2.5 text-xs font-medium text-ink outline-none cursor-pointer"
             value={selected ?? ""}
             onChange={(e) => setSelected(Number(e.target.value) || null)}
           >
@@ -335,7 +335,7 @@ export function ProjectsPage() {
         </div>
         <textarea
           rows={3}
-          className="w-full rounded-xl border border-line bg-white p-3 text-xs text-ink outline-none focus:border-ai transition resize-none placeholder:text-ink-faint"
+          className="w-full rounded-xl border border-ops-line bg-ops-void p-3 text-xs text-ink outline-none focus:border-ai transition resize-none placeholder:text-ink-faint"
           placeholder="Describe what you want built, refactored or tested in this repository..."
           value={instruction}
           onChange={(e) => setInstruction(e.target.value)}
@@ -448,13 +448,13 @@ function TaskCard({
   const branchName = typeof task.brief?.task_branch === "string" ? task.brief.task_branch : null;
 
   return (
-    <article className="space-y-3 rounded-2xl border border-line bg-ops-panel p-4 shadow-xs">
+    <article className="space-y-3 rounded-2xl border border-ops-line bg-ops-panel p-4 shadow-xs">
       <div className="flex justify-between items-start gap-2">
         <div>
           <b className="text-sm text-ink">{task.instruction}</b>
           {branchName && <div className="text-xs font-mono text-ai mt-0.5">Branch: {branchName}</div>}
         </div>
-        <span className="text-[11px] font-semibold uppercase px-2 py-0.5 rounded-full bg-black/5 text-ink-dim">
+        <span className="text-[11px] font-semibold uppercase px-2 py-0.5 rounded-full bg-ops-raised text-ink-dim border border-ops-line">
           {status}
         </span>
       </div>
@@ -474,7 +474,7 @@ function TaskCard({
             <summary className="cursor-pointer text-ink-dim hover:text-ink font-medium">
               Technical execution output & logs
             </summary>
-            <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap rounded-xl bg-black/5 p-3 text-xs font-mono">
+            <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap rounded-xl bg-ops-void border border-ops-line p-3 text-xs font-mono">
               {session?.session?.recent_output || "Waiting for output…"}
             </pre>
           </details>
@@ -482,7 +482,7 @@ function TaskCard({
           {["running", "waiting_for_user", "completed"].includes(status) && (
             <div className="flex gap-2">
               <input
-                className="min-w-0 flex-1 rounded-xl border border-line bg-white px-3 py-1.5 text-xs outline-none focus:border-ai transition"
+                className="min-w-0 flex-1 rounded-xl border border-ops-line bg-ops-void px-3 py-1.5 text-xs outline-none focus:border-ai transition"
                 placeholder={
                   status === "waiting_for_user"
                     ? "Answer agent question..."
@@ -499,7 +499,7 @@ function TaskCard({
               {status === "running" && (
                 <button
                   type="button"
-                  className="rounded-xl border border-red-200 bg-red-50 px-3 text-xs font-semibold text-red-700 hover:bg-red-100 transition cursor-pointer"
+                  className="rounded-xl border border-critical/30 bg-critical-dim px-3 text-xs font-semibold text-critical hover:bg-critical/20 transition cursor-pointer"
                   onClick={() => void stop()}
                 >
                   Stop
@@ -518,7 +518,7 @@ function TaskCard({
             <div className="flex gap-2">
               <button
                 type="button"
-                className="rounded-xl border border-line bg-white px-3 py-1.5 text-xs font-medium text-ink hover:bg-ops-ground transition cursor-pointer"
+                className="rounded-xl border border-ops-line bg-ops-void px-3 py-1.5 text-xs font-medium text-ink hover:bg-ops-raised transition cursor-pointer"
                 onClick={() => void showDiff()}
               >
                 Inspect Diff
@@ -527,7 +527,7 @@ function TaskCard({
           )}
 
           {diff && (
-            <pre className="whitespace-pre-wrap rounded-xl bg-black/5 p-3 text-xs max-h-60 overflow-auto font-mono">
+            <pre className="whitespace-pre-wrap rounded-xl bg-ops-void border border-ops-line p-3 text-xs max-h-60 overflow-auto font-mono">
               {diff}
             </pre>
           )}

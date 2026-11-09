@@ -37,19 +37,19 @@ export function TodayPage() {
   const flexWindows = todayState.data?.flexible_windows ?? [];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 max-w-4xl mx-auto pb-12">
       <header className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
         <div>
-          <h1 className="text-[30px] font-bold leading-tight tracking-[-0.02em] text-ink">
+          <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-ink font-display">
             Today
           </h1>
-          <p className="text-[13px] text-ink-faint">
+          <p className="text-xs text-ink-dim mt-0.5">
             {now.toLocaleDateString([], { weekday: "long", day: "numeric", month: "long" })}
             {me.data ? ` · ${me.data.timezone}` : ""}
           </p>
         </div>
         {todayState.data && (
-          <p className="tnum text-[12px] text-ink-dim">
+          <p className="tnum text-xs text-ink-dim font-medium">
             {humanDuration(todayState.data.available_minutes_today)} flexible time today
           </p>
         )}
@@ -59,21 +59,21 @@ export function TodayPage() {
       {todayState.isLoading ? (
         <Skeleton className="h-16" />
       ) : win ? (
-        <section className="flex flex-wrap items-center justify-between gap-3 border border-ops-line-bright bg-ops-panel/60 px-4 py-3">
+        <section className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-ops-line bg-ops-panel p-5 shadow-xs">
           <div className="flex items-center gap-3">
             <Lamp
               tone={win.is_in_hard_constraint ? "caution" : win.is_in_flexible_window ? "go" : "dim"}
               pulse={win.is_in_hard_constraint || win.is_in_flexible_window}
             />
             <div>
-              <p className="text-[14px] font-medium text-ink">
+              <p className="text-sm font-semibold text-ink">
                 {win.is_in_hard_constraint
                   ? `Active commitment: ${win.active_block_name ?? "Routine"}`
                   : win.is_in_flexible_window
                     ? "In flexible window · Free to focus"
                     : "Outside scheduled windows"}
               </p>
-              <p className="tnum text-[11px] text-ink-faint">
+              <p className="tnum text-xs text-ink-faint mt-0.5">
                 {win.is_in_hard_constraint && win.minutes_remaining_in_block != null
                   ? `${win.minutes_remaining_in_block}m remaining in block`
                   : win.next_hard_constraint_name
@@ -83,11 +83,11 @@ export function TodayPage() {
             </div>
           </div>
           {flexWindows.length > 0 && (
-            <div className="flex flex-wrap items-center gap-2 text-[11px] text-ink-dim">
+            <div className="flex flex-wrap items-center gap-2 text-xs text-ink-dim">
               <Clock size={12} className="text-ink-faint" />
               <span>Windows:</span>
               {flexWindows.map((fw, i) => (
-                <span key={i} className="tnum border border-ops-line bg-ops-raised px-1.5 py-0.5">
+                <span key={i} className="tnum rounded-lg border border-ops-line bg-ops-void px-2 py-0.5 font-mono text-[11px]">
                   {fw.start}–{fw.end}
                 </span>
               ))}

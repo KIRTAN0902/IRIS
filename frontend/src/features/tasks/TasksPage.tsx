@@ -80,51 +80,53 @@ export function TasksPage() {
   ];
 
   return (
-    <div className="mx-auto w-full max-w-[680px]">
-      <header className="mb-6">
-        <div className="flex items-end justify-between gap-3">
-          <h1 className="text-[30px] font-bold leading-tight tracking-[-0.02em] text-ink">Tasks</h1>
+    <div className="mx-auto w-full max-w-4xl space-y-6 pb-12">
+      <header className="space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-ink font-display">Tasks</h1>
+            <p className="mt-1 text-xs text-ink-dim">
+              {totalActive} open priorities
+              {totalOverdue > 0 && <span className="text-critical font-medium"> · {totalOverdue} overdue</span>} · {totalCompleted} completed
+            </p>
+          </div>
           <button
             onClick={() => openCreate("STARTUP")}
-            className="mb-1 inline-flex items-center gap-1 text-[14px] text-ai hover:underline cursor-pointer"
+            className="inline-flex items-center gap-1.5 rounded-xl bg-ai text-white px-3 py-1.5 text-xs font-semibold hover:bg-ai/90 shadow-2xs transition cursor-pointer"
           >
-            <Plus size={14} /> New task
+            <Plus size={13} />
+            <span>New Task</span>
           </button>
         </div>
-        <p className="mt-1 text-[14px] text-ink-faint">
-          {totalActive} open
-          {totalOverdue > 0 && <span className="text-critical"> · {totalOverdue} overdue</span>} · {totalCompleted} done
-        </p>
-        <p className="mt-1 text-[12px] text-ink-faint md:hidden">
-          Swipe right to complete · left to delete · tap to edit
-        </p>
 
-        <div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-3">
-          <nav className="flex items-center gap-4 text-[14px]" aria-label="Filter tasks">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-y border-ops-line/80 py-2.5">
+          <nav className="flex items-center gap-1.5" aria-label="Filter tasks">
             {tabs.map((t) => (
               <button
                 key={t.id}
                 onClick={() => setFilterTab(t.id)}
                 className={cn(
-                  "cursor-pointer transition-colors",
-                  filterTab === t.id ? "font-medium text-ink" : "text-ink-faint hover:text-ink-dim",
+                  "cursor-pointer rounded-lg px-2.5 py-1 text-xs font-medium transition",
+                  filterTab === t.id
+                    ? "bg-ops-raised text-ink font-semibold border border-ops-line-bright shadow-2xs"
+                    : "text-ink-faint hover:text-ink hover:bg-ops-raised/50",
                 )}
               >
                 {t.label}
-                <span className="ml-1 text-[12px] text-ink-faint tnum">{t.count}</span>
+                <span className="ml-1 text-[11px] tnum opacity-75">{t.count}</span>
               </button>
             ))}
           </nav>
-          <label className="ml-auto flex min-w-[180px] flex-1 items-center gap-2 sm:max-w-[240px]">
-            <Search size={14} className="shrink-0 text-ink-faint" />
+          <div className="flex items-center gap-2 rounded-xl border border-ops-line bg-ops-panel px-3 py-1 shadow-2xs sm:w-60">
+            <Search size={13} className="shrink-0 text-ink-faint" />
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search"
+              placeholder="Search tasks..."
               aria-label="Search tasks"
-              className="w-full bg-transparent text-[14px] text-ink placeholder:text-ink-faint focus:outline-none"
+              className="w-full bg-transparent text-xs text-ink placeholder:text-ink-faint focus:outline-hidden"
             />
-          </label>
+          </div>
         </div>
       </header>
 
@@ -137,7 +139,7 @@ export function TasksPage() {
       ) : tasksQuery.error ? (
         <ErrorState message={(tasksQuery.error as Error).message} />
       ) : (
-        <div className="space-y-9">
+        <div className="space-y-6">
           {AREAS.map(({ area, title }) => {
             const tasks = filteredTasks.filter((t) => (t.area || "PERSONAL") === area);
             if (tasks.length === 0 && (filterTab !== "active" || area === "PERSONAL" || query)) return null;
@@ -153,8 +155,8 @@ export function TasksPage() {
             );
           })}
           {filteredTasks.length === 0 && (filterTab !== "active" || query) && (
-            <p className="text-[15px] text-ink-faint">
-              {query ? "No tasks match your search." : "Nothing here."}
+            <p className="text-xs text-ink-faint py-8 text-center">
+              {query ? "No tasks match your search." : "No tasks found in this view."}
             </p>
           )}
         </div>
@@ -187,28 +189,29 @@ function AreaSection({
 }) {
   const overdue = tasks.filter((t) => t.is_overdue && t.status !== "COMPLETED").length;
   return (
-    <section className="group/section">
-      <header className="mb-1 flex items-baseline gap-2 border-b border-ops-line pb-1.5">
-        <h2 className="text-[17px] font-semibold text-ink">{title}</h2>
-        <span className="text-[13px] text-ink-faint tnum">
-          {tasks.length}
-          {overdue > 0 && <span className="text-critical"> · {overdue} overdue</span>}
-        </span>
+    <section className="group/section rounded-2xl border border-ops-line bg-ops-panel p-5 shadow-xs space-y-3">
+      <header className="flex items-center justify-between border-b border-ops-line/80 pb-2">
+        <div className="flex items-center gap-2">
+          <h2 className="text-sm font-bold text-ink">{title}</h2>
+          <span className="text-[11px] text-ink-faint tnum">
+            ({tasks.length}{overdue > 0 ? ` · ${overdue} overdue` : ""})
+          </span>
+        </div>
         <button
           onClick={onAdd}
           aria-label={`Add ${title} task`}
           title={`Add ${title} task`}
-          className="ml-auto rounded p-0.5 text-ink-faint opacity-0 transition-opacity hover:text-ink group-hover/section:opacity-100 focus-visible:opacity-100 cursor-pointer"
+          className="rounded-lg p-1 text-ink-dim hover:text-ink hover:bg-ops-raised transition cursor-pointer"
         >
-          <Plus size={16} />
+          <Plus size={14} />
         </button>
       </header>
       {tasks.length === 0 ? (
-        <button onClick={onAdd} className="py-2 text-[14px] text-ink-faint hover:text-ink-dim cursor-pointer">
-          No tasks. Add one…
+        <button onClick={onAdd} className="py-4 text-center w-full text-xs text-ink-faint hover:text-ink-dim cursor-pointer">
+          No tasks in {title}. Tap to add one…
         </button>
       ) : (
-        <ul>
+        <ul className="space-y-2">
           {tasks.map((task) => (
             <li key={task.id}>
               <TaskItemRow task={task} projectsMap={projectsMap} onEdit={onEdit} />
@@ -384,7 +387,7 @@ function TaskItemRow({
         transform: dx ? `translateX(${dx}px)` : undefined,
         transition: dragging ? "none" : "transform 180ms ease-out",
       }}
-      className="group relative flex touch-pan-y items-start gap-3 bg-ops-ground py-2"
+      className="group relative flex touch-pan-y items-start gap-3 bg-ops-panel hover:bg-ops-void rounded-xl p-3 border border-ops-line/80 hover:border-ai/40 transition shadow-2xs mb-1.5"
     >
       <button
         onClick={toggle}

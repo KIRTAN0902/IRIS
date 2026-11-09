@@ -65,51 +65,64 @@ export function FinancePage() {
   const addTransaction = (kind: TransactionKind = "EXPENSE") => setEditing({ tx: null, kind });
 
   return (
-    <div className="mx-auto w-full max-w-[720px] pb-16">
-      <header className="mb-5">
-        <div className="flex items-end justify-between gap-3">
-          <h1 className="text-[30px] font-bold leading-tight tracking-[-0.02em] text-ink">Finance</h1>
+    <div className="mx-auto w-full max-w-4xl pb-16 space-y-5">
+      <header className="space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-ink font-display">Finance</h1>
+            <p className="mt-0.5 text-xs text-ink-dim">
+              Cash flow tracking, category budgets, scheduled bills & savings targets
+            </p>
+          </div>
           <button
             onClick={() => addTransaction()}
-            className="mb-1 hidden items-center gap-1 text-[14px] text-ai hover:underline cursor-pointer md:inline-flex"
+            className="inline-flex items-center gap-1.5 rounded-xl bg-ai text-white px-3.5 py-1.5 text-xs font-semibold hover:bg-ai/90 shadow-2xs transition cursor-pointer"
           >
-            <Plus size={14} /> Add transaction
+            <Plus size={13} />
+            <span>Add Transaction</span>
           </button>
         </div>
+
         {(tab === "overview" || tab === "transactions" || tab === "budgets") && (
-          <div className="mt-2 flex items-center gap-1 text-[14px]">
+          <div className="flex items-center gap-1.5 text-xs">
             <button
               onClick={() => setMonth(shiftMonth(month, -1))}
               aria-label="Previous month"
-              className="rounded p-1 text-ink-faint hover:bg-ops-raised hover:text-ink cursor-pointer"
+              className="rounded-lg p-1 text-ink-faint hover:bg-ops-raised hover:text-ink cursor-pointer"
             >
-              <ChevronLeft size={16} />
+              <ChevronLeft size={15} />
             </button>
-            <span className="min-w-[120px] text-center text-ink-dim">{monthLabel(month)}</span>
+            <span className="min-w-[120px] text-center font-medium text-ink">{monthLabel(month)}</span>
             <button
               onClick={() => setMonth(shiftMonth(month, 1))}
               disabled={isCurrent}
               aria-label="Next month"
-              className="rounded p-1 text-ink-faint hover:bg-ops-raised hover:text-ink disabled:opacity-30 cursor-pointer"
+              className="rounded-lg p-1 text-ink-faint hover:bg-ops-raised hover:text-ink disabled:opacity-30 cursor-pointer"
             >
-              <ChevronRight size={16} />
+              <ChevronRight size={15} />
             </button>
             {!isCurrent && (
-              <button onClick={() => setMonth(currentMonth())} className="ml-1 text-[13px] text-ink-faint hover:text-ink cursor-pointer">
-                This month
+              <button
+                onClick={() => setMonth(currentMonth())}
+                className="ml-1 text-[11px] font-semibold text-ai hover:underline cursor-pointer"
+              >
+                Current Month
               </button>
             )}
           </div>
         )}
-        <nav className="-mx-1 mt-4 flex gap-4 overflow-x-auto px-1 text-[14px]" aria-label="Finance sections">
+
+        <nav className="flex items-center gap-1.5 overflow-x-auto scrollbar-none border-b border-ops-line/80 pb-2.5" aria-label="Finance sections">
           {TABS.map((t) => (
             <button
               key={t.id}
               onClick={() => setTab(t.id)}
               aria-current={tab === t.id ? "page" : undefined}
               className={cn(
-                "shrink-0 border-b-2 pb-1.5 transition-colors cursor-pointer",
-                tab === t.id ? "border-ink font-medium text-ink" : "border-transparent text-ink-faint hover:text-ink-dim",
+                "cursor-pointer rounded-lg px-2.5 py-1 text-xs font-medium transition whitespace-nowrap",
+                tab === t.id
+                  ? "bg-ops-raised text-ink font-semibold border border-ops-line-bright shadow-2xs"
+                  : "text-ink-faint hover:text-ink hover:bg-ops-raised/50",
               )}
             >
               {t.label}

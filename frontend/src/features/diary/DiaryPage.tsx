@@ -35,7 +35,7 @@ const CATEGORIES = [
   { id: "ALL", label: "All", icon: BookOpen, color: "text-ink" },
   { id: "IDEA", label: "Ideas", icon: Lightbulb, color: "text-amber-400" },
   { id: "NOTE", label: "Notes", icon: FileText, color: "text-sky-400" },
-  { id: "REFLECTION", label: "Reflections", icon: Sparkles, color: "text-purple-400" },
+  { id: "REFLECTION", label: "Reflections", icon: Sparkles, color: "text-ai" },
   { id: "JOURNAL", label: "Journal", icon: BookMarked, color: "text-emerald-400" },
   { id: "MEETING", label: "Meetings", icon: Users, color: "text-blue-400" },
   { id: "LEARNING", label: "Learning", icon: GraduationCap, color: "text-rose-400" },
@@ -671,16 +671,16 @@ function NoteCard({ entry, isSelected, onSelect, onTagClick }: NoteCardProps) {
           className={cn(
             "inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider",
             entry.category === "IDEA"
-              ? "bg-amber-500/15 text-amber-400"
+              ? "bg-amber-500/15 text-amber-600"
               : entry.category === "REFLECTION"
-              ? "bg-purple-500/15 text-purple-400"
+              ? "bg-ai/15 text-ai"
               : entry.category === "JOURNAL"
-              ? "bg-emerald-500/15 text-emerald-400"
+              ? "bg-emerald-500/15 text-emerald-600"
               : entry.category === "MEETING"
-              ? "bg-blue-500/15 text-blue-400"
+              ? "bg-slate-500/15 text-slate-700"
               : entry.category === "LEARNING"
-              ? "bg-rose-500/15 text-rose-400"
-              : "bg-sky-500/15 text-sky-400",
+              ? "bg-rose-500/15 text-rose-600"
+              : "bg-ai/10 text-ai",
           )}
         >
           <Icon size={10} />

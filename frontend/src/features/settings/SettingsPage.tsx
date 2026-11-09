@@ -68,14 +68,18 @@ export function SettingsPage() {
   return (
     <div className={cn("mx-auto space-y-6 pb-12 w-full", isWideSection ? "max-w-6xl" : "max-w-3xl")}>
       {/* Header */}
-      <div>
+      <div className="border-b border-ops-line/80 pb-4">
         <div className="flex items-center gap-2.5">
-          <Settings size={26} className="text-ai" />
-          <h1 className="text-[28px] font-bold tracking-tight text-ink">Settings</h1>
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-ai/10 border border-ai/20 text-ai">
+            <Settings size={20} />
+          </div>
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-ink font-display">Settings</h1>
+            <p className="text-xs text-ink-dim mt-0.5">
+              System preferences, sovereign cross-device continuity, knowledge infrastructure, and AI configuration.
+            </p>
+          </div>
         </div>
-        <p className="text-[13px] text-ink-dim mt-0.5">
-          System preferences, sovereign cross-device continuity, knowledge infrastructure, and AI configuration.
-        </p>
       </div>
 
       {/* Settings Navigation Tabs (Nested Sub-Pages) */}
