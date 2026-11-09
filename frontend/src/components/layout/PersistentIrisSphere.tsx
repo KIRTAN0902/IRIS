@@ -64,19 +64,13 @@ export function PersistentIrisSphere() {
   };
 
   // Coordinated physical positions:
-  // Home: Bottom-centre directly above the chat composer (118px bottom, 100px visual size)
-  // Other Pages: Bottom-right corner (1.5rem bottom, 60px compact visual size)
+  // Home: Bottom-centre dock (1.5rem bottom / 5.25rem mobile, 100px visual size)
+  // Other Pages: Bottom-right corner (1.5rem bottom / 5.25rem mobile, 60px compact visual size)
   const sphereStyle: React.CSSProperties = {
     position: "fixed",
     zIndex: 40,
     left: isHome ? "50%" : isMobile ? "calc(100% - 2.5rem)" : "calc(100% - 3.25rem)",
-    bottom: isHome
-      ? isMobile
-        ? "124px"
-        : "118px"
-      : isMobile
-      ? "5.25rem" // above mobile dock
-      : "1.5rem",
+    bottom: isMobile ? "5.25rem" : "1.5rem",
     transform: isHome
       ? "translate3d(-50%, 0, 0) scale(1)"
       : "translate3d(-50%, 0, 0) scale(0.6)",
