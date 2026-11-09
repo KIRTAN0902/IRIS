@@ -26,16 +26,28 @@ In response to the Global Design Consistency & Sphere Visual Refinement Directiv
 
 ## 2. Redesigned IRIS Sphere: Black, Refined, and Subtle
 
-### 2.1 Visual Transformation
-The previous sphere utilized additive blending (`ctx.globalCompositeOperation = "lighter"`) with large radial cyan/white gradients and luminous sprites, producing a visually distracting sci-fi energy orb.
+### 2.1 Visual Color Mapping (1-to-1 Restoration)
+The original IRIS sphere implementation from commit `983809d` has been recovered and restored in its entirety in [`IrisSphere.tsx`](file:///C:/kirtan/IRIS/frontend/src/features/home/IrisSphere.tsx). The geometry, particle arrangement, internal 12-point turning star, core sprite, and mathematical kinetics remain 100% identical.
 
-The new implementation in [`IrisSphere.tsx`](file:///C:/kirtan/IRIS/frontend/src/features/home/IrisSphere.tsx) introduces:
-- **Normal Compositing (`"source-over"`)**: Eliminates blown-out white pixels and blurry bloom in favor of solid physical depth.
-- **Dark Graphite Base Body**: A spherical gradient (`#232b35` highlight -> `#151a21` body -> `#0c0f14` rim -> `#0a0d11` perimeter) giving the core physical volume and three-dimensional presence against light backgrounds.
-- **Precision Obsidian Nodes**: Custom-rendered micro-sprites featuring deep slate-graphite gradients (`#475569` -> `#1e293b` -> `#0f172a` -> `#020617`) with a delicate specular micro-highlight (`rgba(255, 255, 255, 0.5)`). Nodes are depth-sorted (back-to-front) for accurate geometric occlusion.
-- **Crisp Hairline Lattice Links**: Replaced thick fuzzy lines with 0.85px precision charcoal links (`rgba(30, 41, 59, alpha)`) on the front and 0.6px muted slate links on the back. When active, front links exhibit a restrained viridian sheen (`rgba(31, 100, 95, alpha)`) without glowing.
-- **Inner Rotating Geometry**: Counter-rotating 12-point star (`rgba(71, 85, 105, alpha)`) and concentric triangle/hexagon (`rgba(31, 100, 95, alpha)`) rendered with 0.85px–1.0px hairline strokes.
-- **Central Mechanical Core**: Compact radial core (`#334155` -> `#0f172a` -> `#020617`) with a 1px metallic rim.
+The **ONLY** visual change is the color mapping:
+- **Exact Node Sprite (`glowSprite`)**:
+  - Center: Deep graphite/black `rgba(15, 23, 42, 1)` (mapped from cyan `rgba(31,100,95,1)`).
+  - Stop 0.2: Deep charcoal `rgba(30, 41, 59, 0.88)` (mapped from `rgba(42,125,119,0.85)`).
+  - Stop 0.5: Subtle slate-grey highlight `rgba(71, 85, 105, 0.35)` (mapped from `rgba(110,185,178,0.32)`) preserving depth and edge contrast.
+  - Stop 1.0: Clean transparent fade `rgba(15, 23, 42, 0)`.
+- **Lattice Links**:
+  - Two-pass rendering preserved (3.2px wide faint pass + 0.9px crisp pass).
+  - Color mapped to deep slate-charcoal `rgba(30, 41, 59, alpha)`.
+- **Inner Star & Hexagon**:
+  - Exact rotating 12-point star (`R * 0.62`) and turning hexagon (`R * 0.2`) preserved.
+  - Color mapped to deep graphite `rgba(15, 23, 42, alpha)`.
+- **Halo Behind Everything**:
+  - Radius tightened from `R * 1.5` down to `R * 1.1` to prevent an oversized dark smudge.
+  - Color mapped to subtle low-opacity graphite `rgba(15, 23, 42, 0.02)`.
+- **Central Core**:
+  - Stamped with the exact same `sprite` at `R * (0.28 + shown * 0.22)` and `globalAlpha = 0.85`.
+
+Side by side with the original cyan sphere, both spheres share the exact same silhouette, node distribution, rotational kinematics, and voice reactivity, with the sole difference being the color palette.
 
 ### 2.2 Animation & State Preservation
 The visual overhaul was decoupled from the animation physics:
